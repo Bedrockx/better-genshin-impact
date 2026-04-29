@@ -1,0 +1,86 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时197.12秒，包含以下怪物：1只打手丘丘人、1只火箭丘丘人、1只雷箭丘丘人、1只冰箭丘丘人、1只岩盾丘丘暴徒、1只火斧丘丘暴徒、1只雷斧丘丘暴徒、1只丘丘雷兜王、1只草丘丘萨满。",
+    "enable_monster_loot_split": false,
+    "last_modified_time": 1777183884937,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "C014稻妻踏鞴砂-1",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -3156.5999999999985,
+      "y": -3886.1000000000004
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -3128.515625,
+      "y": -3873.2744140625
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "2000",
+      "id": 3,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -3066.091796875,
+      "y": -3890.896484375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -2974.857421875,
+      "y": -3877.078125
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -2957.2578125,
+      "y": -3867.6201171875
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "run",
+      "type": "path",
+      "x": -2970.869999999999,
+      "y": -3855.9400000000005
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -2972.75,
+      "y": -3856.2199999999993
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "info": {
+    "authors": [
+      {
+        "links": "",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时78秒，包含以下怪物：1只丘丘岩盔王。",
+    "enable_monster_loot_split": false,
+    "hash_res": "80824249",
+    "last_modified_time": 1777395707261,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "D038须弥沙漠赤王陵东岩窟",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 5383.056640625,
+      "y": -2456.3984375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5382.50048828125,
+      "y": -2495.154296875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5409.3984375,
+      "y": -2524.626953125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5398.5205078125,
+      "y": -2556.9306640625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5379.6845703125,
+      "y": -2611.08984375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5378.1533203125,
+      "y": -2625.97265625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 5335.103515625,
+      "y": -2652.9541015625
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keypress(t),wait(0.3),keypress(t),wait(0.3),keypress(t)",
+      "id": 8,
+      "move_mode": "walk",
+      "type": "orientation",
+      "x": 5308.79296875,
+      "y": -2666.734375
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 9,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5302.333984375,
+      "y": -2726.74609375
+    }
+  ]
+}

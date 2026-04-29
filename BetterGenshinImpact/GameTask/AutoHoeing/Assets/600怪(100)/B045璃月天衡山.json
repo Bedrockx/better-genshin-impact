@@ -1,0 +1,87 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时99.61秒，包含以下怪物：1只岩龙蜥。",
+    "enable_monster_loot_split": false,
+    "hash_res": "01494282",
+    "last_modified_time": 1777183012650,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B045璃月天衡山",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 611.7099999999991,
+      "y": -284.6700000000001
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 593.4775390625,
+      "y": -227.49609375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 593.0068359375,
+      "y": -197.697265625
+    },
+    {
+      "action": "combat_script",
+      "action_params": "wait(0.5);芙宁娜 e;玛薇卡 e;爱可菲 e;伊涅芙 e;",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 586.0419921875,
+      "y": -146.9140625
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 579.1399999999994,
+      "y": -110.94000000000051
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 592.6230470538922,
+      "y": -100.31189900176832
+    },
+    {
+      "action": "combat_script",
+      "action_params": "wait(0.2)",
+      "id": 7,
+      "move_mode": "dash",
+      "type": "orientation",
+      "x": 592.6230470538922,
+      "y": -100.31189900176832
+    }
+  ]
+}

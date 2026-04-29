@@ -1,0 +1,96 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时133.19秒，包含以下怪物：1只岩史莱姆、1只丘丘雷兜王、1只深海龙蜥·原种_600。",
+    "enable_monster_loot_split": false,
+    "hash_res": "26834014",
+    "last_modified_time": 1777392103475,
+    "map_match_method": "",
+    "map_name": "Enkanomiya",
+    "name": "ZC018稻妻渊下宫蛇心之地",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 386.8699999999999,
+      "y": -336.8299999999999
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keypress(f);钟离 a(0.1),e(hold);茜特菈莉 e;莱依拉 e;伊涅芙 e;",
+      "id": 2,
+      "move_mode": "climb",
+      "type": "orientation",
+      "x": 382.1416015625,
+      "y": -327.140869140625
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "climb",
+      "type": "path",
+      "x": 382.1416015625,
+      "y": -327.140869140625
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keydown(w),wait(0.25),dash,keyup(w)",
+      "id": 4,
+      "move_mode": "walk",
+      "type": "orientation",
+      "x": 386.01513671875,
+      "y": -333.060302734375
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "walk",
+      "type": "orientation",
+      "x": 389.6376953125,
+      "y": -341.986328125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 386.8699999999999,
+      "y": -336.8299999999999
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "1300",
+      "id": 7,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 375.03,
+      "y": -321.65999999999985
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 8,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 382.382080078125,
+      "y": -319.832275390625
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时124.99秒，包含以下怪物：2只深海龙蜥·原种、1只深海龙蜥·原种_600。",
+    "enable_monster_loot_split": false,
+    "hash_res": "43434511",
+    "last_modified_time": 1777191802784,
+    "map_match_method": "",
+    "map_name": "Enkanomiya",
+    "name": "ZC023稻妻渊下宫狭间之街到东北",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 625.96,
+      "y": 621.8699999999999
+    },
+    {
+      "action": "combat_script",
+      "action_params": "attack(0.5)",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 615.4688720703125,
+      "y": 634.971435546875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 587.5302734375,
+      "y": 688.4010009765625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 568.49853515625,
+      "y": 691.9149169921875
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 544.2666015625,
+      "y": 682.912109375
+    }
+  ]
+}

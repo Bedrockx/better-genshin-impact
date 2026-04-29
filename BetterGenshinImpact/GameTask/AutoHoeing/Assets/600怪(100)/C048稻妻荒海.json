@@ -1,0 +1,60 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时54秒，包含以下怪物：1只遗迹重机。",
+    "enable_monster_loot_split": false,
+    "hash_res": "14919700",
+    "last_modified_time": 1777395393533,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "C048稻妻荒海",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -4217.889999999999,
+      "y": -2397.869999999999
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -4218.8828125,
+      "y": -2353.291015625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -4238.119140625,
+      "y": -2294.427734375
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -4247.290000000001,
+      "y": -2287.2000000000007
+    }
+  ]
+}

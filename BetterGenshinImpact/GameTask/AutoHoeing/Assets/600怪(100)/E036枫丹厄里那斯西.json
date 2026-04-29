@@ -1,0 +1,132 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时137.67秒，包含以下怪物：2只大型狂蔓隙境原体、3只狂蔓隙境原体、1只遗迹重机、1只遗迹龙兽·空巡。",
+    "enable_monster_loot_split": false,
+    "hash_res": "61674668",
+    "last_modified_time": 1777395792903,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "E036枫丹厄里那斯西",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 5114.517578125,
+      "y": 2995.697265625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5100.466796875,
+      "y": 2969.5498046875
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5083.0859375,
+      "y": 2955.2314453125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5072.607421875,
+      "y": 2939.1591796875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5068.146484375,
+      "y": 2914.27978515625
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5075.7236328125,
+      "y": 2868.2763671875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5073.671875,
+      "y": 2845.21142578125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 8,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5061.978515625,
+      "y": 2816.8134765625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 9,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5052.853515625,
+      "y": 2797.1630859375
+    },
+    {
+      "action": "combat_script",
+      "action_params": "wait(1.5);芙宁娜 e;莉奈娅 attack(0.05),keydown(E),wait(0.05),attack(1.1),keyup(E);万叶 attack(0.08),e(hold),attack(0.2),wait(0.5); ;",
+      "id": 10,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5058.212890625,
+      "y": 2786.8388671875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 11,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5049.822265625,
+      "y": 2800.9775390625
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 12,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5036.2880859375,
+      "y": 2786.93701171875
+    }
+  ]
+}

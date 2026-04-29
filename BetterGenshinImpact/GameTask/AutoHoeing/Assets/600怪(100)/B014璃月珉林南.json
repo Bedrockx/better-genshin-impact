@@ -1,0 +1,60 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时62.69秒，包含以下怪物：1只丘丘人、1只冲锋丘丘人、1只火箭丘丘人、1只雷箭丘丘人、1只丘丘岩盔王。",
+    "enable_monster_loot_split": false,
+    "hash_res": "27749403",
+    "last_modified_time": 1777148919478,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B014璃月珉林南",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 1045.5400000000009,
+      "y": 950.6199999999999
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 988.8857421875,
+      "y": 972.919921875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 949.1875,
+      "y": 983.8130461831533
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 932.2265625,
+      "y": 977.4384765625
+    }
+  ]
+}

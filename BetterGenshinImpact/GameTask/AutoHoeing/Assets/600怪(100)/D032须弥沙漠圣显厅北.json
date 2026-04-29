@@ -1,0 +1,105 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时136.15秒，包含以下怪物：1只遗迹重机。",
+    "enable_monster_loot_split": false,
+    "hash_res": "69881025",
+    "last_modified_time": 1777395683885,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "D032须弥沙漠圣显厅北",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 4777.299999999999,
+      "y": -1434.58
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 4814.5,
+      "y": -1393.9300000000003
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 4802.68,
+      "y": -1338.3999999999996
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 4791.77,
+      "y": -1303.7399999999998
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 4762.049999999999,
+      "y": -1277.9500000000007
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keypress(t),wait(0.2),keypress(t),wait(0.2),keypress(t),wait(0.2),keypress(t)",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "orientation",
+      "x": 4722.03125,
+      "y": -1202.1669921875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 4717.111328125,
+      "y": -1188.23828125
+    },
+    {
+      "action": "combat_script",
+      "action_params": ";哥伦比娅 attack(0.1),e,wait(0.15),keypress(e),wait(0.15),keypress(e);莉奈娅 attack(0.01),keydown(E),wait(0.05),attack(1.1),keyup(E); ;",
+      "id": 8,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 4732.65625,
+      "y": -1135.0622875954396
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 9,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 4735.75,
+      "y": -1123.8763199426212
+    }
+  ]
+}

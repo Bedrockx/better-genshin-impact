@@ -1,0 +1,50 @@
+{
+  "info": {
+    "authors": [
+      {
+        "links": "",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时115.96秒，包含以下怪物：1只深渊使徒·激流。",
+    "enable_monster_loot_split": false,
+    "hash_res": "91626154",
+    "last_modified_time": 1777191165267,
+    "map_match_method": "",
+    "map_name": "Enkanomiya",
+    "name": "ZC014【水免】【高危】稻妻渊下宫大日御舆西",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 285.2601318359375,
+      "y": 277.391357421875
+    },
+    {
+      "action": "combat_script",
+      "action_params": "attack(0.2)",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 365.8125,
+      "y": 290.68778826333096
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 353.03271484375,
+      "y": 289.0250244140625
+    }
+  ]
+}

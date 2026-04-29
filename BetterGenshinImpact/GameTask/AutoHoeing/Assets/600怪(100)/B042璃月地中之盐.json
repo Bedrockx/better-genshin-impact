@@ -1,0 +1,69 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时65.61秒，包含以下怪物：1只木盾丘丘人、1只火箭丘丘人、1只丘丘岩盔王、0.5只丘丘人。",
+    "enable_monster_loot_split": false,
+    "hash_res": "88671083",
+    "last_modified_time": 1777395187070,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B042璃月地中之盐",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -164.54000000000087,
+      "y": 1182.5499999999993
+    },
+    {
+      "action": "combat_script",
+      "action_params": ";伊涅芙 e;芙宁娜 e;玛薇卡 e;爱可菲 e; ;",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -167,
+      "y": 1247.7503186068388
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -145.25,
+      "y": 1284.4997269084233
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -145.12109375,
+      "y": 1320.5830078125
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -140.02734375,
+      "y": 1335.275390625
+    }
+  ]
+}

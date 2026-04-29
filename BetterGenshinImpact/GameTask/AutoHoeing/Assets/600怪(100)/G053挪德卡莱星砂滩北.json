@@ -1,0 +1,68 @@
+{
+  "info": {
+    "authors": [
+      {
+        "links": "",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时130秒，包含以下怪物：2只荒野狂狩士。",
+    "enable_monster_loot_split": false,
+    "hash_res": "03710701",
+    "last_modified_time": 1777189086627,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "G053挪德卡莱星砂滩北",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 9560.4287109375,
+      "y": 2134.274169921875
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 9556.478515625,
+      "y": 2166.8408203125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9570.177734375,
+      "y": 2236.5283203125
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keypress(x);伊涅芙 e;莉奈娅 e;芙宁娜 e;玛薇卡 e;爱可菲 e;哥伦比娅 e,wait(0.15),keypress(e),wait(0.15),keypress(e);菈乌玛 e; ;",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9630.5078125,
+      "y": 2385.0380859375
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9630.5078125,
+      "y": 2385.0380859375
+    }
+  ]
+}

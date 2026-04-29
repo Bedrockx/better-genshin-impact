@@ -1,0 +1,161 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时175秒，包含以下怪物：1只冰盾丘丘人、2只冰箭丘丘人、1只冰盾丘丘暴徒、1只丘丘霜铠王、1只风丘丘萨满、1只冰丘丘萨满、1只遗迹重机。",
+    "enable_monster_loot_split": false,
+    "hash_res": "58528412",
+    "last_modified_time": 1777394722716,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "A008蒙德雪山-3",
+    "tags": [
+      "环境伤害"
+    ],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -1006.9199999999983,
+      "y": 859.4799999999996
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keypress(f);芙宁娜 e;玛薇卡 e;爱可菲 e;伊涅芙 e;",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "orientation",
+      "x": -992.712890625,
+      "y": 845.49560546875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -992.712890625,
+      "y": 845.49560546875
+    },
+    {
+      "action": "combat_script",
+      "action_params": ";哥伦比娅 e; ;",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -966.720703125,
+      "y": 846.7958984375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -942.0078125,
+      "y": 833.623046875
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -924.2799999999988,
+      "y": 815.96
+    },
+    {
+      "action": "combat_script",
+      "action_params": "wait(0.2);芙宁娜 e;",
+      "id": 7,
+      "move_mode": "dash",
+      "type": "orientation",
+      "x": -924.2799999999988,
+      "y": 815.96
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 8,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -1006.9199999999983,
+      "y": 859.5
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 9,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -1061.30078125,
+      "y": 698.1611328125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 10,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -1074.369140625,
+      "y": 680.025390625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 11,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -1106.58984375,
+      "y": 656.4931640625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 12,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -1111.28125,
+      "y": 641.015625
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keypress(f)",
+      "id": 13,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -1165.693359375,
+      "y": 614.7099609375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 14,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -1177.62890625,
+      "y": 604.64892578125
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 15,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -1198.275390625,
+      "y": 535.92822265625
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时83秒，包含以下怪物：1只丘丘岩盔王、3只机关·侦察记录型、1只重甲蟹·绿。",
+    "enable_monster_loot_split": false,
+    "hash_res": "23280952",
+    "last_modified_time": 1777395847582,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "E058枫丹实验室遗址东",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 3636.1499999999996,
+      "y": 4795.950000000001
+    },
+    {
+      "action": "combat_script",
+      "action_params": ";伊涅芙 e;芙宁娜 e;玛薇卡 e;爱可菲 e; ;",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 3667.0599999999995,
+      "y": 4813.610000000001
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 3732.9799999999996,
+      "y": 4849.439999999999
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 3736.0810546875,
+      "y": 4812.41015625
+    }
+  ]
+}

@@ -1,0 +1,178 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时282.38秒，包含以下怪物：4只丘丘人、1只打手丘丘人、3只冲锋丘丘人、1只木盾丘丘人、1只射手丘丘人、1只火斧丘丘暴徒、2只深邃拟覆叶_400、1只深邃拟覆叶_600。",
+    "enable_monster_loot_split": false,
+    "hash_res": "15821678",
+    "last_modified_time": 1777187753569,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "F049纳塔奥奇次数盾-5",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "force_tp",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 9875.46,
+      "y": -401.10000000000036
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "walk",
+      "type": "orientation",
+      "x": 9879.126953125,
+      "y": -415.9365234375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "run",
+      "type": "path",
+      "x": 9879.126953125,
+      "y": -415.9365234375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9841.2265625,
+      "y": -440.31982421875
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 5,
+      "locked": false,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9821.509765625,
+      "y": -476.771484375
+    },
+    {
+      "action": "combat_script",
+      "action_params": "wait(0.2)",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9821.509765625,
+      "y": -476.771484375
+    },
+    {
+      "action": "force_tp",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 9875.46,
+      "y": -401.10000000000036
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 8,
+      "move_mode": "walk",
+      "type": "orientation",
+      "x": 9879.126953125,
+      "y": -415.9365234375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 9,
+      "move_mode": "run",
+      "type": "path",
+      "x": 9879.126953125,
+      "y": -415.9365234375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 10,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9847.58984375,
+      "y": -423.93359375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 11,
+      "move_mode": "run",
+      "type": "path",
+      "x": 9837.6455078125,
+      "y": -413.8515625
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 12,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9843.341796875,
+      "y": -374.908203125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 13,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9843.341796875,
+      "y": -374.908203125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 14,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9832.5224609375,
+      "y": -367.5107421875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 15,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9776.203125,
+      "y": -368.328125
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "1000",
+      "id": 16,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 9737.9375,
+      "y": -378.56013176051056
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 17,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9741.2646484375,
+      "y": -368.19921875
+    }
+  ]
+}

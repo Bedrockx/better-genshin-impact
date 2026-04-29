@@ -1,0 +1,59 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时74.84秒，包含以下怪物：1只岩龙蜥。",
+    "enable_monster_loot_split": false,
+    "last_modified_time": 1777395153729,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B030璃月天遒谷-1",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 1268.4099999999999,
+      "y": -64.10000000000036
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "run",
+      "type": "path",
+      "x": 1290.25,
+      "y": -44.70999999999913
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1310.5,
+      "y": 39.5
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1300.544921875,
+      "y": 68.427734375
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "info": {
+    "authors": [
+      {
+        "links": "",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时122秒，包含以下怪物：4只荒野幽徒、1只荒野狂狩士。",
+    "enable_monster_loot_split": false,
+    "hash_res": "38760792",
+    "last_modified_time": 1777396008786,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "G020挪德卡莱月矩力设计局东北",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 9593.44140625,
+      "y": 3398.06591796875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9524.1630859375,
+      "y": 3467.013671875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9523.265625,
+      "y": 3502.046875
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 9522.0546875,
+      "y": 3538.8349609375
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9523.2216796875,
+      "y": 3543.254638671875
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9522.43359375,
+      "y": 3540.88330078125
+    }
+  ]
+}
