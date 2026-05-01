@@ -1596,6 +1596,30 @@ public class AutoFightTask : ISoloTask
             
             if (!paiMon2 && !aa)
             {
+                // 优先检测复活弹窗，避免弹窗滤镜导致派蒙像素不匹配而误判战斗结束
+                using var popupCheck = CaptureToRectArea();
+                var reviveConfirmRa = popupCheck.Find(AutoFightAssets.Instance.ConfirmRa);
+                if (reviveConfirmRa.IsExist())
+                {
+                    TaskControl.Logger.LogInformation("派蒙模式：检测到复活弹窗，主动处理");
+                    reviveConfirmRa.Click(); // 点击确认（尝试复活）
+                    await Delay(300, _ct);
+
+                    // 检测弹窗是否仍在（复活药CD时确认无效，弹窗不会关闭）
+                    using var popupCheck2 = CaptureToRectArea();
+                    var reviveExitRa = popupCheck2.Find(AutoFightAssets.Instance.ExitRa);
+                    if (reviveExitRa.IsExist())
+                    {
+                        reviveExitRa.Click(); // 点击取消关闭弹窗
+                        TaskControl.Logger.LogInformation("派蒙模式：复活药可能在CD，点击取消关闭弹窗");
+                        await Delay(200, _ct);
+                    }
+
+                    _totolyEndCount = 0;
+                    _totolyFlag = false;
+                    return false; // 战斗未结束
+                }
+
                 if (_taskParam.FinishDetectConfig.PaimonEndModel && _taskParam.FinishDetectConfig.DoubleEndEnbled && doubleEndLogo)
                 {
                     _skipFlag = true;
