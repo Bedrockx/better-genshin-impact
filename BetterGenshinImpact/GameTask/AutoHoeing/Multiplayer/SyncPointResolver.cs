@@ -94,9 +94,18 @@ public class SyncPointResolver
             }
         }
 
-        // 找不到距离 >= minDist 的点，用战斗点本身立即等待
-        usedIndices.Add(fightIndex);
-        return (fight, fightIndex);
+        // 找不到距离 >= minDist 的合法点，回退到最近的传送点（而非战斗点本身）
+        for (int j = fightIndex - 1; j >= 0; j--)
+        {
+            if (waypoints[j].Type == "teleport")
+            {
+                usedIndices.Add(j);
+                return (waypoints[j], j);
+            }
+        }
+
+        // 连传送点都没有（路线第一个段），跳过同步
+        return (null, -1);
     }
 
     /// <summary>

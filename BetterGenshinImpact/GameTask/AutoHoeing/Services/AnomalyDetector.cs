@@ -1,5 +1,7 @@
 using BetterGenshinImpact.Core.Recognition;
+using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.Core.Simulator;
+using BetterGenshinImpact.GameTask.Model.Area;
 using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 using System;
@@ -29,7 +31,9 @@ public class AnomalyDetector
     {
         _frozenRo = LoadRo(assetsDir, "解除冰冻.png", 1379, 574, 84, 39);
 
-        _revivalRo = LoadRo(assetsDir, "复苏.png", 755, 915, 362, 122, 0.95);
+        // 复苏按钮检测：扩大区域覆盖单机和联机两种界面
+        // 单机：底部偏右带圆形图标；联机：底部居中白底按钮
+        _revivalRo = LoadRo(assetsDir, "复苏.png", 350, 900, 800, 150, 0.85);
 
         _cookingRo = LoadRo(assetsDir, "烹饪界面.png", 1547, 965, 268, 94, 0.95);
 
@@ -93,17 +97,25 @@ public class AnomalyDetector
                         }
                     }
 
-                    // 复苏检测
+                    // 复苏检测（模板匹配，单机模式）
                     if (_revivalRo != null)
                     {
                         using var result = region.Find(_revivalRo);
                         if (result.IsExist())
                         {
-                            Logger.LogInformation("识别到复苏按钮，点击");
+                            Logger.LogInformation("识别到复苏按钮（单机模板匹配），点击");
                             result.Click();
                             await Task.Delay(500, ct);
                             continue;
                         }
+                    }
+                    // 联机模式复苏检测：色块连通性检测"已倒下"红色文字
+                    if (IsMultiplayerDefeated(region))
+                    {
+                        Logger.LogInformation("识别到联机已倒下界面（色块检测），点击复苏按钮");
+                        region.ClickTo(960, 1020);
+                        await Task.Delay(500, ct);
+                        continue;
                     }
                 }
 
@@ -131,5 +143,27 @@ public class AnomalyDetector
                 await Task.Delay(50, ct);
             }
         }
+    }
+
+    /// <summary>
+    /// 联机模式"已倒下"检测：在指定区域检测红色文字的色块连通性
+    /// 区域 (910, 860, 100, 30) 对应1080p下"已倒下"文字位置
+    /// 红色文字 RGB 约 (255, 92, 92)，用阈值过滤后检测连通区域
+    /// </summary>
+    private static bool IsMultiplayerDefeated(ImageRegion region)
+    {
+        using var regionMat = region.DeriveCrop(910, 860, 100, 30);
+        // BGR 顺序：B=60-130, G=60-130, R=200-255（红色文字）
+        using var mask = OpenCvCommonHelper.Threshold(regionMat.SrcMat,
+            new Scalar(255, 92, 92));
+        using var labels = new Mat();
+        using var stats = new Mat();
+        using var centroids = new Mat();
+
+        var numLabels = Cv2.ConnectedComponentsWithStats(mask, labels, stats, centroids,
+            connectivity: PixelConnectivity.Connectivity4, ltype: MatType.CV_32S);
+
+        // "已倒下"3个字应该有多个红色连通区域
+        return numLabels > 3;
     }
 }

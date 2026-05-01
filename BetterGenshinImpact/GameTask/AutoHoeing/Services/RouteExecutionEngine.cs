@@ -31,8 +31,10 @@ public class RouteExecutionEngine
 
     private volatile bool _running;
     private MultiplayerCoordinator? _coordinator;
+    private WorldStateMonitor? _worldStateMonitor;
 
     public void SetCoordinator(MultiplayerCoordinator? coordinator) => _coordinator = coordinator;
+    public void SetWorldStateMonitor(WorldStateMonitor? monitor) => _worldStateMonitor = monitor;
 
     public RouteExecutionEngine(
         TemplatePickupService pickupService,
@@ -74,6 +76,8 @@ public class RouteExecutionEngine
         bool IsRunning() => _running && !linkedCt.IsCancellationRequested;
 
         bool pathingFullyCompleted = false;
+        bool skipRouteRequested = false;
+        string? skipRouteReason = null;
 
         // 主路线执行任务
         var pathingTask = Task.Run(async () =>
@@ -91,6 +95,8 @@ public class RouteExecutionEngine
                     if (_config.MultiplayerEnabled && _coordinator != null)
                     {
                         executor.MultiplayerCoordinator = _coordinator;
+                        executor.WorldStateMonitor = _worldStateMonitor;
+                        PathExecutor.CurrentWorldStateMonitor = _worldStateMonitor;
                         executor.PartyConfig.DisableAutoFetchDispatch = true;
                         Logger.LogInformation("[联机] 已注入 MultiplayerCoordinator 到 PathExecutor，路线: {Name}", route.FileName);
                     }
@@ -104,11 +110,24 @@ public class RouteExecutionEngine
                     await executor.Pathing(task);
                     Logger.LogInformation("[DEBUG] executor.Pathing 完成，SuccessEnd={End}，路线: {Name}", executor.SuccessEnd, route.FileName);
                     pathingFullyCompleted = executor.SuccessEnd;
+
+                    // 联机模式：传递路线跳过标志位（需求 1）
+                    if (executor.SkipRouteRequested)
+                    {
+                        skipRouteRequested = true;
+                        skipRouteReason = executor.SkipRouteReason;
+                        pathingFullyCompleted = false; // 跳过的路线不算完整完成
+                        Logger.LogInformation("[联机] 路线 {Name} 被标记为跳过: {Reason}", route.FileName, skipRouteReason);
+                    }
                 }
                 else
                 {
                     Logger.LogWarning("[DEBUG] BuildFromFilePath 返回 null，路线: {Name}", route.FileName);
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                throw; // 让取消异常穿透，不吞掉
             }
             catch (Exception ex)
             {
@@ -205,6 +224,8 @@ public class RouteExecutionEngine
         result.ShouldSwitchFurina = _anomalyDetector.ShouldSwitchFurina;
         result.Success = true;
         result.FullyCompleted = pathingFullyCompleted;
+        result.SkipRouteRequested = skipRouteRequested;
+        result.SkipRouteReason = skipRouteReason;
 
         return result;
     }

@@ -1,0 +1,450 @@
+#nullable enable
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using BetterGenshinImpact.GameTask.AutoFight.Model;
+using BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.Models;
+using Microsoft.Extensions.Logging;
+using static BetterGenshinImpact.GameTask.Common.TaskControl;
+
+namespace BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer;
+
+/// <summary>
+/// 世界状态周期性监测器（重设计版）。
+/// 后台 Task 周期性检测当前玩家是否仍在房主世界及房间中。
+/// 使用信号融合（截图 + SignalR 连接状态）、恢复窗口、传送抑制消除误报。
+/// </summary>
+public class WorldStateMonitor : IAsyncDisposable
+{
+    private readonly ILogger<WorldStateMonitor> _logger = App.GetLogger<WorldStateMonitor>();
+    private readonly CoordinatorClient _client;
+    private readonly string _playerUid;
+    private readonly CancellationTokenSource _cts;
+    private Task? _monitorTask;
+
+    // === 截图失败计数 ===
+    private int _consecutiveScreenshotFailures;
+    private const int ScreenshotFailureThreshold = 3;
+    private const int ScreenshotFailurePauseMs = 30_000;
+
+    // === 信号融合（需求 1）===
+    private int _connectedButNotInGame;
+    private const int ConnectedNotInGameThreshold = 7; // 约 21 秒（3s 间隔 × 7 次）
+
+    // === 传送抑制（需求 4）===
+    private volatile bool _isTeleportSuppressed;
+    private DateTime _teleportSuppressionStart;
+    private const int TeleportSuppressionTimeoutSeconds = 15;
+
+    // === 恢复窗口（需求 3）===
+    private bool _isInRecoveryWindow;
+    private DateTime _recoveryWindowStart;
+    private DateTime _recoveryWindowAbsoluteStart; // 绝对起始时间，防止无限延长（EC-06）
+    private const int RecoveryWindowSeconds = 30;
+    private const int RecoveryWindowAbsoluteMaxSeconds = 120; // 绝对最大时长
+    private const int RecoveryCheckIntervalMs = 3_000;
+    private const int NormalCheckIntervalMs = 10_000;
+
+    // === 组队阶段抑制（保留之前的 bugfix）===
+    /// <summary>自动组队阶段为 true，忽略 IsInMultiGame == false</summary>
+    public volatile bool IsPartyPhase;
+
+    // === 轮次切换抑制（需求 7）===
+    private volatile bool _isRoundSwitching;
+    private DateTime _roundSwitchStart;
+    private const int RoundSwitchTimeoutSeconds = 120;
+
+    // === 心跳失败独立退出路径（EC-03）===
+    private int _consecutiveHeartbeatFailures;
+    private const int HeartbeatFailureExitThreshold = 6; // 6次 × 5秒 = 30秒
+
+    // === 事件 ===
+    /// <summary>确认退出世界，触发协调停止。参数 (isHost, reason)。</summary>
+    public event Func<bool, string, Task>? OnExitConfirmed;
+
+    /// <summary>掉出房间且重试全部失败。</summary>
+    public event Func<Task>? OnDroppedFromRoom;
+
+    public WorldStateMonitor(CoordinatorClient client, string playerUid, CancellationToken externalCt = default)
+    {
+        _client = client;
+        _playerUid = playerUid;
+        // EC-01: 使用 linked CTS，外部取消时后台 Task 也自动停止
+        _cts = externalCt == default
+            ? new CancellationTokenSource()
+            : CancellationTokenSource.CreateLinkedTokenSource(externalCt);
+    }
+
+    // === 公开方法 ===
+
+    /// <summary>启动后台监测循环。</summary>
+    public void Start()
+    {
+        _monitorTask = Task.Run(MonitorLoopAsync);
+        _logger.LogInformation("[WorldStateMonitor] 已启动");
+    }
+
+    /// <summary>停止后台监测（同步，兼容旧调用）。</summary>
+    public void Stop()
+    {
+        _cts.Cancel();
+        _logger.LogInformation("[WorldStateMonitor] 已停止（同步）");
+    }
+
+    /// <summary>停止后台监测，等待后台 Task 完成（最多 3 秒）。</summary>
+    public async Task StopAsync()
+    {
+        _cts.Cancel();
+        if (_monitorTask != null)
+        {
+            try
+            {
+                await _monitorTask.WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("[WorldStateMonitor] 后台 Task 3 秒内未完成，强制继续");
+            }
+            catch (OperationCanceledException) { }
+        }
+        _logger.LogInformation("[WorldStateMonitor] 已停止");
+    }
+
+    /// <summary>PathExecutor 传送前调用，进入传送抑制期。</summary>
+    public void BeginTeleportSuppression()
+    {
+        _teleportSuppressionStart = DateTime.UtcNow;
+        _isTeleportSuppressed = true;
+        _logger.LogDebug("[WorldStateMonitor] 进入传送抑制期");
+    }
+
+    /// <summary>PathExecutor 传送完成后调用，解除传送抑制期。</summary>
+    public void EndTeleportSuppression()
+    {
+        _isTeleportSuppressed = false;
+        _logger.LogDebug("[WorldStateMonitor] 传送抑制期结束");
+    }
+
+    /// <summary>多世界轮次切换开始，暂停所有检测。</summary>
+    public void BeginRoundSwitch()
+    {
+        _roundSwitchStart = DateTime.UtcNow;
+        _isRoundSwitching = true;
+        _logger.LogInformation("[WorldStateMonitor] 进入轮次切换状态");
+    }
+
+    /// <summary>多世界轮次切换完成，恢复检测并重置状态。</summary>
+    public void EndRoundSwitch()
+    {
+        _isRoundSwitching = false;
+        ResetInternalState();
+        _logger.LogInformation("[WorldStateMonitor] 轮次切换完成，已重置内部状态");
+    }
+
+    /// <summary>心跳连续失败时由 CoordinatorClient 调用。</summary>
+    public void NotifyHeartbeatFailure()
+    {
+        _consecutiveHeartbeatFailures++;
+        if (_consecutiveHeartbeatFailures >= HeartbeatFailureExitThreshold)
+        {
+            _logger.LogError("[WorldStateMonitor] 心跳连续 {Count} 次失败（{Sec}s），触发退出",
+                _consecutiveHeartbeatFailures, _consecutiveHeartbeatFailures * 5);
+            _consecutiveHeartbeatFailures = 0;
+            // 异步触发退出，不阻塞心跳回调
+            _ = Task.Run(async () =>
+            {
+                try { await ConfirmExitAsync("心跳连续失败超过阈值"); }
+                catch (Exception ex) { _logger.LogWarning(ex, "[WorldStateMonitor] 心跳失败触发退出异常"); }
+            });
+        }
+    }
+
+    /// <summary>心跳成功时重置失败计数。</summary>
+    public void NotifyHeartbeatSuccess()
+    {
+        _consecutiveHeartbeatFailures = 0;
+    }
+
+    /// <summary>重置所有内部计数器和状态。</summary>
+    public void ResetInternalState()
+    {
+        _consecutiveScreenshotFailures = 0;
+        _connectedButNotInGame = 0;
+        _consecutiveHeartbeatFailures = 0;
+        _isInRecoveryWindow = false;
+        _isTeleportSuppressed = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
+        _cts.Dispose();
+    }
+
+    // === 内部方法 ===
+
+    private async Task MonitorLoopAsync()
+    {
+        while (!_cts.Token.IsCancellationRequested)
+        {
+            try
+            {
+                var interval = (_isInRecoveryWindow || _connectedButNotInGame > 0)
+                    ? RecoveryCheckIntervalMs
+                    : NormalCheckIntervalMs;
+                await Task.Delay(interval, _cts.Token);
+                await CheckOnceAsync();
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[WorldStateMonitor] 检测循环异常，继续下一轮");
+            }
+        }
+    }
+
+    private async Task CheckOnceAsync()
+    {
+        // 0. 传送抑制超时自动解除（RC-01: 使用局部变量快照）
+        var teleportSuppressed = _isTeleportSuppressed;
+        var teleportStart = _teleportSuppressionStart;
+        if (teleportSuppressed &&
+            (DateTime.UtcNow - teleportStart).TotalSeconds > TeleportSuppressionTimeoutSeconds)
+        {
+            _isTeleportSuppressed = false;
+            teleportSuppressed = false;
+            _logger.LogWarning("[WorldStateMonitor] 传送抑制期超过 {Timeout}s 未解除，自动解除",
+                TeleportSuppressionTimeoutSeconds);
+        }
+
+        // 0b. 轮次切换超时自动解除
+        if (_isRoundSwitching &&
+            (DateTime.UtcNow - _roundSwitchStart).TotalSeconds > RoundSwitchTimeoutSeconds)
+        {
+            _isRoundSwitching = false;
+            _logger.LogError("[WorldStateMonitor] 轮次切换超过 {Timeout}s 未解除，触发协调停止",
+                RoundSwitchTimeoutSeconds);
+            await ConfirmExitAsync("轮次切换超时");
+            return;
+        }
+
+        // 1. 截图检测 IsInMultiGame
+        bool isInMultiGame;
+        try
+        {
+            using var region = CaptureToRectArea();
+            var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(region);
+            isInMultiGame = status.IsInMultiGame;
+            _consecutiveScreenshotFailures = 0;
+        }
+        catch (Exception ex)
+        {
+            // 截图本身失败（异常），不计入退出判定（需求 4.6）
+            _consecutiveScreenshotFailures++;
+            _logger.LogDebug(ex, "[WorldStateMonitor] 截图/识别失败（连续{Count}次）",
+                _consecutiveScreenshotFailures);
+
+            if (_consecutiveScreenshotFailures >= ScreenshotFailureThreshold)
+            {
+                _consecutiveScreenshotFailures = 0;
+                await Task.Delay(ScreenshotFailurePauseMs, _cts.Token);
+            }
+            return;
+        }
+
+        // 2. IsInMultiGame == true → 一切正常
+        if (isInMultiGame)
+        {
+            if (_isInRecoveryWindow)
+            {
+                _logger.LogInformation("[WorldStateMonitor] 恢复窗口内检测到正常状态，恢复成功");
+                _isInRecoveryWindow = false;
+            }
+            _connectedButNotInGame = 0;
+            return;
+        }
+
+        // 3. IsInMultiGame == false — 检查抑制状态
+        // 3a. 组队阶段忽略
+        if (IsPartyPhase)
+        {
+            _connectedButNotInGame = 0;
+            _logger.LogDebug("[WorldStateMonitor] 组队阶段中，忽略 IsInMultiGame=false");
+            return;
+        }
+
+        // 3b. 传送抑制期忽略（需求 4.2）
+        if (teleportSuppressed)
+        {
+            _logger.LogDebug("[WorldStateMonitor] 传送抑制期中，忽略 IsInMultiGame=false");
+            return;
+        }
+
+        // 3c. 轮次切换中忽略（需求 7.2）
+        if (_isRoundSwitching)
+        {
+            _logger.LogDebug("[WorldStateMonitor] 轮次切换中，忽略 IsInMultiGame=false");
+            return;
+        }
+
+        // 4. 信号融合：检查 SignalR 连接状态（需求 1.2）
+        var isConnected = _client.IsConnected;
+
+        if (isConnected)
+        {
+            // IsInMultiGame=false + SignalR 正常 → 可能是瞬态干扰，也可能是被踢出
+            _connectedButNotInGame++;
+            _isInRecoveryWindow = false; // 不进入恢复窗口
+
+            if (_connectedButNotInGame >= ConnectedNotInGameThreshold)
+            {
+                // 连续 4 次 → 判定为被踢出（需求 1.5）
+                _logger.LogError("[WorldStateMonitor] 连续 {Count} 次 IsInMultiGame=false 且 SignalR 正常，判定为被踢出",
+                    _connectedButNotInGame);
+                await ConfirmExitAsync("被踢出联机世界（SignalR正常但截图连续失败）");
+            }
+            else
+            {
+                _logger.LogDebug("[WorldStateMonitor] IsInMultiGame=false 但 SignalR 正常（{Count}/{Threshold}），判定为瞬态干扰",
+                    _connectedButNotInGame, ConnectedNotInGameThreshold);
+            }
+            return;
+        }
+
+        // 5. IsInMultiGame=false + SignalR 断开 → 进入/继续恢复窗口（需求 1.4, 3.1）
+        _connectedButNotInGame = 0;
+
+        if (!_isInRecoveryWindow)
+        {
+            _isInRecoveryWindow = true;
+            _recoveryWindowStart = DateTime.UtcNow;
+            _recoveryWindowAbsoluteStart = DateTime.UtcNow;
+            _logger.LogWarning("[WorldStateMonitor] 进入恢复窗口（IsInMultiGame=false + SignalR断开），持续 {Sec}s",
+                RecoveryWindowSeconds);
+            return;
+        }
+
+        // 恢复窗口中：检查是否超时
+        // EC-06: 绝对最大时长检查，防止无限延长
+        var absoluteElapsed = (DateTime.UtcNow - _recoveryWindowAbsoluteStart).TotalSeconds;
+        if (absoluteElapsed >= RecoveryWindowAbsoluteMaxSeconds)
+        {
+            _logger.LogError("[WorldStateMonitor] 恢复窗口绝对超时（{Elapsed:F0}s），确认退出", absoluteElapsed);
+            await ConfirmExitAsync("恢复窗口绝对超时（截图失败+SignalR断开持续超过120秒）");
+            return;
+        }
+
+        // 如果正在重连，延长恢复窗口（需求 3.6）
+        if (_client.IsReconnecting)
+        {
+            _logger.LogDebug("[WorldStateMonitor] 恢复窗口中，SignalR 正在重连，延长窗口");
+            _recoveryWindowStart = DateTime.UtcNow;
+            return;
+        }
+
+        // 如果传送抑制期激活，延长恢复窗口（需求 3.7）
+        if (_isTeleportSuppressed)
+        {
+            _logger.LogDebug("[WorldStateMonitor] 恢复窗口中，传送抑制期激活，延长窗口");
+            _recoveryWindowStart = DateTime.UtcNow;
+            return;
+        }
+
+        var elapsed = (DateTime.UtcNow - _recoveryWindowStart).TotalSeconds;
+        if (elapsed >= RecoveryWindowSeconds)
+        {
+            _logger.LogError("[WorldStateMonitor] 恢复窗口超时（{Elapsed:F0}s），确认退出", elapsed);
+            await ConfirmExitAsync("恢复窗口超时（截图失败+SignalR断开持续30秒）");
+        }
+    }
+
+    /// <summary>确认退出世界，触发协调停止回调。</summary>
+    private async Task ConfirmExitAsync(string reason)
+    {
+        var isHost = !string.IsNullOrEmpty(_client.HostPlayerUid)
+            && _client.HostPlayerUid == _playerUid;
+
+        _logger.LogError("[WorldStateMonitor] 确认退出世界，原因: {Reason}，角色: {Role}",
+            reason, isHost ? "房主" : "成员");
+
+        if (OnExitConfirmed != null)
+        {
+            try { await OnExitConfirmed.Invoke(isHost, reason); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[WorldStateMonitor] OnExitConfirmed 回调异常"); }
+        }
+
+        Stop();
+    }
+
+    /// <summary>
+    /// 掉出房间后指数退避重试加入：2 轮 × 3 次（立即 → 5s → 15s），轮间等待 30s。
+    /// 重试期间如果 IsInMultiGame 变 false，中止重试转入退出世界流程。
+    /// </summary>
+    private async Task<bool> TryRejoinRoomAsync()
+    {
+        var joinDelays = new[] { 0, 5000, 15000 };
+
+        for (int round = 1; round <= 2; round++)
+        {
+            if (round > 1)
+            {
+                _logger.LogInformation("[WorldStateMonitor] 重新加入房间第{Round}轮前等待30秒...", round);
+                await Task.Delay(30000, _cts.Token);
+            }
+
+            for (int attempt = 0; attempt < joinDelays.Length; attempt++)
+            {
+                if (_cts.Token.IsCancellationRequested) return false;
+
+                if (joinDelays[attempt] > 0)
+                    await Task.Delay(joinDelays[attempt], _cts.Token);
+
+                // 重试期间检查 IsInMultiGame
+                try
+                {
+                    using var region = CaptureToRectArea();
+                    var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(region);
+                    if (!status.IsInMultiGame)
+                    {
+                        _logger.LogWarning("[WorldStateMonitor] 重试加入房间期间 IsInMultiGame 变 false，中止重试");
+                        return false;
+                    }
+                }
+                catch { /* 截图失败，继续尝试加入 */ }
+
+                // 检查是否正在重连（避免与 OnConnectionClosed 竞态）
+                if (_client.IsReconnecting)
+                {
+                    _logger.LogInformation("[WorldStateMonitor] 正在重连中，跳过本次加入尝试");
+                    return false;
+                }
+
+                try
+                {
+                    _logger.LogInformation("[WorldStateMonitor] 重新加入房间尝试（第{Round}轮第{Attempt}次）",
+                        round, attempt + 1);
+                    var joined = await _client.RejoinCurrentRoomAsync();
+                    if (joined)
+                    {
+                        _logger.LogInformation("[WorldStateMonitor] 重新加入房间成功（第{Round}轮第{Attempt}次）",
+                            round, attempt + 1);
+                        return true;
+                    }
+                    _logger.LogWarning("[WorldStateMonitor] 重新加入房间失败（第{Round}轮第{Attempt}次）",
+                        round, attempt + 1);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[WorldStateMonitor] 重新加入房间异常（第{Round}轮第{Attempt}次）",
+                        round, attempt + 1);
+                }
+            }
+        }
+
+        return false;
+    }
+}

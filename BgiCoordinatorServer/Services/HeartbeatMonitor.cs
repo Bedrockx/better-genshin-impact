@@ -10,8 +10,8 @@ public class HeartbeatMonitor : IHostedService, IDisposable
     private readonly ILogger<HeartbeatMonitor> _logger;
     private Timer? _timer;
 
-    private static readonly TimeSpan ScanInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan PlayerTimeout = TimeSpan.FromSeconds(90);
+    private static readonly TimeSpan ScanInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PlayerTimeout = TimeSpan.FromSeconds(30);
 
     public HeartbeatMonitor(
         RoomManager roomManager,
@@ -45,13 +45,44 @@ public class HeartbeatMonitor : IHostedService, IDisposable
             var affectedRooms = _roomManager.RemoveDeadPlayers(PlayerTimeout);
             foreach (var roomCode in affectedRooms)
             {
+                var removedPlayers = _roomManager.GetLastRemovedPlayers(roomCode);
                 var room = _roomManager.GetRoom(roomCode);
-                var players = room?.Players ?? [];
 
-                _logger.LogInformation("房间 {RoomCode} 有玩家超时断线，当前剩余 {Count} 人", roomCode, players.Count);
+                foreach (var removedPlayer in removedPlayers)
+                {
+                    // Check if the removed player was the host
+                    if (room != null && removedPlayer.ConnectionId == room.HostConnectionId)
+                    {
+                        // Host was removed: broadcast RoomClosed and delete the room
+                        _logger.LogWarning("房间 {RoomCode} 房主 {PlayerName} 心跳超时，关闭房间",
+                            roomCode, removedPlayer.PlayerName);
 
-                _ = _hubContext.Clients.Group(roomCode)
-                    .SendAsync("PlayerListUpdated", players);
+                        _ = _hubContext.Clients.Group(roomCode)
+                            .SendAsync("RoomClosed", "房主心跳超时");
+
+                        _roomManager.DeleteRoom(roomCode);
+                        break; // Room is deleted, no need to process remaining removed players
+                    }
+                    else
+                    {
+                        // Member was removed: broadcast MemberStatusChanged
+                        _logger.LogWarning("房间 {RoomCode} 成员 {PlayerName}({Uid}) 心跳超时，标记离线",
+                            roomCode, removedPlayer.PlayerName, removedPlayer.PlayerUid);
+
+                        _ = _hubContext.Clients.Group(roomCode)
+                            .SendAsync("MemberStatusChanged", removedPlayer.PlayerUid, "Offline", long.MaxValue);
+                    }
+                }
+
+                // Still send PlayerListUpdated for remaining players
+                if (room != null)
+                {
+                    var players = room.Players ?? [];
+                    _logger.LogInformation("房间 {RoomCode} 有玩家超时断线，当前剩余 {Count} 人", roomCode, players.Count);
+
+                    _ = _hubContext.Clients.Group(roomCode)
+                        .SendAsync("PlayerListUpdated", players);
+                }
             }
         }
         catch (Exception ex)

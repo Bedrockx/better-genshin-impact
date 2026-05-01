@@ -2113,6 +2113,8 @@ public partial class ScriptControlViewModel : ViewModel
         var kazuhaIndexBox = new TextBox { Text = GetInt("kazuhaPlayerIndex", globalCfg.KazuhaPlayerIndex).ToString(), PlaceholderText = "0=不指定" };
         var returnToFightCheck = new System.Windows.Controls.CheckBox { Content = "战斗后走回战斗点", IsChecked = GetBool("returnToFightPointAfterBattle", globalCfg.ReturnToFightPointAfterBattle) };
         var returnStaySecondsBox = new TextBox { Text = GetInt("returnToFightPointStaySeconds", globalCfg.ReturnToFightPointStaySeconds).ToString(), PlaceholderText = "秒" };
+        var fightTimeoutBox = new TextBox { Text = GetInt("fightTimeoutSeconds", globalCfg.FightTimeoutSeconds).ToString(), PlaceholderText = "秒，默认120" };
+        var syncAtEveryTeleportCheck = new System.Windows.Controls.CheckBox { Content = "传送点必同步（所有传送点都作为同步等待点）", IsChecked = GetBool("syncAtEveryTeleport", globalCfg.SyncAtEveryTeleport) };
         returnStaySecondsBox.IsEnabled = returnToFightCheck.IsChecked ?? false;
         returnToFightCheck.Checked += (_, _) => returnStaySecondsBox.IsEnabled = true;
         returnToFightCheck.Unchecked += (_, _) => returnStaySecondsBox.IsEnabled = false;
@@ -2276,7 +2278,15 @@ public partial class ScriptControlViewModel : ViewModel
         returnRow.Children.Add(new TextBlock { Text = " 秒", FontSize = 12, Foreground = SystemColors.GrayTextBrush, VerticalAlignment = VerticalAlignment.Center });
         hostPanel.Children.Add(returnRow);
 
-        // 分组4：线路选项（Expander 折叠，默认收起）
+        // 传送点必同步
+        hostPanel.Children.Add(syncAtEveryTeleportCheck);
+
+        // 分组4：战斗配置
+        hostPanel.Children.Add(MakeGroupHeader("战斗配置"));
+        hostPanel.Children.Add(MakeSmallRow(
+            MakeSmallField("战斗超时（秒）", fightTimeoutBox, 65)));
+
+        // 分组5：线路选项（Expander 折叠，默认收起）
         var debugInner = new System.Windows.Controls.StackPanel { Margin = new Thickness(0, 6, 0, 0) };
         debugInner.Children.Add(debugModeCheck);
         debugInner.Children.Add(new System.Windows.Controls.StackPanel { Height = 4 });
@@ -2495,6 +2505,8 @@ public partial class ScriptControlViewModel : ViewModel
                     if (int.TryParse(kazuhaIndexBox.Text, out var ki)) settings["kazuhaPlayerIndex"] = ki;
                     settings["returnToFightPointAfterBattle"] = returnToFightCheck.IsChecked ?? false;
                     if (int.TryParse(returnStaySecondsBox.Text, out var rss)) settings["returnToFightPointStaySeconds"] = rss;
+                    if (int.TryParse(fightTimeoutBox.Text, out var fts)) settings["fightTimeoutSeconds"] = fts;
+                    settings["syncAtEveryTeleport"] = syncAtEveryTeleportCheck.IsChecked ?? false;
                     settings["debugMode"] = debugModeCheck.IsChecked ?? false;
                     settings["useFixedDebugRoutes"] = useFixedRoutesCheck.IsChecked ?? false;
                     settings["fixedDebugRoutePath"] = fixedRoutePathBox.Text;
@@ -2536,6 +2548,7 @@ public partial class ScriptControlViewModel : ViewModel
                         "partyTimeoutSeconds", "partyTimeoutAction", "syncTimeoutSeconds", "minPlayersToSync",
                         "syncPointMinDistance", "startRouteIndex", "kazuhaPlayerIndex",
                         "returnToFightPointAfterBattle", "returnToFightPointStaySeconds",
+                        "fightTimeoutSeconds",
                         "debugMode", "useFixedDebugRoutes", "fixedDebugRoutePath", "selectedBuiltinRoute",
                         "multiWorldEnabled", "multiWorldCount"
                     })

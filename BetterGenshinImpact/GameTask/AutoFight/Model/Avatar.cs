@@ -257,9 +257,17 @@ public class Avatar
             }
         }
         
-        // tp 到七天神像复活
-        var tpTask = new TpTask(ct);
-        tpTask.TpToStatueOfTheSeven().Wait(ct);
+        // tp 到七天神像复活（通知 WorldStateMonitor 进入传送抑制期）
+        BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentWorldStateMonitor?.BeginTeleportSuppression();
+        try
+        {
+            var tpTask = new TpTask(ct);
+            tpTask.TpToStatueOfTheSeven().Wait(ct);
+        }
+        finally
+        {
+            BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentWorldStateMonitor?.EndTeleportSuppression();
+        }
         Logger.LogInformation("血量恢复完成。【设置】-【七天神像设置】可以修改回血相关配置。-p");
         throw ex;
     }

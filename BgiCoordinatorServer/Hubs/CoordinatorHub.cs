@@ -162,6 +162,34 @@ public class CoordinatorHub : Hub
         return Task.CompletedTask;
     }
 
+    /// <summary>带路线进度信息的心跳（需求 6）</summary>
+    public Task HeartbeatWithProgress(int routeIndex, DateTime routeStartTime, double routeEstimatedSeconds)
+    {
+        _roomManager.UpdateHeartbeatWithProgress(Context.ConnectionId, routeIndex, routeStartTime, routeEstimatedSeconds);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>查询指定成员的路线进度（需求 6）</summary>
+    public Task<MemberProgress?> GetMemberProgress(string playerUid)
+    {
+        var (room, _) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null) return Task.FromResult<MemberProgress?>(null);
+
+        lock (room)
+        {
+            var player = room.Players.FirstOrDefault(p => p.PlayerUid == playerUid);
+            if (player == null || player.CurrentRouteIndex < 0)
+                return Task.FromResult<MemberProgress?>(null);
+
+            return Task.FromResult<MemberProgress?>(new MemberProgress
+            {
+                RouteIndex = player.CurrentRouteIndex,
+                RouteStartTime = player.RouteStartTime,
+                RouteEstimatedSeconds = player.RouteEstimatedSeconds
+            });
+        }
+    }
+
     /// <summary>
     /// 上报成员异常恢复状态（需求 7）。
     /// 服务器透传状态和版本号给房间内所有成员，不做版本管理。

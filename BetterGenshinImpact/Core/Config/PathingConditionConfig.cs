@@ -97,6 +97,30 @@ public partial class PathingConditionConfig : ObservableObject
         get => _partyConfigBackUp?? new PathingPartyConfig();
         set => _partyConfigBackUp = value;
     }
+
+    /// <summary>
+    /// 联机模式下房主同步的战斗超时值（秒）。
+    /// 有值时 AutoFightHandler 使用此值覆盖 taskParams.Timeout，不修改原始配置。
+    /// 联机结束后设为 null，单机模式下始终为 null。
+    /// </summary>
+    private static int? _multiplayerFightTimeoutOverride;
+    public static int? MultiplayerFightTimeoutOverride
+    {
+        get => _multiplayerFightTimeoutOverride;
+        set => _multiplayerFightTimeoutOverride = value;
+    }
+
+    /// <summary>
+    /// 联机模式下房主同步的"传送点必同步"配置。
+    /// 有值时 PathExecutor 使用此值覆盖本地 AutoHoeingConfig.SyncAtEveryTeleport。
+    /// 联机结束后设为 null，单机模式下始终为 null。
+    /// </summary>
+    private static bool? _multiplayerSyncAtEveryTeleportOverride;
+    public static bool? MultiplayerSyncAtEveryTeleportOverride
+    {
+        get => _multiplayerSyncAtEveryTeleportOverride;
+        set => _multiplayerSyncAtEveryTeleportOverride = value;
+    }
         
     public static PathingConditionConfig Default => new()
     {

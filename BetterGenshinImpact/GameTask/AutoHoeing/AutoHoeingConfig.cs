@@ -304,6 +304,36 @@ public partial class AutoHoeingConfig : ObservableObject
     private int _returnToFightPointStaySeconds = 5;
 
     /// <summary>
+    /// 联机模式战斗超时时间（秒），由房主设定并同步给所有成员，覆盖各自的自动战斗超时配置。默认 120
+    /// </summary>
+    [ObservableProperty]
+    private int _fightTimeoutSeconds = 120;
+
+    /// <summary>
+    /// 战斗额外等待时间（秒），同步点超时后为 Fighting 成员额外等待，默认 60
+    /// </summary>
+    [ObservableProperty]
+    private int _fightExtraWaitSeconds = 60;
+
+    /// <summary>
+    /// 重新加入最大等待时间（秒），同步点超时后为 Rejoining/Reviving 成员额外等待，默认 300
+    /// </summary>
+    [ObservableProperty]
+    private int _rejoinMaxWaitSeconds = 300;
+
+    /// <summary>
+    /// 最大连续跳过路线次数，达到上限后退出联机锄地，默认 3
+    /// </summary>
+    [ObservableProperty]
+    private int _maxConsecutiveSkips = 3;
+
+    /// <summary>
+    /// 传送点必同步：启用后所有传送点都作为同步等待点，与战斗点前的同步点同时存在
+    /// </summary>
+    [ObservableProperty]
+    private bool _syncAtEveryTeleport = false;
+
+    /// <summary>
     /// 万叶玩家序号（0=不指定，1-4=对应玩家序号）
     /// </summary>
     [ObservableProperty]

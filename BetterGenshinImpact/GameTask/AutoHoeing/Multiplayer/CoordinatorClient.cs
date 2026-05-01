@@ -28,6 +28,17 @@ public class CoordinatorClient : IAsyncDisposable
     private readonly ConcurrentDictionary<string, long> _memberStatusVersions = new();
     private long _statusVersion;
 
+    // === 路线进度信息（需求 6）===
+    private int _currentRouteIndex = -1;
+    private DateTime _routeStartTime;
+    private double _routeEstimatedSeconds;
+
+    // === SignalR 断线重连（需求 3）===
+    private volatile bool _isReconnecting;
+    private volatile bool _isInRoom;
+
+    private WorldStateMonitor? _worldStateMonitor;
+
     public event Action<List<PlayerInfo>>? PlayerListUpdated;
     public event Action<string>? AllArrived;
     public event Action<string>? AllFightDone;
@@ -57,6 +68,14 @@ public class CoordinatorClient : IAsyncDisposable
     public bool HasRevivingMembers => _memberStatuses.Values.Any(s => s == MemberStatus.Reviving);
     /// <summary>当前成员状态字典（只读视图）</summary>
     public IReadOnlyDictionary<string, MemberStatus> MemberStatuses => _memberStatuses;
+
+    /// <summary>是否正在重连中（需求 3），供 WorldStateMonitor 和 MultiplayerCoordinator 查询</summary>
+    public bool IsReconnecting => _isReconnecting;
+
+    /// <summary>是否在房间中（需求 3），供 WorldStateMonitor 查询</summary>
+    public bool IsInRoom => _isInRoom;
+
+    public WorldStateMonitor? WorldStateMonitor { get; set; }
 
     public async Task<bool> ConnectAsync(string serverUrl, CancellationToken ct)
     {
@@ -147,12 +166,12 @@ public class CoordinatorClient : IAsyncDisposable
             await _connection.StartAsync(ct);
             _logger.LogInformation("CoordinatorClient 已连接到 {Url}", serverUrl);
 
-            // 启动心跳定时器，每 30 秒发送一次
+            // 启动心跳定时器，每 5 秒发送一次
             _heartbeatTimer = new Timer(async _ =>
             {
                 try { await SendHeartbeatAsync(); }
                 catch { /* 忽略心跳异常 */ }
-            }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
 
             return true;
         }
@@ -165,34 +184,113 @@ public class CoordinatorClient : IAsyncDisposable
 
     private async Task OnConnectionClosed(Exception? ex)
     {
-        _logger.LogWarning(ex, "CoordinatorClient 连接断开，尝试重连...");
-        if (_connection == null) return;
-
-        try
+        // 防重入：重连期间再次断线时忽略（需求 3）
+        if (_isReconnecting)
         {
-            await _connection.StartAsync();
-            _logger.LogInformation("CoordinatorClient 重连成功");
-            
-            // 重连后重新加入房间
-            if (!string.IsNullOrEmpty(_currentRoomCode))
+            _logger.LogWarning("CoordinatorClient 重连期间再次断线，忽略（等当前重连流程完成）");
+            return;
+        }
+
+        _isReconnecting = true;
+        _isInRoom = false;
+        _logger.LogWarning(ex, "CoordinatorClient 连接断开，开始指数退避重连...");
+
+        if (_connection == null)
+        {
+            _isReconnecting = false;
+            return;
+        }
+
+        // 2 轮 × 4 次指数退避重连（立即 → 2s → 5s → 10s）
+        var retryDelays = new[] { 0, 2000, 5000, 10000 };
+        bool reconnected = false;
+
+        for (int round = 1; round <= 2 && !reconnected; round++)
+        {
+            if (round > 1)
             {
-                _logger.LogInformation("重连后重新加入房间: {RoomCode}", _currentRoomCode);
-                var rejoined = await JoinRoomAsync(_currentRoomCode, _playerName ?? "", _playerUid ?? "");
-                if (rejoined)
+                _logger.LogInformation("CoordinatorClient 第{Round}轮重连前等待30秒...", round);
+                await Task.Delay(30000);
+            }
+
+            for (int attempt = 0; attempt < retryDelays.Length; attempt++)
+            {
+                if (retryDelays[attempt] > 0)
+                    await Task.Delay(retryDelays[attempt]);
+
+                try
                 {
-                    _logger.LogInformation("重新加入房间成功: {RoomCode}", _currentRoomCode);
+                    _logger.LogInformation("CoordinatorClient 重连尝试（第{Round}轮第{Attempt}次）...", round, attempt + 1);
+                    await _connection.StartAsync();
+                    _logger.LogInformation("CoordinatorClient 重连成功（第{Round}轮第{Attempt}次）", round, attempt + 1);
+                    reconnected = true;
+                    break;
                 }
-                else
+                catch (Exception retryEx)
                 {
-                    _logger.LogWarning("重新加入房间失败: {RoomCode}", _currentRoomCode);
+                    _logger.LogWarning(retryEx, "CoordinatorClient 重连失败（第{Round}轮第{Attempt}次）", round, attempt + 1);
                 }
             }
         }
-        catch (Exception retryEx)
+
+        if (!reconnected)
         {
-            _logger.LogError(retryEx, "CoordinatorClient 重连失败，触发降级");
+            _logger.LogError("CoordinatorClient 2轮共8次重连全部失败，触发降级");
+            _isReconnecting = false;
             OnDegraded?.Invoke();
+            return;
         }
+
+        // 重连成功，重新加入房间
+        if (!string.IsNullOrEmpty(_currentRoomCode))
+        {
+            bool rejoined = false;
+
+            // 2 轮 × 3 次退避重试加入房间（立即 → 5s → 15s）
+            var joinDelays = new[] { 0, 5000, 15000 };
+            for (int round = 1; round <= 2 && !rejoined; round++)
+            {
+                if (round > 1)
+                {
+                    _logger.LogInformation("重新加入房间第{Round}轮前等待30秒...", round);
+                    await Task.Delay(30000);
+                }
+
+                for (int attempt = 0; attempt < joinDelays.Length; attempt++)
+                {
+                    if (joinDelays[attempt] > 0)
+                        await Task.Delay(joinDelays[attempt]);
+
+                    try
+                    {
+                        _logger.LogInformation("重新加入房间尝试（第{Round}轮第{Attempt}次）", round, attempt + 1);
+                        var joined = await RejoinCurrentRoomAsync();
+                        if (joined)
+                        {
+                            _logger.LogInformation("重新加入房间成功: {RoomCode}", _currentRoomCode);
+                            rejoined = true;
+                            break;
+                        }
+                        _logger.LogWarning("重新加入房间失败（第{Round}轮第{Attempt}次）: {RoomCode}", round, attempt + 1, _currentRoomCode);
+                    }
+                    catch (Exception joinEx)
+                    {
+                        _logger.LogWarning(joinEx, "重新加入房间异常（第{Round}轮第{Attempt}次）", round, attempt + 1);
+                    }
+                }
+            }
+
+            if (!rejoined)
+            {
+                _logger.LogError("重连后重新加入房间全部失败（2轮共6次），触发降级");
+                _isReconnecting = false;
+                OnDegraded?.Invoke();
+                return;
+            }
+        }
+
+        _isReconnecting = false;
+        _logger.LogInformation("CoordinatorClient 重连流程完成");
     }
 
     public async Task<string?> CreateRoomAsync(string playerName = "", List<string>? whitelist = null, string playerUid = "", int expectedPlayerCount = 4)
@@ -207,6 +305,7 @@ public class CoordinatorClient : IAsyncDisposable
                 _currentRoomCode = roomCode;
                 _playerName = playerName;
                 _playerUid = playerUid;
+                _isInRoom = true;
             }
             return roomCode;
         }
@@ -229,6 +328,7 @@ public class CoordinatorClient : IAsyncDisposable
                 _currentRoomCode = roomCode;
                 _playerName = playerName;
                 _playerUid = playerUid;
+                _isInRoom = true;
             }
             return success;
         }
@@ -237,6 +337,20 @@ public class CoordinatorClient : IAsyncDisposable
             _logger.LogError(ex, "JoinRoomAsync 失败: {RoomCode}", roomCode);
             return false;
         }
+    }
+
+    /// <summary>
+    /// 使用保存的房间信息重新加入房间（需求 2/3）。
+    /// 供 WorldStateMonitor 和 OnConnectionClosed 内部使用。
+    /// </summary>
+    public async Task<bool> RejoinCurrentRoomAsync()
+    {
+        if (string.IsNullOrEmpty(_currentRoomCode))
+        {
+            _logger.LogWarning("RejoinCurrentRoomAsync: 无保存的房间码");
+            return false;
+        }
+        return await JoinRoomAsync(_currentRoomCode, _playerName ?? "", _playerUid ?? "");
     }
 
     public async Task ReportArrivalAsync(string syncPointId)
@@ -425,16 +539,53 @@ public class CoordinatorClient : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 更新当前路线进度信息（需求 6），下次心跳时自动上报。
+    /// </summary>
+    public void UpdateRouteProgress(int routeIndex, DateTime startTime, double estimatedSeconds)
+    {
+        _currentRouteIndex = routeIndex;
+        _routeStartTime = startTime;
+        _routeEstimatedSeconds = estimatedSeconds;
+    }
+
     public async Task SendHeartbeatAsync()
     {
         if (_connection == null) return;
         try
         {
-            await _connection.InvokeAsync("Heartbeat");
+            if (_currentRouteIndex >= 0)
+            {
+                await _connection.InvokeAsync("HeartbeatWithProgress",
+                    _currentRouteIndex, _routeStartTime, _routeEstimatedSeconds);
+            }
+            else
+            {
+                await _connection.InvokeAsync("Heartbeat");
+            }
+            _worldStateMonitor?.NotifyHeartbeatSuccess();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "SendHeartbeatAsync 失败");
+            _worldStateMonitor?.NotifyHeartbeatFailure();
+        }
+    }
+
+    /// <summary>
+    /// 查询指定成员的路线进度（需求 6）。返回 null 表示查询失败或无进度信息。
+    /// </summary>
+    public async Task<MemberProgress?> GetMemberProgressAsync(string playerUid)
+    {
+        if (_connection == null || !IsConnected) return null;
+        try
+        {
+            return await _connection.InvokeAsync<MemberProgress?>("GetMemberProgress", playerUid);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "GetMemberProgressAsync 失败: {Uid}", playerUid);
+            return null;
         }
     }
 
@@ -447,6 +598,7 @@ public class CoordinatorClient : IAsyncDisposable
             _logger.LogInformation("CloseRoomAsync 已发送关闭房间请求");
             // 关闭房间后清空房间码，防止重连时重新加入已关闭的旧房间
             _currentRoomCode = null;
+            _isInRoom = false;
         }
         catch (Exception ex)
         {
@@ -492,6 +644,7 @@ public class CoordinatorClient : IAsyncDisposable
         {
             _heartbeatTimer?.Dispose();
             _heartbeatTimer = null;
+            _isInRoom = false;
             _connection.Closed -= OnConnectionClosed;
             await _connection.StopAsync();
             _logger.LogInformation("CoordinatorClient 已断开连接");

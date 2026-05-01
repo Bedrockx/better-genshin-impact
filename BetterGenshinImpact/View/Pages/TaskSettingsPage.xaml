@@ -4634,7 +4634,7 @@
                                             IsChecked="{Binding Config.AutoHoeingConfig.MultiplayerEnabled, Mode=TwoWay}" />
                         </Grid>
                     </ui:CardExpander.Header>
-                    <StackPanel>
+                    <StackPanel Visibility="{Binding Config.AutoHoeingConfig.MultiplayerEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
 
                         <!-- ── 身份信息 ── -->
                         <ui:TextBlock Margin="0,0,0,6" FontTypography="BodyStrong" Text="身份信息" />
@@ -4954,6 +4954,22 @@
                                                  Value="{Binding Config.AutoHoeingConfig.SyncPointMinDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
 
+                                <!-- 传送点必同步 -->
+                                <ui:CardControl Margin="0,0,0,8">
+                                    <ui:CardControl.Header>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <ui:TextBlock Grid.Row="0" FontTypography="Body" Text="传送点必同步" TextWrapping="Wrap" />
+                                            <ui:TextBlock Grid.Row="1" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" 
+                                                         Text="启用后所有传送点都作为同步等待点，确保队伍在每个传送点集合" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </ui:CardControl.Header>
+                                    <ui:ToggleSwitch IsChecked="{Binding Config.AutoHoeingConfig.SyncAtEveryTeleport, Mode=TwoWay}" />
+                                </ui:CardControl>
+
                                 <!-- 万叶玩家序号 -->
                                 <Grid Margin="0,0,0,8">
                                     <Grid.RowDefinitions>
@@ -5010,6 +5026,33 @@
                                                  IsEnabled="{Binding Config.AutoHoeingConfig.ReturnToFightPointAfterBattle}" />
                                     <ui:ToggleSwitch Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
                                                    IsChecked="{Binding Config.AutoHoeingConfig.ReturnToFightPointAfterBattle, Mode=TwoWay}" />
+                                </Grid>
+                            </StackPanel>
+                        </Expander>
+
+                        <!-- ── 战斗配置（房主）── -->
+                        <Expander Margin="0,4,36,8"
+                                  Visibility="{Binding IsRoomHost, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Expander.Header>
+                                <ui:TextBlock Text="战斗配置" FontTypography="BodyStrong" />
+                            </Expander.Header>
+                            <StackPanel Margin="0,8,0,0">
+                                <!-- 战斗超时时间（秒） -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0" Grid.Column="0" FontTypography="Body" Text="战斗超时时间（秒）" TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" 
+                                                 Text="联机模式下统一的战斗超时，由房主设定并同步给所有成员" TextWrapping="Wrap" />
+                                    <ui:NumberBox Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="120" 
+                                                 Minimum="30" Maximum="600" SpinButtonPlacementMode="Inline"
+                                                 Value="{Binding Config.AutoHoeingConfig.FightTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
                             </StackPanel>
                         </Expander>

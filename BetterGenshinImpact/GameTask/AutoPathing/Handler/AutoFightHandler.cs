@@ -59,10 +59,22 @@ internal class AutoFightHandler : IActionHandler
                 _logger.LogWarning("异步战斗任务，关闭打开队伍的战斗结束检测");
                 taskParams.FightFinishDetectEnabled = false;
             }
+
+            // 联机模式：房主同步的战斗超时覆盖（不修改原始配置）
+            if (PathingConditionConfig.MultiplayerFightTimeoutOverride.HasValue)
+            {
+                taskParams.Timeout = PathingConditionConfig.MultiplayerFightTimeoutOverride.Value;
+            }
         }
         else
         {
             taskParams = new AutoFightParam(GetFightStrategy(), TaskContext.Instance().Config.AutoFightConfig);
+
+            // 联机模式：房主同步的战斗超时覆盖（不修改原始配置）
+            if (PathingConditionConfig.MultiplayerFightTimeoutOverride.HasValue)
+            {
+                taskParams.Timeout = PathingConditionConfig.MultiplayerFightTimeoutOverride.Value;
+            }
         }
 
         //根据怪物标签，调整拾取配置

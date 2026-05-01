@@ -13,6 +13,7 @@ public class RoomManager
     private readonly ConcurrentDictionary<string, Room> _rooms = new();
     // connectionId → roomCode 反向索引，加速查找
     private readonly ConcurrentDictionary<string, string> _connectionRoomMap = new();
+    private readonly ConcurrentDictionary<string, List<PlayerInfo>> _lastRemovedPlayers = new();
     private readonly int _maxRooms;
 
     public RoomManager(int maxRooms = 50)
@@ -386,6 +387,26 @@ public class RoomManager
         }
     }
 
+    /// <summary>带路线进度信息的心跳更新（需求 6）</summary>
+    public void UpdateHeartbeatWithProgress(string connectionId, int routeIndex, DateTime routeStartTime, double routeEstimatedSeconds)
+    {
+        if (_connectionRoomMap.TryGetValue(connectionId, out var roomCode)
+            && _rooms.TryGetValue(roomCode, out var room))
+        {
+            lock (room)
+            {
+                var player = room.Players.FirstOrDefault(p => p.ConnectionId == connectionId);
+                if (player != null)
+                {
+                    player.LastHeartbeat = DateTime.UtcNow;
+                    player.CurrentRouteIndex = routeIndex;
+                    player.RouteStartTime = routeStartTime;
+                    player.RouteEstimatedSeconds = routeEstimatedSeconds;
+                }
+            }
+        }
+    }
+
     /// <summary>移除超时玩家，返回受影响的房间码列表</summary>
     public List<string> RemoveDeadPlayers(TimeSpan timeout)
     {
@@ -410,6 +431,15 @@ public class RoomManager
 
             lock (room)
             {
+                var deadPlayers = room.Players
+                    .Where(p => p.LastHeartbeat < cutoff)
+                    .ToList();
+
+                if (deadPlayers.Count > 0)
+                {
+                    _lastRemovedPlayers[code] = deadPlayers;
+                }
+
                 var removed = room.Players.RemoveAll(p => p.LastHeartbeat < cutoff);
                 if (removed > 0)
                 {
@@ -421,6 +451,12 @@ public class RoomManager
         }
 
         return affected;
+    }
+
+    public List<PlayerInfo> GetLastRemovedPlayers(string roomCode)
+    {
+        _lastRemovedPlayers.TryRemove(roomCode, out var removed);
+        return removed ?? new List<PlayerInfo>();
     }
 
     private static bool AllOnlineMembersReported(Room room, HashSet<string> reported)

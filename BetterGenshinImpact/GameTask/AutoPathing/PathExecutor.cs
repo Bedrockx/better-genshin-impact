@@ -40,6 +40,7 @@ using BetterGenshinImpact.GameTask.Common.Map.Maps;
 using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.GameTask.AutoFight;
 using BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer;
+using BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.Models;
 using BetterGenshinImpact.GameTask.Common.Job;
 
 namespace BetterGenshinImpact.GameTask.AutoPathing;
@@ -53,6 +54,15 @@ public class PathExecutor
     public int SuccessFight = 0;
     //路径追踪完全走完所有路径结束的标识
     public bool SuccessEnd = false;
+
+    /// <summary>联机模式：请求跳到下一个路线段（成员侧异常恢复，需求 1）</summary>
+    public volatile bool SkipToNextSegment;
+
+    /// <summary>联机模式：请求跳过当前路线（传递给 ProcessRoutesByGroup，需求 1）</summary>
+    public volatile bool SkipRouteRequested;
+
+    /// <summary>联机模式：跳过原因（先写 reason 再写标志位保证顺序）</summary>
+    public string? SkipRouteReason;
     private PathingPartyConfig? _partyConfig;
     private CancellationToken ct;
     private PathExecutorSuspend pathExecutorSuspend;
@@ -83,6 +93,16 @@ public class PathExecutor
     /// 联机协调器，为 null 时以单机模式运行，不引入任何额外逻辑。
     /// </summary>
     public MultiplayerCoordinator? MultiplayerCoordinator { get; set; }
+
+    /// <summary>
+    /// 世界状态监测器，传送期间用于抑制误报。
+    /// </summary>
+    public WorldStateMonitor? WorldStateMonitor { get; set; }
+
+    /// <summary>
+    /// 静态引用，供 Avatar.TpForRecover 等静态方法在传送时通知 WorldStateMonitor。
+    /// </summary>
+    public static WorldStateMonitor? CurrentWorldStateMonitor { get; set; }
 
     /// <summary>
     /// fight waypoint 索引 → syncPointId 的映射，由 SyncPointResolver 预计算。
@@ -217,6 +237,37 @@ public class PathExecutor
             }
             Logger.LogInformation("[联机] 路线 {Name} 预计算完成：{Total} 个战斗点，{Mapped} 个有集合点",
                 task.FileName, totalFightPoints, mappedSyncPoints);
+
+            // 传送点必同步：为每个传送点生成额外的 syncPointId
+            var syncAtEveryTeleport = PathingConditionConfig.MultiplayerSyncAtEveryTeleportOverride
+                ?? TaskContext.Instance().Config.AutoHoeingConfig.SyncAtEveryTeleport;
+            Logger.LogInformation("[联机] 传送点必同步配置：Override={Override}, LocalConfig={Local}, 最终={Final}",
+                PathingConditionConfig.MultiplayerSyncAtEveryTeleportOverride?.ToString() ?? "null",
+                TaskContext.Instance().Config.AutoHoeingConfig.SyncAtEveryTeleport,
+                syncAtEveryTeleport);
+            if (syncAtEveryTeleport)
+            {
+                int teleportSyncCount = 0;
+                for (int listIdx = 0; listIdx < waypointsList.Count; listIdx++)
+                {
+                    for (int wpIdx = 0; wpIdx < waypointsList[listIdx].Count; wpIdx++)
+                    {
+                        if (waypointsList[listIdx][wpIdx].Type == "teleport")
+                        {
+                            var key = listIdx * 10000 + wpIdx;
+                            if (!_syncPointMap.ContainsKey(key)) // 不覆盖已有的战斗同步点
+                            {
+                                var syncId = $"{task.FileName}_tp_{listIdx}_{wpIdx}";
+                                _syncPointMap[key] = syncId;
+                                teleportSyncCount++;
+                                Logger.LogDebug("[联机] 路线段{ListIdx} 传送点{WpIdx} → 传送同步点: {SyncId}",
+                                    listIdx, wpIdx, syncId);
+                            }
+                        }
+                    }
+                }
+                Logger.LogInformation("[联机] 传送点必同步：新增 {Count} 个传送同步点", teleportSyncCount);
+            }
         }
 
         await Delay(100, ct);
@@ -228,6 +279,21 @@ public class PathExecutor
 
         foreach (var waypoints in waypointsList) // 按传送点分割的路径
         {
+            // 联机模式成员：上一个段设置了 SkipToNextSegment，重置标志位，继续到本段（自动传送）
+            if (SkipToNextSegment)
+            {
+                SkipToNextSegment = false;
+                Logger.LogInformation("[联机] 成员跳到新路线段（段{Idx}），等待同步", waypointsList.FindIndex(wps => wps == waypoints));
+                // 注意：Rejoining 状态已在 catch 块中上报，汇合成功后由同步点逻辑或 ProcessRoutesByGroup 上报 Normal
+            }
+
+            // 联机模式房主：SkipRouteRequested 已设置，跳过剩余所有段
+            if (SkipRouteRequested)
+            {
+                Logger.LogInformation("[联机] 房主跳过路线，跳过剩余段");
+                break;
+            }
+
             AutoFightTask.IsTpForRecover = false;
             _faceToMark = false;
             CurWaypoints = (waypointsList.FindIndex(wps => wps == waypoints), waypoints);
@@ -266,8 +332,8 @@ public class PathExecutor
                         
                         TryCloseSkipOtherOperations();
 
-                        // 联机模式：到达集合点时等待所有玩家
-                        if (MultiplayerCoordinator != null)
+                        // 联机模式：到达集合点时等待所有玩家（跳过传送点，传送点在传送后单独处理）
+                        if (MultiplayerCoordinator != null && waypoint.Type != WaypointType.Teleport.Code)
                         {
                             var mapKey = CurWaypoints.Item1 * 10000 + CurWaypoint.Item1;
                             if (_syncPointMap.TryGetValue(mapKey, out var syncId) && syncId != null)
@@ -303,6 +369,18 @@ public class PathExecutor
                             {
                                 // Logger.LogInformation("线路切换，强制校验");
                                 await ValidateGameWithTask(task,true);
+                            }
+
+                            // 联机模式：传送完成后检查是否需要同步等待（传送点必同步 或 SyncPointResolver 回退到传送点）
+                            if (MultiplayerCoordinator != null)
+                            {
+                                var tpMapKey = CurWaypoints.Item1 * 10000 + CurWaypoint.Item1;
+                                if (_syncPointMap.TryGetValue(tpMapKey, out var tpSyncId) && tpSyncId != null)
+                                {
+                                    Logger.LogInformation("[联机] 传送完成，等待所有玩家同步，syncId={SyncId}", tpSyncId);
+                                    await MultiplayerCoordinator.WaitForAllPlayers(tpSyncId, ct);
+                                    Logger.LogInformation("[联机] 传送同步完成，继续前进，syncId={SyncId}", tpSyncId);
+                                }
                             }
                         }
                         else
@@ -386,34 +464,19 @@ public class PathExecutor
                                 // 执行 action11
                                 
                                 //如果上一节点和当前节点坐标一致，不执行action以避免卡死
-                                // 联机模式战斗超时包裹（需求 4）
+                                // 联机模式：战斗节点上报 Fighting 状态（需求 4）
                                 if (waypoint.Action == ActionEnum.Fight.Code && MultiplayerCoordinator != null)
                                 {
-                                    var fightTimeoutSeconds = TaskContext.Instance().Config.AutoFightConfig.Timeout;
                                     await MultiplayerCoordinator.ReportFightingStatusAsync(true);
-
-                                    var fightTimedOut = false;
-                                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(fightTimeoutSeconds));
-                                    using var registration = timeoutCts.Token.Register(() =>
-                                    {
-                                        if (!ct.IsCancellationRequested) // 外部未取消时才算超时
-                                        {
-                                            Logger.LogWarning("[联机] 战斗超时（{Timeout}s），强制结束，坐标=({X},{Y})",
-                                                fightTimeoutSeconds, waypoint.X, waypoint.Y);
-                                            AutoFightTask.FightEndFlag = true;
-                                            fightTimedOut = true;
-                                        }
-                                    });
-
                                     try
                                     {
                                         await AfterMoveToTarget(waypoint, nextWaypoint);
                                     }
                                     finally
                                     {
+                                        // 无论战斗正常结束还是超时（AutoFightTask 内部处理），都清除 Fighting 状态
                                         await MultiplayerCoordinator.ReportFightingStatusAsync(false);
                                     }
-                                    // registration 和 timeoutCts 在此处已 Dispose，回调注册已取消
                                 }
                                 else
                                 {
@@ -487,7 +550,42 @@ public class PathExecutor
                 }
                 catch (RetryException retryException)
                 {
-                    // Logger.LogError("retryException.Message11111111");
+                    // 联机模式成员：跳到下一个传送点，不重跑（需求 1）
+                    if (MultiplayerCoordinator != null && !MultiplayerCoordinator.IsHost)
+                    {
+                        Logger.LogWarning("[联机] 成员异常恢复：跳到下一个传送点，原因: {Msg}", retryException.Message);
+                        try
+                        {
+                            await MultiplayerCoordinator.ReportFightingStatusAsync(false); // 清除可能残留的 Fighting 状态
+                            await MultiplayerCoordinator.ReportMemberStatusAsync(MemberStatus.Rejoining); // 通知其他玩家额外等待
+                        }
+                        catch { }
+                        SkipToNextSegment = true;
+                        break; // 退出 for 循环，外层段循环进入下一个段
+                    }
+
+                    // 联机模式房主：最后一次重试时跳过路线（需求 1）
+                    if (MultiplayerCoordinator != null && MultiplayerCoordinator.IsHost && i == RetryTimes - 1)
+                    {
+                        Logger.LogWarning("[联机] 房主异常恢复：{RetryTimes}次重跑都失败，跳过路线，原因: {Msg}", RetryTimes, retryException.Message);
+                        try { await MultiplayerCoordinator.ReportFightingStatusAsync(false); } catch { } // 清除可能残留的 Fighting 状态
+                        SkipRouteReason = retryException.Message;
+                        SkipRouteRequested = true;
+                        break; // 退出 for 循环和段循环
+                    }
+
+                    // 联机模式房主：非最后一次重试，上报 Reviving 后继续重跑
+                    if (MultiplayerCoordinator != null && MultiplayerCoordinator.IsHost)
+                    {
+                        try
+                        {
+                            await MultiplayerCoordinator.ReportFightingStatusAsync(false); // 清除可能残留的 Fighting 状态
+                            await MultiplayerCoordinator.ReportMemberStatusAsync(MemberStatus.Reviving);
+                        }
+                        catch { }
+                    }
+
+                    // 单机模式或房主非最后一次重试：保持原有行为
                     StartSkipOtherOperations();
                     Logger.LogWarning(retryException.Message);
                     if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3)  PathingConditionConfig.AutoEatCount = 0;
@@ -524,6 +622,15 @@ public class PathExecutor
                     
                 }
             }
+        }
+
+        // 联机模式成员：段循环结束后如果 SkipToNextSegment 仍为 true（最后一个段异常），标记路线跳过
+        if (SkipToNextSegment)
+        {
+            SkipToNextSegment = false;
+            SkipRouteReason = "成员异常：最后一个路线段，跳到下一条路线";
+            SkipRouteRequested = true;
+            Logger.LogWarning("[联机] 成员异常发生在最后一个路线段，标记路线跳过");
         }
     }
     
@@ -1237,8 +1344,16 @@ public class PathExecutor
         }
 
         // tp 到七天神像回血
-        var tpTask = new TpTask(ct);
-        await RunnerContext.Instance.StopAutoPickRunTask(async () => await tpTask.TpToStatueOfTheSeven(), 5);
+        WorldStateMonitor?.BeginTeleportSuppression();
+        try
+        {
+            var tpTask = new TpTask(ct);
+            await RunnerContext.Instance.StopAutoPickRunTask(async () => await tpTask.TpToStatueOfTheSeven(), 5);
+        }
+        finally
+        {
+            WorldStateMonitor?.EndTeleportSuppression();
+        }
         PartyConfig.MainAvatarIndex = PathingConditionConfig.InitialMainAvatarIndex;
         Logger.LogInformation("血量恢复完成。【设置】-【七天神像设置】可以修改回血相关配置-k {t}。",PathingConditionConfig.AutoEatCount);
     }
@@ -1310,15 +1425,23 @@ public class PathExecutor
 
     private async Task HandleTeleportWaypoint(WaypointForTrack waypoint,WaypointForTrack? lastWaypoint = null)
     {
-        var forceTp = waypoint.Action == ActionEnum.ForceTp.Code;
-        TpTask tpTask = new TpTask(ct);
-        await TryGetExpeditionRewardsDispatch(tpTask);
-        var (tpX, tpY) = await tpTask.Tp(waypoint.GameX, waypoint.GameY, waypoint.MapName, forceTp);
-        var (tprX, tprY) = MapManager.GetMap(waypoint.MapName, waypoint.MapMatchMethod)
-            .ConvertGenshinMapCoordinatesToImageCoordinates(new Point2f((float)tpX, (float)tpY));
-        Navigation.SetPrevPosition(tprX, tprY); // 通过上一个位置直接进行局部特征匹配
-        await Delay(500, ct); // 多等一会
-        //如果前后地图不同
+        WorldStateMonitor?.BeginTeleportSuppression();
+        try
+        {
+            var forceTp = waypoint.Action == ActionEnum.ForceTp.Code;
+            TpTask tpTask = new TpTask(ct);
+            await TryGetExpeditionRewardsDispatch(tpTask);
+            var (tpX, tpY) = await tpTask.Tp(waypoint.GameX, waypoint.GameY, waypoint.MapName, forceTp);
+            var (tprX, tprY) = MapManager.GetMap(waypoint.MapName, waypoint.MapMatchMethod)
+                .ConvertGenshinMapCoordinatesToImageCoordinates(new Point2f((float)tpX, (float)tpY));
+            Navigation.SetPrevPosition(tprX, tprY); // 通过上一个位置直接进行局部特征匹配
+            await Delay(500, ct); // 多等一会
+            //如果前后地图不同
+        }
+        finally
+        {
+            WorldStateMonitor?.EndTeleportSuppression();
+        }
     }
 
     public async Task FaceTo(WaypointForTrack waypoint)

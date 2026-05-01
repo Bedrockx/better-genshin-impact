@@ -67,11 +67,17 @@ public class AutoHoeingTask : ISoloTask
     private CoordinatorClient? _coordinatorClientRef;
     private RouteExecutionEngine? _executionEngine;
     private MultiplayerCoordinator? _multiplayerCoordinator;
+    private WorldStateMonitor? _worldStateMonitor;
     private bool _shouldSwitchFurina;
+    
+    private volatile bool _sessionTerminated;
+    private string? _stopReason;
+    private CancellationTokenSource? _linkedStopCts;
     
     private bool _teamAlreadySwitched = false;
     private bool _worldPermissionSet = false;
     
+    /// <summary>
     /// <summary>
     /// 多世界模式下，保存第一任房主的配置，后续轮次都使用这个配置
     /// </summary>
@@ -111,6 +117,9 @@ public class AutoHoeingTask : ISoloTask
             _config.ReturnToFightPointStaySeconds = 5;
             _config.MultiWorldEnabled = false;
             _config.MultiWorldCount = 2;
+            _config.FightExtraWaitSeconds = 60;
+            _config.RejoinMaxWaitSeconds = 300;
+            _config.SyncAtEveryTeleport = false;
 
             ApplySettingsOverride();
         }
@@ -151,16 +160,72 @@ public class AutoHoeingTask : ISoloTask
         }
         finally
         {
+            // 清除联机战斗超时覆盖值
+            PathingConditionConfig.MultiplayerFightTimeoutOverride = null;
+            PathingConditionConfig.MultiplayerSyncAtEveryTeleportOverride = null;
+            PathExecutor.CurrentWorldStateMonitor = null;
+
+            // 房主兜底：确保关闭房间通知已发送
+            if (_multiplayerCoordinator != null && _multiplayerCoordinator.IsHost)
+            {
+                try { await _coordinatorClientRef!.CloseRoomAsync(); }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[联机] finally 中房主发送 CloseRoom 失败（静默忽略）");
+                }
+            }
+
+            // 停止世界状态监测（需求 2）
+            if (_worldStateMonitor != null)
+            {
+                await _worldStateMonitor.StopAsync();
+                _worldStateMonitor = null;
+            }
+
+            // 先 dispose coordinator（取消事件订阅），再 dispose linkedStopCts
+            // 避免 dispose 后 RoomClosed 事件触发 TriggerCoordinatedStop 时 Cancel 已 dispose 的 CTS
             if (_multiplayerCoordinator != null)
             {
                 await _multiplayerCoordinator.DisposeAsync();
                 _multiplayerCoordinator = null;
+            }
+
+            if (_linkedStopCts != null)
+            {
+                _linkedStopCts.Dispose();
+                _linkedStopCts = null;
             }
             // 多世界模式下 _coordinatorClientRef 由 RunTask 管理，这里只做兜底清理
             if (_coordinatorClientRef != null)
             {
                 await _coordinatorClientRef.DisposeAsync();
                 _coordinatorClientRef = null;
+            }
+
+            // 联机中断时通知用户并退出世界
+            if (!string.IsNullOrEmpty(_stopReason) && _config.MultiplayerEnabled)
+            {
+                // 房主和成员都退出联机世界回到单人世界
+                try
+                {
+                    _logger.LogInformation("[联机] {Role}退出联机世界",
+                        _config.MultiplayerRole == "member" ? "成员" : "房主");
+                    using var leaveWorldCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    var autoParty = new AutoPartyTask();
+                    var left = await autoParty.LeaveWorldAsync(leaveWorldCts.Token);
+                    if (!left)
+                        _logger.LogWarning("[联机] 退出世界未确认成功");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[联机] 退出世界失败（忽略）");
+                }
+
+                var reason = _stopReason;
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    Wpf.Ui.Violeta.Controls.Toast.Warning($"联机中断：{reason}");
+                });
             }
         }
     }
@@ -358,6 +423,10 @@ public class AutoHoeingTask : ISoloTask
                     MultiWorldEnabled = _config.MultiWorldEnabled,
                     MultiWorldCount = _config.MultiWorldCount,
                     SelectedBuiltinRoute = _config.SelectedBuiltinRoute,
+                    FightTimeoutSeconds = _config.FightTimeoutSeconds,
+                    FightExtraWaitSeconds = _config.FightExtraWaitSeconds,
+                    RejoinMaxWaitSeconds = _config.RejoinMaxWaitSeconds,
+                    SyncAtEveryTeleport = _config.SyncAtEveryTeleport,
                 };
                 
                 // 房主上传配置，带重试机制（最多3次）
@@ -407,17 +476,100 @@ public class AutoHoeingTask : ISoloTask
             _multiplayerCoordinator = new MultiplayerCoordinator(client, barrier, resolver, _config.MinPlayersToSync, _config.SyncTimeoutSeconds);
             _logger.LogInformation("[联机] MultiplayerCoordinator 初始化完成，超时={Timeout}s，最低人数={Min}", _config.SyncTimeoutSeconds, _config.MinPlayersToSync);
 
+            // 联机模式：设置战斗超时覆盖值（不修改原始配置，通过 PathingConditionConfig 传递给 AutoFightHandler）
+            PathingConditionConfig.MultiplayerFightTimeoutOverride = _config.FightTimeoutSeconds;
+            PathingConditionConfig.MultiplayerSyncAtEveryTeleportOverride = _config.SyncAtEveryTeleport;
+
+            // 打印所有房主同步的参数
+            _logger.LogInformation("[联机] ===== 当前联机参数（房主同步）=====");
+            _logger.LogInformation("[联机] 集合点超时={SyncTimeout}s，最低同步人数={MinPlayers}，集合点最小距离={MinDist}",
+                _config.SyncTimeoutSeconds, _config.MinPlayersToSync, _config.SyncPointMinDistance);
+            _logger.LogInformation("[联机] 战斗超时={FightTimeout}s，万叶玩家序号={Kazuha}，从第{Start}条路线开始",
+                _config.FightTimeoutSeconds, _config.KazuhaPlayerIndex, _config.StartRouteIndex);
+            _logger.LogInformation("[联机] 战斗后走回={ReturnFight}（停留{Stay}s），调试模式={Debug}",
+                _config.ReturnToFightPointAfterBattle, _config.ReturnToFightPointStaySeconds, _config.DebugMode);
+            _logger.LogInformation("[联机] 组队超时={PartyTimeout}s，多世界={MultiWorld}（{Rounds}轮），内置线路={Route}",
+                _config.PartyTimeoutSeconds, _config.MultiWorldEnabled, _config.MultiWorldCount, _config.SelectedBuiltinRoute);
+            _logger.LogInformation("[联机] 战斗额外等待={FightExtra}s，重新加入最大等待={RejoinMax}s，传送点必同步={SyncTp}",
+                _config.FightExtraWaitSeconds, _config.RejoinMaxWaitSeconds, _config.SyncAtEveryTeleport);
+            _logger.LogInformation("[联机] =====================================");
+
             _multiplayerCoordinator.OnDegraded += reason =>
             {
                 _logger.LogWarning("[联机] 已降级为单机模式，原因：{Reason}", reason);
             };
 
+            // 连续超时退出处理（需求 5）
+            _multiplayerCoordinator.OnConsecutiveSyncTimeoutExceeded += async (isHost) =>
+            {
+                if (isHost)
+                {
+                    _logger.LogError("[联机] 房主连续超时达到上限，广播关闭房间并停止");
+                    try { await _coordinatorClientRef!.CloseRoomAsync(); } catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[联机] 广播关闭房间失败（静默忽略，成员靠心跳超时感知）");
+                    }
+                }
+                else
+                {
+                    _logger.LogError("[联机] 成员连续超时达到上限，上报 Offline 并退出");
+                    try { await _coordinatorClientRef!.ReportMemberStatusAsync(MemberStatus.Offline); } catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[联机] 上报 Offline 失败（静默忽略）");
+                    }
+                }
+                // 降级停止后续同步等待
+                _multiplayerCoordinator?.Degrade("连续超时达到上限");
+            };
+
             // 路线一致性验证（延迟到路线筛选后执行，只验证本次要跑的路线）
             _consistencyChecker = new RouteConsistencyChecker();
             _coordinatorClientRef = client;
+
+            // 启动世界状态监测（需求 2）
+            _worldStateMonitor = new WorldStateMonitor(client, _config.PlayerUid, _ct);
+            client.WorldStateMonitor = _worldStateMonitor;
+            _worldStateMonitor.OnExitConfirmed += async (isHost, reason) =>
+            {
+                _stopReason = reason;
+                if (!isHost) _sessionTerminated = true;
+                // 直接 cancel linkedStopCts，确保 _ct 被取消（不依赖 TriggerCoordinatedStop 的 _stopCts）
+                try { _linkedStopCts?.Cancel(); }
+                catch (ObjectDisposedException) { }
+                catch { }
+                await _multiplayerCoordinator!.TriggerCoordinatedStop(isHost, reason);
+            };
+            _worldStateMonitor.OnDroppedFromRoom += async () =>
+            {
+                _stopReason = "掉出房间且重试失败";
+                if (!_multiplayerCoordinator!.IsHost) _sessionTerminated = true;
+                try { _linkedStopCts?.Cancel(); }
+                catch (ObjectDisposedException) { }
+                catch { }
+                var isHost = _multiplayerCoordinator!.IsHost;
+                await _multiplayerCoordinator.TriggerCoordinatedStop(isHost, "掉出房间且重试失败");
+            };
+            // 创建 linked CTS，协调停止时通过 Cancel 传播停止信号（需求 2.1）
+            _linkedStopCts = CancellationTokenSource.CreateLinkedTokenSource(_ct);
+            _multiplayerCoordinator.StopCts = _linkedStopCts;
+            // 关键：将 _ct 替换为 linked token，这样 _linkedStopCts.Cancel() 能取消所有使用 _ct 的操作
+            _ct = _linkedStopCts.Token;
+
+            // 成员侧：监听 RoomClosed 事件，设置 _sessionTerminated 确保多世界模式不继续下一轮
+            client.RoomClosed += reason =>
+            {
+                _stopReason = $"房间已关闭: {reason}";
+                _sessionTerminated = true;
+                try { _linkedStopCts?.Cancel(); }
+                catch (ObjectDisposedException) { }
+                catch { }
+            };
+
+            _worldStateMonitor.Start();
             _logger.LogInformation("[联机] 路线一致性验证将在路线筛选后执行");
 
             // 自动组队：游戏内加入/等待
+            _worldStateMonitor.IsPartyPhase = true;
             var autoParty = new AutoPartyTask();
             if (isHost)
             {
@@ -437,6 +589,7 @@ public class AutoHoeingTask : ISoloTask
                 {
                     // 初始化失败（未检测到主界面等）
                     _logger.LogError("[联机] 自动组队初始化失败，停止联机锄地");
+                    _worldStateMonitor.IsPartyPhase = false;
                     await client.DisposeAsync();
                     _multiplayerCoordinator = null;
                     return;
@@ -455,6 +608,7 @@ public class AutoHoeingTask : ISoloTask
                     else
                     {
                         _logger.LogError("[联机] 组队超时，停止联机锄地");
+                        _worldStateMonitor.IsPartyPhase = false;
                         await client.DisposeAsync();
                         _multiplayerCoordinator = null;
                         return;
@@ -495,6 +649,7 @@ public class AutoHoeingTask : ISoloTask
                 {
                     client.AllWorldJoined -= hostAllJoinedHandler;
                 }
+                _worldStateMonitor.IsPartyPhase = false;
             }
             else
             {
@@ -572,6 +727,7 @@ public class AutoHoeingTask : ISoloTask
                             if (!ready)
                             {
                                 _logger.LogError("[联机] 等待房主就绪超时，停止联机锄地");
+                                _worldStateMonitor.IsPartyPhase = false;
                                 await client.DisposeAsync();
                                 _multiplayerCoordinator = null;
                                 return;
@@ -617,6 +773,13 @@ public class AutoHoeingTask : ISoloTask
                         _config.MultiWorldEnabled = hostConfig.MultiWorldEnabled;
                         _config.MultiWorldCount = hostConfig.MultiWorldCount;
                         _config.SelectedBuiltinRoute = hostConfig.SelectedBuiltinRoute;
+                        _config.FightExtraWaitSeconds = hostConfig.FightExtraWaitSeconds;
+                        _config.RejoinMaxWaitSeconds = hostConfig.RejoinMaxWaitSeconds;
+                        _config.SyncAtEveryTeleport = hostConfig.SyncAtEveryTeleport;
+
+                        // 联机模式：设置战斗超时覆盖值（不修改原始配置）
+                        PathingConditionConfig.MultiplayerFightTimeoutOverride = hostConfig.FightTimeoutSeconds;
+                        PathingConditionConfig.MultiplayerSyncAtEveryTeleportOverride = hostConfig.SyncAtEveryTeleport;
 
                         // 多世界模式：保存第一任房主的配置
                         if (_config.MultiWorldEnabled)
@@ -634,6 +797,7 @@ public class AutoHoeingTask : ISoloTask
                         if (_config.MultiWorldEnabled)
                         {
                             _logger.LogError("[联机] 多世界模式：无法获取房主配置（重试3次后仍失败），终止多世界模式");
+                            _worldStateMonitor.IsPartyPhase = false;
                             await client.DisposeAsync();
                             _multiplayerCoordinator = null;
                             return;
@@ -673,6 +837,7 @@ public class AutoHoeingTask : ISoloTask
                             else
                             {
                                 _logger.LogWarning("[联机] 等待组队超时，退出房间，结束任务");
+                                _worldStateMonitor.IsPartyPhase = false;
                                 _multiplayerCoordinator?.Degrade("组队超时");
                                 return;
                             }
@@ -681,10 +846,12 @@ public class AutoHoeingTask : ISoloTask
                         {
                             client.AllWorldJoined -= handler;
                         }
+                        _worldStateMonitor.IsPartyPhase = false;
                     }
                     else
                     {
                         _logger.LogError("[联机] 加入房主世界失败，停止联机锄地");
+                        _worldStateMonitor.IsPartyPhase = false;
                         _multiplayerCoordinator?.Degrade("加入房主世界失败");
                         return;
                     }
@@ -693,11 +860,13 @@ public class AutoHoeingTask : ISoloTask
 
             // 注入到执行引擎
             _executionEngine?.SetCoordinator(_multiplayerCoordinator);
+            _executionEngine?.SetWorldStateMonitor(_worldStateMonitor);
             _logger.LogInformation("[联机] 初始化完成，房间码：{Code}", _config.CurrentRoomCode);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[联机] 初始化异常，降级为单机模式");
+            if (_worldStateMonitor != null) _worldStateMonitor.IsPartyPhase = false;
             _multiplayerCoordinator = null;
         }
     }
@@ -970,6 +1139,13 @@ public class AutoHoeingTask : ISoloTask
         bool lastRoundAmIHost = false;
         for (int round = 0; round < totalRounds; round++)
         {
+            if (_sessionTerminated || _multiplayerCoordinator?.IsExitTriggered == true)
+            {
+                _logger.LogWarning("[多世界] 会话已终止（sessionTerminated={ST}, exitTriggered={ET}），跳过剩余轮次",
+                    _sessionTerminated, _multiplayerCoordinator?.IsExitTriggered);
+                break;
+            }
+
             _ct.ThrowIfCancellationRequested();
 
             var roundHostPlayer = playerOrder[round];
@@ -992,8 +1168,28 @@ public class AutoHoeingTask : ISoloTask
 
             if (round > 0)
             {
+                // 快速检查：如果已经不在联机世界了（被踢回自己世界），直接停止
+                try
+                {
+                    using var checkRegion = CaptureToRectArea();
+                    var checkStatus = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(checkRegion);
+                    if (!checkStatus.IsInMultiGame)
+                    {
+                        _logger.LogWarning("[多世界] 第 {Round} 轮开始前检测到已不在联机世界，停止后续轮次", round + 1);
+                        _sessionTerminated = true;
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[多世界] 轮次切换前联机状态检查失败，继续");
+                }
+
                 // 非第一轮：需要重新组队进入新房主的世界，并重新加载 CD
+                _worldStateMonitor?.BeginRoundSwitch();
                 await SetupNextRoundAsync(round, roundHostPlayer, amIHost, client, playerOrder.Count);
+                _worldStateMonitor?.EndRoundSwitch();
+                _multiplayerCoordinator?.ResetForNewRound();
                 if (_multiplayerCoordinator == null)
                 {
                     _logger.LogError("[多世界] 第 {Round} 轮初始化失败，停止后续轮次", round + 1);
@@ -1016,6 +1212,8 @@ public class AutoHoeingTask : ISoloTask
             if (round < totalRounds - 1)
             {
                 _logger.LogInformation("[多世界] 第 {Round} 轮锄地完成，等待全员同步", round + 1);
+                // 轮次切换期间忽略 WorldStateMonitor 的 IsInMultiGame 检测（需求 2）
+                _worldStateMonitor?.BeginRoundSwitch();
                 await SyncRoundEndAsync(round, client);
 
                 // 离开世界：成员先主动离开，房主等待后再关闭房间
@@ -1029,6 +1227,7 @@ public class AutoHoeingTask : ISoloTask
                     _multiplayerCoordinator = null;
                 }
                 _executionEngine?.SetCoordinator(null);
+                _executionEngine?.SetWorldStateMonitor(null);
             }
         }
 
@@ -1269,6 +1468,13 @@ public class AutoHoeingTask : ISoloTask
                     _config.MultiWorldEnabled = hostConfig.MultiWorldEnabled;
                     _config.MultiWorldCount = hostConfig.MultiWorldCount;
                     _config.SelectedBuiltinRoute = hostConfig.SelectedBuiltinRoute;
+                    _config.FightExtraWaitSeconds = hostConfig.FightExtraWaitSeconds;
+                    _config.RejoinMaxWaitSeconds = hostConfig.RejoinMaxWaitSeconds;
+                    _config.SyncAtEveryTeleport = hostConfig.SyncAtEveryTeleport;
+
+                    // 联机模式：设置战斗超时覆盖值（不修改原始配置）
+                    PathingConditionConfig.MultiplayerFightTimeoutOverride = hostConfig.FightTimeoutSeconds;
+                    PathingConditionConfig.MultiplayerSyncAtEveryTeleportOverride = hostConfig.SyncAtEveryTeleport;
                 }
                 else
                 {
@@ -1310,20 +1516,55 @@ public class AutoHoeingTask : ISoloTask
                 _config.MinPlayersToSync, _config.SyncTimeoutSeconds);
             _multiplayerCoordinator.OnDegraded += reason =>
                 _logger.LogWarning("[联机] 已降级为单机模式，原因：{Reason}", reason);
+            // 连续超时退出处理（需求 5）— 多世界模式每轮重建时也需要注册
+            _multiplayerCoordinator.OnConsecutiveSyncTimeoutExceeded += async (isHost) =>
+            {
+                if (isHost)
+                {
+                    _logger.LogError("[联机] 房主连续超时达到上限，广播关闭房间并停止");
+                    try { await _coordinatorClientRef!.CloseRoomAsync(); } catch (Exception ex2)
+                    {
+                        _logger.LogWarning(ex2, "[联机] 广播关闭房间失败（静默忽略，成员靠心跳超时感知）");
+                    }
+                }
+                else
+                {
+                    _logger.LogError("[联机] 成员连续超时达到上限，上报 Offline 并退出");
+                    try { await _coordinatorClientRef!.ReportMemberStatusAsync(MemberStatus.Offline); } catch (Exception ex2)
+                    {
+                        _logger.LogWarning(ex2, "[联机] 上报 Offline 失败（静默忽略）");
+                    }
+                }
+                _multiplayerCoordinator?.Degrade("连续超时达到上限");
+            };
             _consistencyChecker = new RouteConsistencyChecker();
             _executionEngine?.SetCoordinator(_multiplayerCoordinator);
+            _executionEngine?.SetWorldStateMonitor(_worldStateMonitor);
+            // 重置路线进度信息（需求 6），避免上一轮的旧进度在新轮次心跳中上报
+            _coordinatorClientRef?.UpdateRouteProgress(-1, DateTime.UtcNow, 0);
+            // 轮次切换完成，恢复 WorldStateMonitor 检测（需求 2）
+            _worldStateMonitor?.EndRoundSwitch();
             _logger.LogInformation("[多世界] 第 {Round} 轮初始化完成", round + 1);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[多世界] 第 {Round} 轮初始化异常", round + 1);
             _multiplayerCoordinator = null;
+            // 初始化失败也要恢复 WorldStateMonitor 检测（需求 2）
+            _worldStateMonitor?.EndRoundSwitch();
         }
     }
 
     /// <summary>全员同步本轮结束</summary>
     private async Task SyncRoundEndAsync(int round, CoordinatorClient client)
     {
+        // 协调停止已触发，跳过轮次同步等待（避免等 120s 超时）
+        if (_sessionTerminated || _multiplayerCoordinator?.IsExitTriggered == true)
+        {
+            _logger.LogWarning("[多世界] 协调停止已触发，跳过轮次结束同步");
+            return;
+        }
+
         try
         {
             var syncId = $"round_end_{round}";
@@ -1705,6 +1946,7 @@ public class AutoHoeingTask : ISoloTask
         }
 
         int count = 0;
+        int consecutiveSkipCount = 0; // 联机模式：连续跳过路线计数（需求 1）
         var groupStartTime = DateTime.Now;
         double remainingEstimatedTime = totalEstimatedTime;
         double skippedTime = 0;
@@ -1721,8 +1963,20 @@ public class AutoHoeingTask : ISoloTask
 
         foreach (var route in groupRoutes.Skip(startIndex))
         {
+            // 每条路线开始时重置连续超时计数（需求 5），避免跨路线累积误触发
+            _multiplayerCoordinator?.ResetSyncTimeoutCount();
+
+            // 上报当前路线进度信息（需求 6），下次心跳时自动携带
+            _coordinatorClientRef?.UpdateRouteProgress(startIndex + count, DateTime.UtcNow, route.AdjustedTime);
+
             _logger.LogInformation("[DEBUG] 进入路线循环，count={Count}，route={Name}", count + 1, route.FileName);
             _ct.ThrowIfCancellationRequested();
+            // 联机协调停止检查（需求 2.2）
+            if (_multiplayerCoordinator?.IsExitTriggered == true)
+            {
+                _logger.LogWarning("[联机] 协调停止已触发，退出路线循环");
+                break;
+            }
             count++;
 
             // 时间限制检查
@@ -1782,8 +2036,56 @@ public class AutoHoeingTask : ISoloTask
                     // 更新剩余时间
                     remainingEstimatedTime -= route.AdjustedTime;
 
+                    // 联机模式：检测路线跳过（需求 1）
+                    if (execResult.SkipRouteRequested && _multiplayerCoordinator != null && _coordinatorClientRef != null)
+                    {
+                        consecutiveSkipCount++;
+                        _logger.LogWarning("[联机] 路线 {Name} 被跳过（原因: {Reason}），连续跳过: {Count}/{Max}",
+                            route.FileName, execResult.SkipRouteReason, consecutiveSkipCount, _config.MaxConsecutiveSkips);
+
+                        // 上报状态
+                        if (_multiplayerCoordinator.IsHost)
+                        {
+                            try { await _coordinatorClientRef.ReportMemberStatusAsync(MemberStatus.Normal); } catch { }
+                        }
+                        else
+                        {
+                            try { await _coordinatorClientRef.ReportMemberStatusAsync(MemberStatus.Rejoining); } catch { }
+                        }
+
+                        // 检查连续跳过是否达到上限
+                        if (consecutiveSkipCount >= _config.MaxConsecutiveSkips)
+                        {
+                            _logger.LogError("[联机] 连续跳过达到上限（{Max}次），触发退出", _config.MaxConsecutiveSkips);
+                            if (_multiplayerCoordinator.IsHost)
+                            {
+                                try { await _coordinatorClientRef.CloseRoomAsync(); } catch (Exception ex2)
+                                {
+                                    _logger.LogWarning(ex2, "[联机] 广播关闭房间失败（静默忽略）");
+                                }
+                            }
+                            else
+                            {
+                                try { await _coordinatorClientRef.ReportMemberStatusAsync(MemberStatus.Offline); } catch (Exception ex2)
+                                {
+                                    _logger.LogWarning(ex2, "[联机] 上报 Offline 失败（静默忽略）");
+                                }
+                            }
+                            _multiplayerCoordinator.Degrade("连续跳过路线达到上限");
+                            break; // 退出路线循环
+                        }
+
+                        continue; // 跳到下一条路线，不记录 CD
+                    }
+
                     if (execResult.FullyCompleted)
                     {
+                        consecutiveSkipCount = 0; // 正常完成，归零连续跳过计数
+                        // 联机模式：路线正常完成，确保状态为 Normal（可能之前是 Rejoining/Reviving）
+                        if (_coordinatorClientRef != null && _multiplayerCoordinator != null)
+                        {
+                            try { await _coordinatorClientRef.ReportMemberStatusAsync(MemberStatus.Normal); } catch { }
+                        }
                         _cdManager.RecordCompletion(route, duration);
                         _cdManager.UpdateAllRecords(routes);
                     }
@@ -2086,6 +2388,8 @@ public class AutoHoeingTask : ISoloTask
             _config.KazuhaPlayerIndex = Get("kazuhaPlayerIndex", _config.KazuhaPlayerIndex);
             _config.ReturnToFightPointAfterBattle = Get("returnToFightPointAfterBattle", _config.ReturnToFightPointAfterBattle);
             _config.ReturnToFightPointStaySeconds = Get("returnToFightPointStaySeconds", _config.ReturnToFightPointStaySeconds);
+            _config.FightTimeoutSeconds = Get("fightTimeoutSeconds", _config.FightTimeoutSeconds);
+            _config.SyncAtEveryTeleport = Get("syncAtEveryTeleport", _config.SyncAtEveryTeleport);
         }
         else
         {
@@ -2096,6 +2400,8 @@ public class AutoHoeingTask : ISoloTask
             _config.KazuhaPlayerIndex = 0;
             _config.ReturnToFightPointAfterBattle = false;
             _config.ReturnToFightPointStaySeconds = 5;
+            _config.FightTimeoutSeconds = 120;
+            _config.SyncAtEveryTeleport = false;
 
             // 单机模式：重置固定调试线路字段，避免联机全局配置残留影响
             // 如果 settings 显式包含这些键，后续 ContainsKey 逻辑会覆盖回来
@@ -2207,6 +2513,10 @@ public class AutoHoeingTask : ISoloTask
             new() { Name = "returnToFightPointAfterBattle", Label = "战斗完成后是否走回战斗点集合", Type = "bool", DefaultValue = config.ReturnToFightPointAfterBattle },
             new() { Name = "returnToFightPointStaySeconds", Label = "走回战斗点后停留时间（秒）\n等待其他玩家拾取", Type = "number", DefaultValue = config.ReturnToFightPointStaySeconds },
             new() { Name = "syncPointMinDistance", Label = "集合点与战斗点的最小距离阈值\n小于此距离的点不作为集合点", Type = "number", DefaultValue = config.SyncPointMinDistance },
+            new() { Name = "syncAtEveryTeleport", Label = "传送点必同步\n启用后所有传送点都作为同步等待点", Type = "bool", DefaultValue = config.SyncAtEveryTeleport },
+
+            // ===== 联机战斗配置 =====
+            new() { Name = "fightTimeoutSeconds", Label = "联机战斗超时时间（秒）\n由房主设定并同步给所有成员，覆盖各自的自动战斗超时", Type = "number", DefaultValue = config.FightTimeoutSeconds },
 
             // ===== 第七部分：多世界连续锄地配置 =====
             new() { Name = "multiWorldEnabled", Label = "启用多世界连续锄地\n房主设定，完成一个世界后轮换到下一个玩家的世界", Type = "bool", DefaultValue = config.MultiWorldEnabled },
