@@ -174,6 +174,7 @@ namespace BetterGenshinImpact.GameTask
             _gameRect = RECT.Empty;
             _prevGameActive = false;
             PictureInPictureService.Hide(resetManual: true);
+            HtmlMaskWindow.CloseAll();
             if (_winEventHookMoveSize != default)
             {
                 User32.UnhookWinEvent(_winEventHookMoveSize);
@@ -239,6 +240,7 @@ namespace BetterGenshinImpact.GameTask
                     PictureInPictureService.Hide(resetManual: true);
                     UiTaskStopTickEvent?.Invoke(sender, e);
                     maskWindow.Invoke(maskWindow.HideSelf);
+                    HtmlMaskWindow.HideAll();
                     return;
                 }
                 
@@ -279,6 +281,7 @@ namespace BetterGenshinImpact.GameTask
                     {
                         // Debug.WriteLine(pName + "：hide mask window");
                         maskWindow.Invoke(() => { maskWindow.HideSelf(); });
+                        HtmlMaskWindow.HideAll();
                     }
 
                     _prevGameActive = active;
@@ -327,6 +330,7 @@ namespace BetterGenshinImpact.GameTask
                             }
                         }
                     });
+                    HtmlMaskWindow.ShowAll();
                     // }
 
                     _prevGameActive = active;
@@ -463,6 +467,7 @@ namespace BetterGenshinImpact.GameTask
                 _gameRect = new RECT(currentRect);
                 TaskContext.Instance().SystemInfo.CaptureAreaRect = currentRect;
                 MaskWindow.Instance().RefreshPosition();
+                HtmlMaskWindow.UpdateAllPositions();
                 return true;
             }
 
