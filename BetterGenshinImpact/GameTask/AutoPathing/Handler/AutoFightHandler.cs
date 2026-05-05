@@ -33,11 +33,11 @@ internal class AutoFightHandler : IActionHandler
         TaskControl.Logger.LogInformation("执行 {Text}", "自动战斗");
         // 爷们要战斗
         AutoFightParam taskParams = null;
-        if (config != null && config is PathingPartyConfig patyConfig && patyConfig.AutoFightEnabled)
+        if (config is PathingPartyConfig { Enabled: true, AutoFightEnabled: true } partyConfig)
         {
-            taskParams = GetFightAutoFightParam(patyConfig.AutoFightConfig);
+            taskParams = GetFightAutoFightParam(partyConfig.AutoFightConfig);
             
-            var isAutoFightStrategy = patyConfig.AutoFightConfig.StrategyName == "根据队伍自动选择";
+            var isAutoFightStrategy = partyConfig.AutoFightConfig.StrategyName == "根据队伍自动选择";
             
             taskParams.CountryName = isAutoFightStrategy && taskParams.CountryName.Contains("自动") 
                 ? _pathingConfig.CountryName : taskParams.CountryName;
