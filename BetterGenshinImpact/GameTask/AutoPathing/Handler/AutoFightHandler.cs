@@ -118,7 +118,7 @@ internal class AutoFightHandler : IActionHandler
     private string GetFightStrategy(AutoFightConfig config)
     {
         var path = Global.Absolute(@"User\AutoFight\" + config.StrategyName + ".txt");
-        if ("根据队伍自动选择".Equals(config.StrategyName))
+        if ("根据队伍自动选择".Equals(config.StrategyName) || string.IsNullOrEmpty(config.StrategyName))
         {
             path = Global.Absolute(@"User\AutoFight\");
         }

@@ -10,7 +10,7 @@ namespace BetterGenshinImpact.GameTask.AutoFight;
 [Serializable]
 public partial class AutoFightConfig : ObservableObject
 {
-    [ObservableProperty] private string _strategyName = "";
+    [ObservableProperty] private string _strategyName = "根据队伍自动选择";
     
     /// <summary>
     /// 战斗策略国家列表（策略文件名检测）
