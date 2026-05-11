@@ -9,4 +9,9 @@ public class PlayerInfo
     public string PlayerName { get; set; } = "";
     public string PlayerUid { get; set; } = "";
     public PlayerStatus Status { get; set; } = PlayerStatus.Waiting;
+
+    /// <summary>
+    /// 是否为房主（根据 PlayerUid 判断）
+    /// </summary>
+    public bool IsHost { get; set; }
 }

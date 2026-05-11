@@ -328,6 +328,18 @@ public partial class AutoHoeingConfig : ObservableObject
     private int _maxConsecutiveSkips = 3;
 
     /// <summary>
+    /// 最大连续同步超时次数，达到上限后退出联机锄地，默认 3
+    /// </summary>
+    [ObservableProperty]
+    private int _maxConsecutiveTimeouts = 3;
+
+    /// <summary>
+    /// 最大路线滞后容忍数量，超过此数量的成员被视为落后过多，默认 2
+    /// </summary>
+    [ObservableProperty]
+    private int? _maxRouteLag = 2;
+
+    /// <summary>
     /// 传送点必同步：启用后所有传送点都作为同步等待点，与战斗点前的同步点同时存在
     /// </summary>
     [ObservableProperty]

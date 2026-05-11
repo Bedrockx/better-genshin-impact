@@ -783,7 +783,7 @@ public class AutoFightTask : ISoloTask
                                                 break; 
                                             }
                                             
-                                            fightEndFlag = FightEndTotoly || await CheckFightFinish(0, detectDelayTime, cts2.Token,avatarQ);
+                                            fightEndFlag = await CheckFightFinish(0, detectDelayTime, cts2.Token,avatarQ) || FightEndTotoly;
                                             if (!fightEndFlag)
                                             { 
                                                 Simulation.SendInput.SimulateAction(GIActions.ElementalBurst);
@@ -805,6 +805,18 @@ public class AutoFightTask : ISoloTask
                                                         if (_skipFlag)
                                                         {
                                                             break; 
+                                                        }
+                                                        
+                                                        if (_taskParam.FinishDetectConfig.RotationMode &&
+                                                            _taskParam.FinishDetectConfig.RotateFindEnemyEnabled)
+                                                        {
+                                                            var aa =await CheckFightFinish(0, detectDelayTime, cts2.Token);
+                                                            if (aa)
+                                                            {
+                                                                FightEndTotoly  = true;
+                                                                fightEndFlag = true;
+                                                                break;
+                                                            }
                                                         }
                                                         Simulation.SendInput.SimulateAction(GIActions.ElementalBurst);
                                                         await Task.Delay(50, cts2.Token);

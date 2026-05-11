@@ -190,34 +190,7 @@ public class CoordinatorHub : Hub
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// 带完整状态的心跳（multiplayer-abnormal-wait-coordination 需求 1.2）
-    /// 玩家定期上报自己的路线索引、异常状态和等待点信息
-    /// </summary>
-    /// <param name="routeIndex">当前路线索引</param>
-    /// <param name="isAbnormal">是否为异常玩家</param>
-    /// <param name="waitPointId">当前等待点ID（异常玩家专用，必须是 _tp_ 格式）</param>
-    public async Task HeartbeatWithState(int routeIndex, bool isAbnormal, string? waitPointId)
-    {
-        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null)
-        {
-            _logger.LogWarning("[HeartbeatWithState] 连接 {ConnId} 未在任何房间中，忽略心跳", Context.ConnectionId);
-            return;
-        }
 
-        _logger.LogDebug("[HeartbeatWithState] 玩家心跳: ConnId={ConnId}, RouteIndex={RouteIndex}, IsAbnormal={IsAbnormal}, WaitPointId={WaitPointId}",
-            Context.ConnectionId, routeIndex, isAbnormal, waitPointId ?? "null");
-
-        _roomManager.UpdateHeartbeatWithState(Context.ConnectionId, routeIndex, isAbnormal, waitPointId);
-        
-        // === 异常中断重对齐检测（multiplayer-abort-and-realign spec）===
-        // 检测到异常玩家时，触发全员中断并重对齐
-        if (isAbnormal)
-        {
-            await CheckAbnormalAndTriggerRealignAsync(room, roomCode);
-        }
-    }
 
     /// <summary>查询指定成员的路线进度（需求 6）</summary>
     public Task<MemberProgress?> GetMemberProgress(string playerUid)
@@ -240,43 +213,7 @@ public class CoordinatorHub : Hub
         }
     }
 
-    /// <summary>
-    /// 上报成员异常恢复状态（需求 7）。
-    /// 服务器透传状态和版本号给房间内所有成员，不做版本管理。
-    /// </summary>
-    public async Task ReportMemberStatus(string status, long version)
-    {
-        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null) return;
 
-        _roomManager.UpdateHeartbeat(Context.ConnectionId);
-
-        // 在 Players 列表中查找当前连接对应的 PlayerUid
-        string? playerUid;
-        int? currentRouteIndex;
-        lock (room)
-        {
-            var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
-            if (player == null) return;
-            playerUid = player.PlayerUid;
-            currentRouteIndex = player.CurrentRouteIndex;
-            
-            // 更新玩家异常状态标记（用于中断重对齐检测）
-            player.IsAbnormal = status == "Reviving" || status == "Rejoining";
-        }
-
-        // lock 外 await，避免死锁
-        await Clients.Group(roomCode!).SendAsync("MemberStatusChanged", playerUid, status, version);
-        
-        // === 异常中断重对齐检测（multiplayer-abort-and-realign spec）===
-        // 当玩家进入异常状态时，触发全员中断重对齐
-        if (status == "Reviving" || status == "Rejoining")
-        {
-            _logger.LogInformation("[ReportMemberStatus] 玩家 {PlayerUid} 进入异常状态 {Status}，触发中断重对齐检测", 
-                playerUid, status);
-            await CheckAbnormalAndTriggerRealignAsync(room, roomCode!);
-        }
-    }
 
     /// <summary>关闭房间（仅房主可操作）</summary>
     public async Task CloseRoom()
@@ -458,62 +395,23 @@ public class CoordinatorHub : Hub
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// 路线跳过通知（sync-point-route-skip-alignment 修复）
-    /// 玩家跳过路线时调用，广播给房间内所有玩家（包括自己，由客户端过滤）
-    /// </summary>
-    public async Task RouteSkipped(int routeIndex)
+
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null)
+        var affectedCodes = _roomManager.LeaveRoom(Context.ConnectionId);
+
+        foreach (var code in affectedCodes)
         {
-            _logger.LogWarning("[RouteSkipped] 连接 {ConnId} 未在任何房间中，忽略路线跳过通知", Context.ConnectionId);
-            return;
+            var updatedRoom = _roomManager.GetRoom(code);
+            var players = updatedRoom?.Players ?? [];
+            await Clients.Group(code).SendAsync("PlayerListUpdated", players);
         }
 
-        string playerUid;
-        lock (room)
-        {
-            var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
-            if (player == null)
-            {
-                _logger.LogWarning("[RouteSkipped] 连接 {ConnId} 不在房间玩家列表中", Context.ConnectionId);
-                return;
-            }
-            playerUid = player.PlayerUid;
-        }
+        _logger.LogInformation("连接 {ConnId} 断开，影响房间：{Rooms}",
+            Context.ConnectionId, string.Join(", ", affectedCodes));
 
-        _logger.LogInformation("[RouteSkipped] 玩家 {Uid} 跳过路线 {Index}，房间 {Code}", playerUid, routeIndex, roomCode);
-        await Clients.Group(roomCode).SendAsync("RouteSkipped", playerUid, routeIndex);
-    }
-
-    /// <summary>
-    /// 更新成员路线进度（sync-point-route-skip-alignment 修复）
-    /// 玩家路线进度更新时调用，只广播给房间内其他玩家（不包括自己）
-    /// </summary>
-    public async Task UpdateMemberProgress(int routeIndex)
-    {
-        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null)
-        {
-            _logger.LogWarning("[UpdateMemberProgress] 连接 {ConnId} 未在任何房间中，忽略进度更新", Context.ConnectionId);
-            return;
-        }
-
-        string playerUid;
-        lock (room)
-        {
-            var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
-            if (player == null)
-            {
-                _logger.LogWarning("[UpdateMemberProgress] 连接 {ConnId} 不在房间玩家列表中", Context.ConnectionId);
-                return;
-            }
-            playerUid = player.PlayerUid;
-        }
-
-        _logger.LogDebug("[UpdateMemberProgress] 玩家 {Uid} 路线进度更新为 {Index}，房间 {Code}", playerUid, routeIndex, roomCode);
-        await Clients.OthersInGroup(roomCode).SendAsync("MemberProgressUpdated", playerUid, routeIndex);
+        await base.OnDisconnectedAsync(exception);
     }
 
     /// <summary>
@@ -681,37 +579,50 @@ public class CoordinatorHub : Hub
     private bool ValidateWaitPointIsTeleport(string syncPointId, out string errorMessage)
     {
         errorMessage = "";
-
+        
         if (string.IsNullOrEmpty(syncPointId))
         {
             errorMessage = "等待点ID为空";
-            _logger.LogWarning("[ValidateWaitPointIsTeleport] 验证失败：等待点ID为空");
             return false;
         }
-
+        
+        // 检查是否包含 _tp_ 标识符（需求 7.1）
         if (!syncPointId.Contains("_tp_"))
         {
-            errorMessage = $"等待点 {syncPointId} 不是传送点格式（必须包含 _tp_）";
-            _logger.LogWarning("[ValidateWaitPointIsTeleport] 验证失败：{SyncPointId} 不是传送点格式", syncPointId);
+            errorMessage = $"等待点 {syncPointId} 不包含 _tp_ 标识符，不是有效的传送点";
             return false;
         }
-
-        _logger.LogDebug("[ValidateWaitPointIsTeleport] 验证通过：{SyncPointId} 是有效的传送点", syncPointId);
+        
+        // 验证格式：{routeId}_tp_{listIdx}_{wpIdx} 或 {fileName}_{routeId}_tp_{listIdx}_{wpIdx}
+        var parts = syncPointId.Split('_');
+        var tpIndex = Array.IndexOf(parts, "tp");
+        
+        if (tpIndex < 0 || tpIndex >= parts.Length - 2)
+        {
+            errorMessage = $"等待点 {syncPointId} 格式不正确，缺少索引部分";
+            return false;
+        }
+        
+        // 验证 listIdx 和 wpIdx 是否为数字
+        if (!int.TryParse(parts[tpIndex + 1], out _) || !int.TryParse(parts[tpIndex + 2], out _))
+        {
+            errorMessage = $"等待点 {syncPointId} 的索引部分不是有效数字";
+            return false;
+        }
+        
         return true;
     }
 
     /// <summary>
-    /// 获取线路的第一个传送点ID（需求 7.3 - 7.4）
-    /// 格式：{routeId}_tp_0_0
+    /// 获取指定路线的第一个传送点（需求 7.2 - 7.3）
+    /// 优先选择 _tp_0_0 格式
     /// </summary>
     /// <param name="routeId">路线ID</param>
     /// <returns>第一个传送点ID</returns>
     private string GetFirstTeleportPoint(string routeId)
     {
-        // 优先选择 _tp_0_0 格式（需求 7.3）
-        var firstTp = $"{routeId}_tp_0_0";
-        _logger.LogDebug("[GetFirstTeleportPoint] 路线 {RouteId} 的第一个传送点: {FirstTp}", routeId, firstTp);
-        return firstTp;
+        // 默认返回 _tp_0_0 格式的传送点
+        return $"{routeId}_tp_0_0";
     }
 
     /// <summary>
@@ -779,11 +690,9 @@ public class CoordinatorHub : Hub
         }
     }
 
-    // === 到达上报与广播方法（multiplayer-abnormal-wait-coordination 需求 5）===
-
     /// <summary>
-    /// 上报到达等待点（需求 5.1, 5.4）
-    /// 玩家到达统一等待点后调用，服务端记录到达并在全员到达后广播
+    /// 到达等待点上报（multiplayer-abnormal-wait-coordination 需求 5）
+    /// 正常玩家到达统一等待点时调用，服务端记录到达状态并在全员到达时广播
     /// </summary>
     /// <param name="syncPointId">同步点ID</param>
     public async Task ReportArrivalAtWaitPoint(string syncPointId)
@@ -795,10 +704,7 @@ public class CoordinatorHub : Hub
             return;
         }
 
-        _roomManager.UpdateHeartbeat(Context.ConnectionId);
-        
         string playerUid;
-        bool isAbnormal;
         lock (room)
         {
             var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
@@ -808,18 +714,21 @@ public class CoordinatorHub : Hub
                 return;
             }
             playerUid = player.PlayerUid;
-            isAbnormal = player.IsAbnormal;
+            
+            // 记录到达状态
+            _roomManager.RecordWaitPointArrival(roomCode, syncPointId, playerUid, player.IsAbnormal);
         }
         
-        _logger.LogInformation("[ReportArrivalAtWaitPoint] 玩家 {Uid} 到达等待点 {SyncPoint}，是否异常={IsAbnormal}",
-            playerUid, syncPointId, isAbnormal);
-        
-        // 记录到达
-        bool allArrived = _roomManager.RecordWaitPointArrival(roomCode, syncPointId, playerUid, isAbnormal);
+        _logger.LogInformation("[ReportArrivalAtWaitPoint] 玩家 {Uid} 到达等待点 {SyncPointId}，房间 {RoomCode}",
+            playerUid, syncPointId, roomCode);
+
+        // 检查是否全员到达
+        var allArrived = _roomManager.CheckAllWaitPointArrived(roomCode, syncPointId);
         
         if (allArrived)
         {
-            _logger.LogInformation("[ReportArrivalAtWaitPoint] 等待点 {SyncPointId} 全员到达，广播 AllPlayersArrived", syncPointId);
+            _logger.LogInformation("[ReportArrivalAtWaitPoint] 全员到达等待点 {SyncPointId}，房间 {RoomCode}",
+                syncPointId, roomCode);
             
             // 清除异常状态（需求 5.4）
             lock (room)
@@ -848,6 +757,9 @@ public class CoordinatorHub : Hub
                     room.CurrentUnifiedWaitPoint = null;
                 }
             }
+            
+            // 清除等待点到达记录，防止后续轮次数据污染
+            _roomManager.ClearWaitPointArrivals(roomCode);
             
             // 广播 AllPlayersArrived（需求 5.4）
             await Clients.Group(roomCode).SendAsync("AllPlayersArrived", syncPointId);
@@ -907,23 +819,115 @@ public class CoordinatorHub : Hub
             roomCode, playerUid);
     }
 
-
-
-    public override async Task OnDisconnectedAsync(Exception? exception)
+    /// <summary>
+    /// 接收玩家异常通知并广播给房间内其他玩家
+    /// </summary>
+    public async Task PlayerAnomalyNotify(string playerUid, int routeIndex, bool passedSyncPoint)
     {
-        var affectedCodes = _roomManager.LeaveRoom(Context.ConnectionId);
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return;
 
-        foreach (var code in affectedCodes)
+        _logger.LogInformation("[PlayerAnomalyNotify] 房间={RoomCode}, 玩家={PlayerUid}, 路线={RouteIndex}, 已过同步点={Passed}",
+            roomCode, playerUid, routeIndex, passedSyncPoint);
+
+        // 广播给房间内所有玩家（发送方也会收到，但客户端会过滤自己）
+        await Clients.Group(roomCode).SendAsync("PlayerAnomalyNotify", playerUid, routeIndex, passedSyncPoint);
+    }
+
+    /// <summary>
+    /// 接收玩家异常恢复通知并广播给房间内其他玩家
+    /// </summary>
+    public async Task PlayerAnomalyRecovered(string playerUid)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return;
+
+        _logger.LogInformation("[PlayerAnomalyRecovered] 房间={RoomCode}, 玩家={PlayerUid}", roomCode, playerUid);
+
+        // 广播给房间内所有玩家
+        await Clients.Group(roomCode).SendAsync("PlayerAnomalyRecovered", playerUid);
+    }
+
+    /// <summary>
+    /// 更新成员状态
+    /// </summary>
+    public Task MemberStatusChanged(string playerUid, string status)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return Task.CompletedTask;
+
+        lock (room)
         {
-            var updatedRoom = _roomManager.GetRoom(code);
-            var players = updatedRoom?.Players ?? [];
-            await Clients.Group(code).SendAsync("PlayerListUpdated", players);
+            var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
+            if (player != null && Enum.TryParse<PlayerStatus>(status, out var parsedStatus))
+            {
+                player.Status = parsedStatus;
+                _logger.LogDebug("[MemberStatusChanged] 玩家={PlayerUid}, 状态={Status}", playerUid, parsedStatus);
+            }
         }
 
-        _logger.LogInformation("连接 {ConnId} 断开，影响房间：{Rooms}",
-            Context.ConnectionId, string.Join(", ", affectedCodes));
+        return Task.CompletedTask;
+    }
 
-        await base.OnDisconnectedAsync(exception);
+    /// <summary>
+    /// 记录路线跳过
+    /// </summary>
+    public Task RouteSkipped(string playerUid, int routeIndex)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return Task.CompletedTask;
+
+        _logger.LogInformation("[RouteSkipped] 房间={RoomCode}, 玩家={PlayerUid}, 路线={RouteIndex}",
+            roomCode, playerUid, routeIndex);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 记录等待点到达
+    /// </summary>
+    public Task WaitPointReached(string playerUid, string syncPointId)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return Task.CompletedTask;
+
+        _logger.LogDebug("[WaitPointReached] 房间={RoomCode}, 玩家={PlayerUid}, 同步点={SyncPointId}",
+            roomCode, playerUid, syncPointId);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 更新战斗状态
+    /// </summary>
+    public Task FightingStatusChanged(string playerUid, bool isFighting)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return Task.CompletedTask;
+
+        _logger.LogDebug("[FightingStatusChanged] 玩家={PlayerUid}, 战斗中={IsFighting}", playerUid, isFighting);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 等待所有玩家到达指定同步点
+    /// </summary>
+    public async Task WaitForAllPlayers(string syncId)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return;
+
+        _logger.LogDebug("[WaitForAllPlayers] 房间={RoomCode}, 同步点={SyncId}", roomCode, syncId);
+
+        // 记录当前连接已到达
+        var allArrived = _roomManager.RecordArrival(roomCode, syncId, Context.ConnectionId, 0);
+
+        if (allArrived)
+        {
+            _logger.LogInformation("[WaitForAllPlayers] 所有玩家已到达: 房间={RoomCode}, 同步点={SyncId}", roomCode, syncId);
+            await Clients.Group(roomCode).SendAsync("AllArrived", syncId);
+        }
     }
 
     /// <summary>计算多份路线清单的差异文件名列表</summary>
@@ -954,321 +958,5 @@ public class CoordinatorHub : Hub
         return [.. diffFiles];
     }
 
-    // === 多异常玩家统一等待点计算方法 ===
 
-    /// <summary>
-    /// 计算最终统一等待点（选择路线索引最大的等待点）
-    /// </summary>
-    /// <param name="room">房间实例</param>
-    /// <param name="newWaitPoint">新上报的等待点</param>
-    /// <param name="newRouteId">新上报的路线ID</param>
-    /// <param name="newPlayerUid">新上报的玩家UID</param>
-    /// <returns>最终统一等待点ID</returns>
-    private string CalculateFinalUnifiedWaitPoint(Room room, string newWaitPoint, string newRouteId, string newPlayerUid)
-    {
-        // 获取新等待点的路线索引
-        int newRouteIndex = ExtractRouteIndexFromSyncPoint(newWaitPoint);
-        
-        // 如果已有统一等待点，比较路线索引
-        if (room.CurrentUnifiedWaitPoint != null)
-        {
-            int currentRouteIndex = ExtractRouteIndexFromSyncPoint(room.CurrentUnifiedWaitPoint.SyncPointId);
-            
-            if (newRouteIndex > currentRouteIndex)
-            {
-                // 新等待点更靠后，使用新等待点
-                _logger.LogInformation("[CalculateFinalUnifiedWaitPoint] 新等待点 {NewPoint}（线路{NewIndex}）比当前 {CurrentPoint}（线路{CurrentIndex}）更靠后，更新统一等待点",
-                    newWaitPoint, newRouteIndex, room.CurrentUnifiedWaitPoint.SyncPointId, currentRouteIndex);
-                return newWaitPoint;
-            }
-            else
-            {
-                // 当前等待点更靠后或相同，保持当前等待点
-                _logger.LogInformation("[CalculateFinalUnifiedWaitPoint] 当前等待点 {CurrentPoint}（线路{CurrentIndex}）比新等待点 {NewPoint}（线路{NewIndex}）更靠后或相同，保持当前",
-                    room.CurrentUnifiedWaitPoint.SyncPointId, currentRouteIndex, newWaitPoint, newRouteIndex);
-                return room.CurrentUnifiedWaitPoint.SyncPointId;
-            }
-        }
-        
-        // 没有现有统一等待点，使用新等待点
-        _logger.LogInformation("[CalculateFinalUnifiedWaitPoint] 首次上报，使用等待点 {NewPoint}（线路{NewIndex}）", newWaitPoint, newRouteIndex);
-        return newWaitPoint;
-    }
-
-    /// <summary>
-    /// 从同步点ID中提取路线索引
-    /// 格式：{routeId}_tp_{listIdx}_{wpIdx} 或 {fileName}_{routeId}_tp_{listIdx}_{wpIdx}
-    /// </summary>
-    private int ExtractRouteIndexFromSyncPoint(string syncPointId)
-    {
-        if (string.IsNullOrEmpty(syncPointId)) return -1;
-        
-        // 查找 _tp_ 标记
-        int tpIndex = syncPointId.IndexOf("_tp_");
-        if (tpIndex < 0) return -1;
-        
-        // _tp_ 前面的部分是文件名
-        // 格式可能是：
-        // - "2_tp_0_0" (纯数字)
-        // - "fileName_2_tp_0_0" (文件名_数字)
-        // - "D023须弥降诸魔山神像.json_tp_0_0" (文件名包含 D+数字 前缀)
-        string beforeTp = syncPointId.Substring(0, tpIndex);
-        
-        // 尝试解析最后一个下划线分隔的部分作为数字
-        var parts = beforeTp.Split('_');
-        for (int i = parts.Length - 1; i >= 0; i--)
-        {
-            if (int.TryParse(parts[i], out int routeIndex))
-            {
-                return routeIndex;
-            }
-        }
-        
-        // 如果上述方法失败，尝试从文件名开头提取 D+数字 格式
-        // 例如 "D023须弥降诸魔山神像.json" -> 23
-        var fileName = beforeTp;
-        if (fileName.StartsWith("D") && fileName.Length > 1)
-        {
-            // 提取 D 后面的数字
-            int digitStart = 1;
-            int digitEnd = digitStart;
-            while (digitEnd < fileName.Length && char.IsDigit(fileName[digitEnd]))
-            {
-                digitEnd++;
-            }
-            if (digitEnd > digitStart)
-            {
-                var numberStr = fileName.Substring(digitStart, digitEnd - digitStart);
-                if (int.TryParse(numberStr, out int routeIndexFromFileName))
-                {
-                    _logger.LogDebug("[ExtractRouteIndexFromSyncPoint] 从文件名前缀提取路线索引: {SyncPointId} -> {RouteIndex}", 
-                        syncPointId, routeIndexFromFileName);
-                    return routeIndexFromFileName;
-                }
-            }
-        }
-        
-        return -1;
-    }
-
-    /// <summary>
-    /// 从同步点ID中提取路线ID
-    /// </summary>
-    private string ExtractRouteIdFromSyncPoint(string syncPointId)
-    {
-        if (string.IsNullOrEmpty(syncPointId)) return "";
-        
-        int tpIndex = syncPointId.IndexOf("_tp_");
-        if (tpIndex < 0) return "";
-        
-        string beforeTp = syncPointId.Substring(0, tpIndex);
-        var parts = beforeTp.Split('_');
-        
-        if (parts.Length > 0)
-        {
-            // 返回最后一个部分（通常是路线索引）
-            return parts[^1];
-        }
-        
-        return "";
-    }
-
-    /// <summary>
-    /// 计算所有在线玩家的预期等待人数（正常玩家 + 异常玩家）
-    /// </summary>
-    private int CalculateExpectedWaitCountAll(Room room)
-    {
-        lock (room)
-        {
-            int count = 0;
-            foreach (var player in room.Players)
-            {
-                // 跳过离线玩家（超过2分钟无心跳）
-                if (DateTime.UtcNow - player.LastHeartbeat > TimeSpan.FromMinutes(2))
-                {
-                    continue;
-                }
-                count++;
-            }
-            
-            int expectedCount = Math.Max(1, count);
-            _logger.LogInformation("[CalculateExpectedWaitCountAll] 在线玩家总数={Total}", expectedCount);
-            return expectedCount;
-        }
-    }
-
-    // ========== 异常中断重对齐机制（multiplayer-abort-and-realign spec）==========
-
-    /// <summary>
-    /// 检测异常状态并触发重对齐
-    /// 在心跳处理中调用
-    /// </summary>
-    private async Task CheckAbnormalAndTriggerRealignAsync(Room room, string roomCode)
-    {
-        List<PlayerInfo> abnormalPlayers;
-        List<PlayerInfo> normalPlayers;
-        RealignProcess? processToBroadcast = null;
-        
-        lock (room)
-        {
-            // 如果已有重对齐流程进行中，不重复触发
-            if (room.CurrentRealignProcess != null && !room.CurrentRealignProcess.IsCompleted)
-            {
-                _logger.LogDebug("[CheckAbnormalAndTriggerRealign] 房间{RoomCode}已有重对齐流程进行中，跳过", roomCode);
-                return;
-            }
-        
-            // 获取异常玩家列表（isAbnormal=true 或 心跳超时）
-            abnormalPlayers = room.Players
-                .Where(p => p.IsAbnormal || (DateTime.UtcNow - p.LastHeartbeat) > TimeSpan.FromSeconds(30))
-                .Where(p => p.CurrentRouteIndex >= 0) // 只计算已上报进度的玩家
-                .ToList();
-            
-            if (abnormalPlayers.Count == 0)
-                return;
-            
-            // 获取正常玩家列表
-            normalPlayers = room.Players
-                .Where(p => !p.IsAbnormal && (DateTime.UtcNow - p.LastHeartbeat) <= TimeSpan.FromSeconds(30))
-                .Where(p => p.CurrentRouteIndex >= 0)
-                .ToList();
-        
-            // 获取异常玩家中路线索引最小值（最落后的玩家所在的线路）
-            var minRouteIndex = abnormalPlayers
-                .Min(p => p.CurrentRouteIndex);
-        
-            // 如果所有异常玩家的路线都比正常玩家大，则使用正常玩家的路线
-            if (normalPlayers.Count > 0)
-            {
-                var normalMinRouteIndex = normalPlayers.Min(p => p.CurrentRouteIndex);
-                minRouteIndex = Math.Min(minRouteIndex, normalMinRouteIndex);
-            }
-        
-            // 创建重对齐流程
-            var process = new RealignProcess
-            {
-                TargetRouteIndex = minRouteIndex,
-                AbnormalPlayerUids = abnormalPlayers.Select(p => p.PlayerUid).ToList(),
-                Reason = $"检测到异常玩家：{string.Join(", ", abnormalPlayers.Select(p => p.PlayerName))}",
-                BroadcastTime = DateTime.UtcNow
-            };
-            
-            room.CurrentRealignProcess = process;
-            processToBroadcast = process;
-        }
-        
-        if (processToBroadcast == null) return;
-        
-        _logger.LogInformation("[CheckAbnormalAndTriggerRealign] 房间{RoomCode}触发重对齐：目标路线={Target}，异常玩家=[{Abnormal}]",
-            roomCode, processToBroadcast.TargetRouteIndex, string.Join(", ", processToBroadcast.AbnormalPlayerUids));
-        
-        // lock 外 await，避免死锁
-        // 广播中断指令
-        await Clients.Group(roomCode).SendAsync("AbortAndRealign",
-            processToBroadcast.TargetRouteIndex, processToBroadcast.AbnormalPlayerUids, processToBroadcast.Reason);
-        
-        _logger.LogInformation("[CheckAbnormalAndTriggerRealign] 已广播 AbortAndRealign: 房间={RoomCode}, 目标路线={Target}",
-            roomCode, processToBroadcast.TargetRouteIndex);
-    }
-
-    /// <summary>
-    /// 客户端上报重对齐就绪状态
-    /// </summary>
-    public async Task RealignReady(int currentRouteIndex)
-    {
-        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null)
-        {
-            _logger.LogWarning("[RealignReady] 连接 {ConnId} 未在任何房间中", Context.ConnectionId);
-            return;
-        }
-        
-        string? playerUid;
-        lock (room)
-        {
-            var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
-            if (player == null)
-            {
-                _logger.LogWarning("[RealignReady] 连接 {ConnId} 不在房间玩家列表中", Context.ConnectionId);
-                return;
-            }
-            playerUid = player.PlayerUid;
-        }
-        
-        var process = room.CurrentRealignProcess;
-        if (process == null || process.IsCompleted)
-        {
-            _logger.LogWarning("[RealignReady] 房间{RoomCode}没有进行中的重对齐流程", roomCode);
-            return;
-        }
-        
-        lock (room)
-        {
-            process.ReadyPlayers.Add(playerUid!);
-            _logger.LogInformation("[RealignReady] 玩家{Player}已就绪，当前就绪人数：{Ready}/{Total}",
-                playerUid, process.ReadyPlayers.Count, room.Players.Count(p => (DateTime.UtcNow - p.LastHeartbeat) <= TimeSpan.FromSeconds(30)));
-            
-            // 检查是否所有在线玩家都已就绪
-            var onlinePlayers = room.Players
-                .Where(p => (DateTime.UtcNow - p.LastHeartbeat) <= TimeSpan.FromSeconds(30))
-                .ToList();
-            
-            if (onlinePlayers.All(p => process.ReadyPlayers.Contains(p.PlayerUid)))
-            {
-                // 所有人都已就绪，广播 StartRoute
-                process.IsCompleted = true;
-                _logger.LogInformation("[RealignReady] 房间{RoomCode}全员就绪，广播 StartRoute，目标路线={Target}",
-                    roomCode, process.TargetRouteIndex);
-                
-                // lock 外 await，避免死锁
-                _ = Task.Run(async () =>
-                {
-                    await Clients.Group(roomCode).SendAsync("StartRoute", process.TargetRouteIndex);
-                });
-            }
-        }
-    }
-
-    /// <summary>
-    /// 重对齐超时检查（定时任务，每5秒执行一次）
-    /// 通过外部定时器调用此方法
-    /// </summary>
-    public void CheckRealignTimeout()
-    {
-        foreach (var (room, roomCode) in _roomManager.GetAllRoomsWithCodes())
-        {
-            var process = room.CurrentRealignProcess;
-            if (process == null || process.IsCompleted)
-                continue;
-            
-            // 检查是否超时（30秒）
-            if ((DateTime.UtcNow - process.BroadcastTime).TotalSeconds > 30)
-            {
-                lock (room)
-                {
-                    // 标记未响应的玩家为离线
-                    var onlinePlayers = room.Players
-                        .Where(p => (DateTime.UtcNow - p.LastHeartbeat) <= TimeSpan.FromSeconds(30))
-                        .ToList();
-                    
-                    var notReadyPlayers = onlinePlayers
-                        .Where(p => !process.ReadyPlayers.Contains(p.PlayerUid))
-                        .ToList();
-                    
-                    foreach (var player in notReadyPlayers)
-                    {
-                        player.IsAbnormal = true; // 标记为异常
-                        _logger.LogWarning("[CheckRealignTimeout] 玩家{Player}未响应重对齐，标记为异常", player.PlayerName);
-                    }
-                    
-                    // 广播 StartRoute
-                    process.IsCompleted = true;
-                    _logger.LogWarning("[CheckRealignTimeout] 房间{RoomCode}重对齐超时，广播 StartRoute，目标路线={Target}",
-                        roomCode, process.TargetRouteIndex);
-                    
-                    _ = Clients.Group(roomCode).SendAsync("StartRoute", process.TargetRouteIndex);
-                }
-            }
-        }
-    }
 }

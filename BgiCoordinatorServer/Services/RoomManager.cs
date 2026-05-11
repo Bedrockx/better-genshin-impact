@@ -526,6 +526,45 @@ public class RoomManager
         }
     }
 
+    /// <summary>
+    /// 检查等待点是否全员到达（multiplayer-abnormal-wait-coordination 需求 5.2）
+    /// </summary>
+    /// <param name="roomCode">房间码</param>
+    /// <param name="syncPointId">同步点ID</param>
+    /// <returns>是否全员到达</returns>
+    public bool CheckAllWaitPointArrived(string roomCode, string syncPointId)
+    {
+        if (!_rooms.TryGetValue(roomCode, out var room))
+            return false;
+
+        lock (room)
+        {
+            var unifiedWaitPoint = room.CurrentUnifiedWaitPoint;
+            if (unifiedWaitPoint == null || unifiedWaitPoint.SyncPointId != syncPointId)
+                return false;
+
+            int arrived = room.WaitPointArrivals.TryGetValue(syncPointId, out var arrivals) ? arrivals.Count : 0;
+            return arrived >= unifiedWaitPoint.ExpectedWaitCount;
+        }
+    }
+
+    /// <summary>
+    /// 清除等待点到达记录（multiplayer-abnormal-wait-coordination 需求 5.4）
+    /// 全员到达后调用，清理 WaitPointArrivals 防止后续轮次数据污染
+    /// </summary>
+    /// <param name="roomCode">房间码</param>
+    public void ClearWaitPointArrivals(string roomCode)
+    {
+        if (!_rooms.TryGetValue(roomCode, out var room))
+            return;
+
+        lock (room)
+        {
+            room.WaitPointArrivals.Clear();
+            _logger?.LogDebug("[ClearWaitPointArrivals] 已清除房间 {RoomCode} 的等待点到达记录", roomCode);
+        }
+    }
+
     /// <summary>移除超时玩家，返回受影响的房间码列表</summary>
     public List<string> RemoveDeadPlayers(TimeSpan timeout)
     {

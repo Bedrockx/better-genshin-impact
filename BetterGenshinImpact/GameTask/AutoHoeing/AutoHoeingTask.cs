@@ -495,10 +495,7 @@ public class AutoHoeingTask : ISoloTask
             var barrier = new SyncBarrier(client, _config.SyncTimeoutSeconds);
             var resolver = new SyncPointResolver();
             _multiplayerCoordinator = new MultiplayerCoordinator(client, barrier, resolver, _config.MinPlayersToSync, _config.SyncTimeoutSeconds);
-            
-            // 初始化线路同步协调器和异常状态管理器（需求 10, 11）
-            _multiplayerCoordinator.InitializeCoordinators(_config);
-            
+
             _logger.LogInformation("[联机] MultiplayerCoordinator 初始化完成，超时={Timeout}s，最低人数={Min}", _config.SyncTimeoutSeconds, _config.MinPlayersToSync);
 
             // 联机模式：设置战斗超时覆盖值（不修改原始配置，通过 PathingConditionConfig 传递给 AutoFightHandler）
@@ -1543,10 +1540,7 @@ public class AutoHoeingTask : ISoloTask
             var resolver = new SyncPointResolver();
             _multiplayerCoordinator = new MultiplayerCoordinator(client, barrier, resolver,
                 _config.MinPlayersToSync, _config.SyncTimeoutSeconds);
-            
-            // 初始化线路同步协调器和异常状态管理器（需求 10, 11）
-            _multiplayerCoordinator.InitializeCoordinators(_config);
-            
+
             _multiplayerCoordinator.OnDegraded += reason =>
                 _logger.LogWarning("[联机] 已降级为单机模式，原因：{Reason}", reason);
             // 连续超时退出处理（需求 5）— 多世界模式每轮重建时也需要注册
@@ -2151,33 +2145,27 @@ public class AutoHoeingTask : ISoloTask
                 {
                     var syncDecision = await _multiplayerCoordinator.RouteSyncCoordinator.CheckSyncAtRouteStart(currentRouteIndex, _ct);
                     
-                    if (syncDecision.Action == RouteSyncAction.SkipAndCatchUp)
+                    if (syncDecision == RouteSyncDecision.SkipToTarget)
                     {
                         // 正常玩家落后，需要追赶异常玩家
-                        _logger.LogInformation("[联机] 线路同步检查：当前路线{Current}落后于最大路线{Target}，需要跳过{Skip}条路线追赶",
-                            currentRouteIndex, syncDecision.TargetRouteIndex, syncDecision.SkipRouteCount);
+                        _logger.LogInformation("[联机] 线路同步检查：需要跳到目标线路追赶");
                         
                         // 刷新进度缓存
                         _multiplayerCoordinator.RouteSyncCoordinator.RefreshCache();
                         
-                        // 广播跳过进度（让异常玩家知道我们在追赶）
-                        await _coordinatorClientRef!.SendMemberProgressAsync(syncDecision.TargetRouteIndex);
-                        
-                        // 设置跳过下一个同步点标志（因为我们将要执行路线跳过）
-                        _multiplayerCoordinator.SetSkipNextSyncPoint();
-                        
-                        // 上报 Rejoining 状态，触发路线跳过流程
+                        // 上报 Rejoining 状态，触发路线跳过流程追赶
                         _logger.LogInformation("[联机] 上报 Rejoining 状态，触发路线跳过流程追赶");
                         await _coordinatorClientRef.ReportMemberStatusAsync(MemberStatus.Rejoining);
                         
                         // 继续执行当前路线，在路线执行时会检测到 Rejoining 状态并触发跳过
                     }
-                    else if (syncDecision.Action == RouteSyncAction.ProceedAndWait)
+                    else if (syncDecision == RouteSyncDecision.Abort)
                     {
-                        // 当前玩家领先（异常玩家），继续执行并在同步点等待
-                        _logger.LogInformation("[联机] 线路同步检查：当前玩家领先，继续执行并在同步点等待");
+                        // 协调失败，需要结束锄地
+                        _logger.LogWarning("[联机] 线路同步检查：协调失败，需要结束锄地");
+                        return;
                     }
-                    // RouteSyncAction.Proceed: 正常执行
+                    // RouteSyncDecision.Proceed: 正常执行
                 }
                 catch (Exception ex)
                 {
