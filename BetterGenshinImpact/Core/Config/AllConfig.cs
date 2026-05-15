@@ -25,6 +25,7 @@ using BetterGenshinImpact.GameTask.GetGridIcons;
 using BetterGenshinImpact.GameTask.AutoEat;
 using BetterGenshinImpact.GameTask.AutoLeyLineOutcrop;
 using BetterGenshinImpact.GameTask.AutoCook;
+using BetterGenshinImpact.GameTask.AutoFriendship;
 using BetterGenshinImpact.GameTask.MapMask;
 using BetterGenshinImpact.GameTask.SkillCd;
 using BetterGenshinImpact.GameTask.UseRedeemCode;
@@ -226,6 +227,11 @@ public partial class AllConfig : ObservableObject
     public AutoLeyLineOutcropConfig AutoLeyLineOutcropConfig { get; set; } = new();
 
     public AutoCookConfig AutoCookConfig { get; set; } = new();
+
+    /// <summary>
+    /// 好感任务自动完成配置
+    /// </summary>
+    public AutoFriendshipConfig AutoFriendshipConfig { get; set; } = new();
     
     /// <summary>
     ///   地图遮罩
@@ -332,6 +338,7 @@ public partial class AllConfig : ObservableObject
         AutoEatConfig.PropertyChanged += OnAnyPropertyChanged;
         AutoLeyLineOutcropConfig.PropertyChanged += OnAnyPropertyChanged;
         AutoCookConfig.PropertyChanged += OnAnyPropertyChanged;
+        AutoFriendshipConfig.PropertyChanged += OnAnyPropertyChanged;
         MapMaskConfig.PropertyChanged += OnAnyPropertyChanged;
         AutoMusicGameConfig.PropertyChanged += OnAnyPropertyChanged;
         TpConfig.PropertyChanged += OnAnyPropertyChanged;

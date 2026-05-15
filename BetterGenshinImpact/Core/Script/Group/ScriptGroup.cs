@@ -3,7 +3,6 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using BetterGenshinImpact.Service;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Newtonsoft.Json;
 using JsonSerializer = System.Text.Json.JsonSerializer;
 namespace BetterGenshinImpact.Core.Script.Group;
 
@@ -48,7 +47,7 @@ public partial class ScriptGroup : ObservableObject
 
     public static ScriptGroup FromJson(string json)
     {
-        var group = JsonConvert.DeserializeObject<ScriptGroup>(json) ?? throw new Exception("解析配置组JSON配置失败");
+        var group = JsonSerializer.Deserialize<ScriptGroup>(json, ConfigService.JsonOptions) ?? throw new Exception("解析配置组JSON配置失败");
         ResetGroupInfo(group);
         return group;
     }

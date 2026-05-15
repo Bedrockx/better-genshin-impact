@@ -50,6 +50,11 @@ public class AutoHoeingTask : ISoloTask
     /// </summary>
     private readonly Dictionary<string, object?>? _settingsOverride;
 
+    /// <summary>
+    /// 配置组名称
+    /// </summary>
+    private readonly string? _groupName;
+
     // 数据目录（路线文件、怪物信息、运行记录等）
     private string _dataDir = "";
 
@@ -105,10 +110,11 @@ public class AutoHoeingTask : ISoloTask
     public static volatile bool SkipPartyWait = false; // 房主点击"立即开始"时设为 true
     public static volatile bool IsWaitingForParty = false; // 是否正在等待组队（进入F2页面）
 
-    public AutoHoeingTask(PathingPartyConfig? partyConfig = null, Dictionary<string, object?>? settings = null)
+    public AutoHoeingTask(PathingPartyConfig? partyConfig = null, Dictionary<string, object?>? settings = null, string? groupName = null)
     {
         _partyConfig = partyConfig;
         _settingsOverride = settings;
+        _groupName = groupName;
     }
 
     public async Task Start(CancellationToken ct)
@@ -162,7 +168,14 @@ public class AutoHoeingTask : ISoloTask
             return;
         }
 
-        _logger.LogInformation("锄地一条龙任务启动，数据目录: {Dir}", _dataDir);
+        if (!string.IsNullOrEmpty(_groupName))
+        {
+            _logger.LogInformation("锄地一条龙任务启动 [配置组: {Group}]，数据目录: {Dir}", _groupName, _dataDir);
+        }
+        else
+        {
+            _logger.LogInformation("锄地一条龙任务启动，数据目录: {Dir}", _dataDir);
+        }
 
         try
         {
@@ -2608,10 +2621,45 @@ public class AutoHoeingTask : ISoloTask
         {
             if (_settingsOverride.TryGetValue(key, out var val) && val != null)
             {
-                try { return (T)Convert.ChangeType(val, typeof(T)); }
+                try
+                {
+                    // 处理 JsonElement 类型（System.Text.Json 反序列化 Dictionary<string, object?> 时的默认类型）
+                    if (val is JsonElement jsonElement)
+                    {
+                        val = ConvertJsonElement(jsonElement);
+                        if (val == null) return fallback;
+                    }
+
+                    // 处理 double -> int 转换时的 NaN/Infinity 和精度问题
+                    if (typeof(T) == typeof(int) && val is double d)
+                    {
+                        // 处理 NaN/Infinity：直接返回 fallback，不做类型转换
+                        if (double.IsNaN(d) || double.IsInfinity(d))
+                            return fallback;
+                        // 处理浮点数精度问题：如果值接近整数，进行取整
+                        if (Math.Abs(d - Math.Round(d)) < 1e-9)
+                            return (T)(object)Convert.ToInt32(Math.Round(d));
+                        return (T)(object)Convert.ToInt32(d);
+                    }
+                    return (T)Convert.ChangeType(val, typeof(T));
+                }
                 catch { return fallback; }
             }
             return fallback;
+        }
+
+        // 将 JsonElement 转换为实际的值类型
+        static object? ConvertJsonElement(JsonElement element)
+        {
+            return element.ValueKind switch
+            {
+                JsonValueKind.String => element.GetString(),
+                JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                _ => element.GetRawText()
+            };
         }
 
         // groupIndex: 下拉框值是"路径组一"~"路径组十"，需要转换为数字1-10

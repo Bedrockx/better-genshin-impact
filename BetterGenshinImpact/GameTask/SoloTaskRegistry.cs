@@ -1,4 +1,5 @@
 using BetterGenshinImpact.Core.Config;
+using BetterGenshinImpact.GameTask.AutoFriendship;
 using BetterGenshinImpact.GameTask.AutoHoeing;
 using System.Collections.Generic;
 
@@ -14,18 +15,20 @@ public static class SoloTaskRegistry
     /// </summary>
     public static readonly List<string> AvailableTasks =
     [
-        "锄地一条龙"
+        "锄地一条龙",
+        "好感任务自动完成"
     ];
 
     /// <summary>
     /// 根据名称创建独立任务实例
     /// </summary>
     public static ISoloTask? CreateTask(string name, PathingPartyConfig? partyConfig,
-        Dictionary<string, object?>? settings = null)
+        Dictionary<string, object?>? settings = null, string? groupName = null)
     {
         return name switch
         {
-            "锄地一条龙" => new AutoHoeingTask(partyConfig, settings),
+            "锄地一条龙" => new AutoHoeingTask(partyConfig, settings, groupName),
+            "好感任务自动完成" => new AutoFriendshipTask(TaskContext.Instance().Config.AutoFriendshipConfig, partyConfig, settings, partyConfig?.AutoFightConfig),
             _ => null
         };
     }
@@ -38,6 +41,7 @@ public static class SoloTaskRegistry
         return taskName switch
         {
             "锄地一条龙" => AutoHoeingTask.GetSettingDefinitions(),
+            "好感任务自动完成" => AutoFriendshipTask.GetSettingDefinitions(),
             _ => new()
         };
     }

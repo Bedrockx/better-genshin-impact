@@ -1938,10 +1938,11 @@ public partial class ScriptControlViewModel : ViewModel
 
             if (setting.Type == "select" && setting.Options != null)
             {
+                var currentStr = currentValue?.ToString() ?? "";
                 var combo = new System.Windows.Controls.ComboBox
                 {
                     ItemsSource = setting.Options,
-                    SelectedItem = currentValue?.ToString() ?? "",
+                    SelectedItem = currentStr,
                     Margin = new Thickness(0, 0, 0, 4)
                 };
                 stackPanel.Children.Add(combo);
@@ -1956,6 +1957,33 @@ public partial class ScriptControlViewModel : ViewModel
                 };
                 stackPanel.Children.Add(check);
                 controls[setting.Name] = check;
+            }
+            else if (setting.Type == "number")
+            {
+                var numberBox = new Wpf.Ui.Controls.NumberBox
+                {
+                    Minimum = 0,
+                    Maximum = 999999,
+                    SpinButtonPlacementMode = Wpf.Ui.Controls.NumberBoxSpinButtonPlacementMode.Inline,
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+
+                // 尝试从当前值设置（使用 DefaultValue 作为 fallback）
+                double parsedValue;
+                if (currentValue is double d2)
+                    parsedValue = d2;
+                else if (currentValue is int i2)
+                    parsedValue = i2;
+                else if (currentValue is long l2)
+                    parsedValue = l2;
+                else if (double.TryParse(currentValue?.ToString(), out var parsed2))
+                    parsedValue = parsed2;
+                else
+                    parsedValue = Convert.ToDouble(setting.DefaultValue);
+                numberBox.Value = parsedValue;
+
+                stackPanel.Children.Add(numberBox);
+                controls[setting.Name] = numberBox;
             }
             else
             {
@@ -1998,9 +2026,8 @@ public partial class ScriptControlViewModel : ViewModel
                         {
                             System.Windows.Controls.ComboBox combo => combo.SelectedItem?.ToString(),
                             System.Windows.Controls.CheckBox check => check.IsChecked ?? false,
-                            TextBox tb => setting.Type == "number"
-                                ? double.TryParse(tb.Text, out var n) ? (object)n : tb.Text
-                                : tb.Text,
+                            Wpf.Ui.Controls.NumberBox nb => setting.Type == "number" ? nb.Value : nb.Text,
+                            TextBox tb => tb.Text,
                             _ => null
                         };
 

@@ -295,13 +295,15 @@ public class AutoFightTask : ISoloTask
         _finishDetectConfig = new TaskFightFinishDetectConfig(_taskParam.FinishDetectConfig);
         
     }
-    public CombatScenes GetCombatScenesWithRetry()
+    public CombatScenes GetCombatScenesWithRetry(CancellationToken ct = default)
     {
         const int maxRetries = 5;
         var retryDelayMs = 1000; // 可选：重试间隔，单位毫秒
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
+            ct.ThrowIfCancellationRequested();
+            
             using var ra = CaptureToRectArea();
             var combatScenes = new CombatScenes().InitializeTeam(ra);
             if (combatScenes.CheckTeamInitialized())
@@ -311,10 +313,13 @@ public class AutoFightTask : ISoloTask
         
             if (attempt < maxRetries)
             {
-                Thread.Sleep(retryDelayMs); // 可选：延迟再试
+                Thread.Sleep(retryDelayMs);
+                ct.ThrowIfCancellationRequested();
             }
         }
 
+        ct.ThrowIfCancellationRequested();
+        
         if (!Config.CustomAvatarConfigOut.CustomAvatarEnabled) throw new Exception("识别队伍角色失败（已重试 5 次）");
         
         return new CombatScenes().InitializeTeamForced(Config.CustomAvatarConfigOut.CustomAvatarForceUseList);
@@ -338,7 +343,7 @@ public class AutoFightTask : ISoloTask
 
         LogScreenResolution();
         
-        var combatScenes = GetCombatScenesWithRetry();
+        var combatScenes = GetCombatScenesWithRetry(ct);
         
         if (_taskParam.AutoCombatEq && PathingConditionConfig.CombatScenesGoBackUp is not null && 
             PathingConditionConfig.CombatScenesGoBackUp.Avatars.Select(avatar => avatar.Name).ToArray()
@@ -977,10 +982,25 @@ public class AutoFightTask : ISoloTask
                             {
                                 Task.Run(() =>
                                 {
-                                    if (CheckFightFinish(0, detectDelayTime, cts2.Token, avatar).Result)
+                                    try
                                     {
-                                        FightEndTotoly = true;
-                                        fightEndFlag = true;
+                                        if (CheckFightFinish(0, detectDelayTime, cts2.Token, avatar).Result)
+                                        {
+                                            FightEndTotoly = true;
+                                            fightEndFlag = true;
+                                        }
+                                    }
+                                    catch (ObjectDisposedException)
+                                    {
+                                        // Token已释放，忽略
+                                    }
+                                    catch (OperationCanceledException)
+                                    {
+                                        // 任务已取消，忽略
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Logger.LogWarning(ex, "异步战斗结束检测异常");
                                     }
                                 });
                                 if(FightEndTotoly)break;
@@ -999,12 +1019,19 @@ public class AutoFightTask : ISoloTask
                         
                         Task.Run(() =>
                         {
-                            if (_taskParam.FinishDetectConfig.RotationMode &&
-                                _taskParam.FinishDetectConfig.RotateFindEnemyEnabled &&
-                                CheckFightFinish(0, detectDelayTime, cts2.Token, avatar).Result)
+                            try
                             {
-                                FightEndTotoly = true;
-                                fightEndFlag = true;
+                                if (_taskParam.FinishDetectConfig.RotationMode &&
+                                    _taskParam.FinishDetectConfig.RotateFindEnemyEnabled &&
+                                    CheckFightFinish(0, detectDelayTime, cts2.Token, avatar).Result||FightEndTotoly)
+                                {
+                                    FightEndTotoly = true;
+                                    fightEndFlag = true;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.LogWarning(ex, "异步战斗结束检测异常");
                             }
                         });
 
@@ -1023,10 +1050,25 @@ public class AutoFightTask : ISoloTask
                             {
                                 Task.Run(() =>
                                 {
-                                    if (CheckFightFinish(0, detectDelayTime, cts2.Token, avatar).Result)
+                                    try
                                     {
-                                        FightEndTotoly = true;
-                                        fightEndFlag = true;
+                                        if (CheckFightFinish(0, detectDelayTime, cts2.Token, avatar).Result)
+                                        {
+                                            FightEndTotoly = true;
+                                            fightEndFlag = true;
+                                        }
+                                    }
+                                    catch (ObjectDisposedException)
+                                    {
+                                        // Token已释放，忽略
+                                    }
+                                    catch (OperationCanceledException)
+                                    {
+                                        // 任务已取消，忽略
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Logger.LogWarning(ex, "异步战斗结束检测异常");
                                     }
                                 });
                                 if(FightEndTotoly)break;
@@ -1069,10 +1111,25 @@ public class AutoFightTask : ISoloTask
                                 {
                                     Task.Run(() =>
                                     {
-                                        if (CheckFightFinish(0, detectDelayTime, cts2.Token, avatar).Result)
+                                        try
                                         {
-                                            FightEndTotoly = true;
-                                            fightEndFlag = true;
+                                            if (CheckFightFinish(0, detectDelayTime, cts2.Token, avatar).Result)
+                                            {
+                                                FightEndTotoly = true;
+                                                fightEndFlag = true;
+                                            }
+                                        }
+                                        catch (ObjectDisposedException)
+                                        {
+                                            // Token已释放，忽略
+                                        }
+                                        catch (OperationCanceledException)
+                                        {
+                                            // 任务已取消，忽略
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Logger.LogWarning(ex, "异步战斗结束检测异常");
                                         }
                                     });
                                     if(FightEndTotoly)break;
@@ -1876,7 +1933,7 @@ public class AutoFightTask : ISoloTask
             }
 
             // 主检测循环
-            while (!FightEndFlag && !ct.IsCancellationRequested)
+            while (!FightEndFlag && !ct.IsCancellationRequested&&!FightEndTotoly)
             {
                 ct.ThrowIfCancellationRequested();
 

@@ -6,6 +6,8 @@ using BetterGenshinImpact.GameTask.AutoArtifactSalvage;
 using BetterGenshinImpact.GameTask.AutoCook;
 using BetterGenshinImpact.GameTask.AutoDomain;
 using BetterGenshinImpact.GameTask.AutoFight;
+using BetterGenshinImpact.GameTask.AutoFriendship;
+using BetterGenshinImpact.GameTask.AutoFriendship.Model;
 using BetterGenshinImpact.GameTask.AutoHoeing;
 using BetterGenshinImpact.GameTask.AutoFishing;
 using BetterGenshinImpact.GameTask.AutoLeyLineOutcrop;
@@ -42,6 +44,9 @@ using Windows.System;
 using Wpf.Ui;
 using Wpf.Ui.Violeta.Controls;
 using TextBox = Wpf.Ui.Controls.TextBox;
+using BetterGenshinImpact.GameTask.AutoFriendship;
+
+
 
 namespace BetterGenshinImpact.ViewModel.Pages;
 
@@ -172,6 +177,13 @@ public partial class TaskSettingsPageViewModel : ViewModel
                 .GetCustomAttribute<DescriptionAttribute>()?
                 .Description ?? e.ToString());
 
+    [ObservableProperty]
+    private FrozenDictionary<Enum, string> _enemyTypeDict = Enum.GetValues(typeof(EnemyType))
+        .Cast<EnemyType>()
+        .ToFrozenDictionary(
+            e => (Enum)e,
+            e => AutoFriendshipConfig.GetEnemyTypeDisplayName(e));
+
     private bool saveScreenshotOnKeyTick;
     private bool _suppressScanDropsAfterRewardPrompt;
     private int _scanDropsAfterRewardPromptVersion;
@@ -222,6 +234,12 @@ public partial class TaskSettingsPageViewModel : ViewModel
 
     [ObservableProperty]
     private string _switchAutoHoeingButtonText = "启动";
+
+    [ObservableProperty]
+    private bool _switchAutoFriendshipEnabled;
+
+    [ObservableProperty]
+    private string _switchAutoFriendshipButtonText = "启动";
 
     [ObservableProperty]
     private bool _hasRouteDiff;
@@ -300,6 +318,12 @@ public partial class TaskSettingsPageViewModel : ViewModel
     /// </summary>
     [ObservableProperty]
     private bool _autoHoeingVisible = true;
+
+    /// <summary>
+    /// 好感任务自动完成是否可见
+    /// </summary>
+    [ObservableProperty]
+    private bool _autoFriendshipVisible = true;
 
     /// <summary>
     /// 全局解锁状态，供配置组等其他地方查询
@@ -731,6 +755,15 @@ public partial class TaskSettingsPageViewModel : ViewModel
         await new TaskRunner()
             .RunSoloTaskAsync(new AutoHoeingTask());
         SwitchAutoHoeingEnabled = false;
+    }
+
+    [RelayCommand]
+    public async Task OnSwitchAutoFriendship()
+    {
+        SwitchAutoFriendshipEnabled = true;
+        await new TaskRunner()
+            .RunSoloTaskAsync(new AutoFriendshipTask(Config.AutoFriendshipConfig, null, null, Config.AutoFightConfig));
+        SwitchAutoFriendshipEnabled = false;
     }
 
     [RelayCommand]

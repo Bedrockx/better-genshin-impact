@@ -325,7 +325,7 @@ public partial class ScriptGroupProject : ObservableObject
         }
         else if (Type == "SoloTask")
         {
-            var soloTask = SoloTaskRegistry.CreateTask(Name, GroupInfo?.Config.PathingConfig, SoloTaskSettingsObject);
+            var soloTask = SoloTaskRegistry.CreateTask(Name, GroupInfo?.Config.PathingConfig, SoloTaskSettingsObject, GroupInfo?.Name);
             if (soloTask != null)
             {
                 await soloTask.Start(CancellationContext.Instance.Cts.Token);

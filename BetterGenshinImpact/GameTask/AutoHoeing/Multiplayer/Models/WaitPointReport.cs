@@ -132,10 +132,10 @@ public class WaitPointReport
     /// </summary>
     public bool IsValidSyncPointId()
     {
-        // 同步点标识应包含下划线分隔的部分
+        // 同步点标识应包含下划线分隔的部分（格式：{task.FileName}_{listIdx}_{fightIdx}，至少4部分）
         return !string.IsNullOrEmpty(SyncPointId) && 
                SyncPointId.Contains("_") &&
-               SyncPointId.Split('_').Length >= 3;
+               SyncPointId.Split('_').Length >= 4;
     }
 
     /// <summary>
