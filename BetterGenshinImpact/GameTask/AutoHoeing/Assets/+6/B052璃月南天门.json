@@ -1,0 +1,60 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时155.69秒，包含以下怪物：2只大型冰史莱姆、1只岩龙蜥。",
+    "enable_monster_loot_split": false,
+    "hash_res": "50613183",
+    "last_modified_time": 1778780394445,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B052璃月南天门",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 1665.9300000000003,
+      "y": 386.6099999999997
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1706.177734375,
+      "y": 273.8408203125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1689.9099999999999,
+      "y": 260
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1663.4423828125,
+      "y": 267.90087890625
+    }
+  ]
+}

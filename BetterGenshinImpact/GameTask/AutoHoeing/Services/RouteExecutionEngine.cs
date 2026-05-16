@@ -43,15 +43,10 @@ public class RouteExecutionEngine
         {
             _anomalyDetector.OnRevivalDetected = async () =>
             {
-                try
-                {
-                    Logger.LogInformation("[联机] 检测到复苏，上报 Reviving 状态");
-                    await coordinator.ReportMemberStatusAsync(MemberStatus.Reviving);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "[联机] 上报 Reviving 状态失败");
-                }
+                // 不在这里上报 Reviving，避免覆盖 targetProgress 为 -1。
+                // 复苏后会触发 RetryException，由 PathExecutor 的 catch 块上报带正确 targetProgress 的 Reviving。
+                Logger.LogInformation("[联机] 检测到复苏，等待 RetryException 路径上报 Reviving");
+                await Task.CompletedTask;
             };
         }
         else
@@ -81,7 +76,7 @@ public class RouteExecutionEngine
     /// 执行单条路线，并发启动所有子任务
     /// </summary>
     public async Task<RouteExecutionResult> ExecuteRoute(
-        RouteInfo route, CancellationToken ct)
+        RouteInfo route, CancellationToken ct, int currentJsonRouteIndex = 0)
     {
         var result = new RouteExecutionResult();
         _running = true;
@@ -115,6 +110,7 @@ public class RouteExecutionEngine
                 {
                     var executor = new PathExecutor(ct);
                     executor.PartyConfig = _partyConfig;
+                    executor.CurrentJsonRouteIndex = currentJsonRouteIndex;
                     
                     // 联机模式：注入 MultiplayerCoordinator，并禁用自动领取派遣
                     if (_config.MultiplayerEnabled && _coordinator != null)

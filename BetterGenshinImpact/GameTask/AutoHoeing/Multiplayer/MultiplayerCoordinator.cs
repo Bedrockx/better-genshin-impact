@@ -250,11 +250,11 @@ public class MultiplayerCoordinator : IAsyncDisposable
 
     // === 等待所有玩家 ===
 
-    public async Task WaitForAllPlayers(string syncId, CancellationToken ct)
+    public async Task WaitForAllPlayers(string syncId, CancellationToken ct, long syncProgress = -1)
     {
         try
         {
-            await _client.WaitForAllPlayersAsync(syncId, ct);
+            await _client.WaitForAllPlayersAsync(syncId, ct, syncProgress);
         }
         catch (Exception ex)
         {
@@ -276,11 +276,11 @@ public class MultiplayerCoordinator : IAsyncDisposable
         }
     }
 
-    public async Task ReportMemberStatusAsync(MemberStatus status)
+    public async Task ReportMemberStatusAsync(MemberStatus status, long targetProgress = -1)
     {
         try
         {
-            await _client.ReportMemberStatusAsync(status);
+            await _client.ReportMemberStatusAsync(status, targetProgress);
         }
         catch (Exception ex)
         {

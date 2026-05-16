@@ -31,4 +31,19 @@ public class PlayerInfo
     /// 异常玩家上报的等待点，必须是 _tp_ 格式的传送点
     /// </summary>
     public string? WaitPointId { get; set; }
+
+    /// <summary>
+    /// 异常玩家的目标进度值（异常恢复后会到达的同步点进度）
+    /// 用于判定其他玩家在某同步点 X 是否需要等他：
+    ///   TargetProgress ≤ X.Progress → 异常玩家会到 X 或之前 → 等他
+    ///   TargetProgress > X.Progress → 异常玩家跳过了 X → 不等他
+    /// 正常玩家时为 -1
+    /// </summary>
+    public long TargetProgress { get; set; } = -1;
+
+    /// <summary>
+    /// 玩家当前到达的同步点的进度值
+    /// 用于服务端判定时知道每个玩家所处的位置
+    /// </summary>
+    public long CurrentProgress { get; set; } = -1;
 }

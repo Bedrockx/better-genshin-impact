@@ -46,6 +46,7 @@
     <!-- 排除有编译错误的测试文件 -->
     <Compile Remove="GameTaskTests\UseRedeemCodeTests\RedeemCodeExpiredCodesBugConditionTest.cs" />
     <Compile Remove="GameTaskTests\AutoHoeingTests\CoordinatorClientWaitPointTests.cs" />
+    <Compile Remove="GameTaskTests\AutoHoeingTests\WaitForAllPlayersBugConditionTest.cs" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,96 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时121.94秒，包含以下怪物：2只冰史莱姆、2只狂风之核。",
+    "enable_monster_loot_split": false,
+    "hash_res": "82151108",
+    "last_modified_time": 1778766045527,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B010璃月奥藏山北",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 1604.2399999999998,
+      "y": 1040.67
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "walk",
+      "type": "path",
+      "x": 1607.5300000000007,
+      "y": 1039.1900000000005
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "climb",
+      "type": "path",
+      "x": 1611.380000000001,
+      "y": 1043.9400000000005
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 1624.7900000000009,
+      "y": 1057.9599999999991
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 1629.3099999999995,
+      "y": 1102.8500000000004
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keypress(x);芙宁娜 e;玛薇卡 e;伊涅芙 e;",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1613.3099999999995,
+      "y": 1152.8500000000004
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1617.2999999999993,
+      "y": 1192.0499999999993
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 8,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1627.30078125,
+      "y": 1212.34716796875
+    }
+  ]
+}

@@ -374,21 +374,25 @@ public class AutoHoeingTask : ISoloTask
                 }
 
                 // 加入找到的房间（带重试）
+                // 注意：随机加入模式下，JoinRoomAsync 已在轮询循环中成功调用，无需重复加入
                 _config.CurrentRoomCode = roomCodeToJoin;
-                bool joinedRoom = false;
+                bool joinedRoom = _config.MemberJoinMode == "random"; // 随机模式已在轮询中加入成功
                 bool roomClosed = false;
                 Action<string> roomClosedHandler = _ => roomClosed = true;
                 client.RoomClosed += roomClosedHandler;
                 try
                 {
-                    for (int retry = 1; retry <= 10; retry++)
+                    if (!joinedRoom)
                     {
-                        if (roomClosed) { _logger.LogWarning("[联机] 房间已被关闭，停止加入"); break; }
-                        _logger.LogInformation("[联机] 尝试加入房间: {Code}（第{N}次）", roomCodeToJoin, retry);
-                        joinedRoom = await client.JoinRoomAsync(roomCodeToJoin, _config.PlayerName, _config.PlayerUid);
-                        if (joinedRoom) { _logger.LogInformation("[联机] 成功加入房间: {Code}", roomCodeToJoin); break; }
-                        _logger.LogWarning("[联机] 加入房间 {Code} 失败，3秒后重试", roomCodeToJoin);
-                        await Task.Delay(3000, _ct);
+                        for (int retry = 1; retry <= 10; retry++)
+                        {
+                            if (roomClosed) { _logger.LogWarning("[联机] 房间已被关闭，停止加入"); break; }
+                            _logger.LogInformation("[联机] 尝试加入房间: {Code}（第{N}次）", roomCodeToJoin, retry);
+                            joinedRoom = await client.JoinRoomAsync(roomCodeToJoin, _config.PlayerName, _config.PlayerUid);
+                            if (joinedRoom) { _logger.LogInformation("[联机] 成功加入房间: {Code}", roomCodeToJoin); break; }
+                            _logger.LogWarning("[联机] 加入房间 {Code} 失败，3秒后重试", roomCodeToJoin);
+                            await Task.Delay(3000, _ct);
+                        }
                     }
                 }
                 finally
@@ -834,7 +838,7 @@ public class AutoHoeingTask : ISoloTask
                         _logger.LogWarning("[联机] 无法获取房主配置，使用本地配置");
                     }
 
-                    _logger.LogInformation("[联机] 当前为成员，尝试加入房主世界，房主 UID: {Uid}", hostUid);
+                    _logger.LogInformation("[联机] 当前为成员，尝试加入房主世界，房主 UID: {Uid}", AutoPartyTask.MaskUid(hostUid));
                     var joinOk = await autoParty.JoinHostWorldAsync(hostUid, _ct);
                     if (joinOk)
                     {
@@ -2007,17 +2011,14 @@ public class AutoHoeingTask : ISoloTask
         }
 
         // 步骤3：路线验证同步等待（等待所有玩家完成验证后再开始执行）
+        // 注意：RouteVerificationPassed 事件已在步骤2的 VerifyRoutesAsync 中被消费，
+        // 当 VerifyRoutesAsync 返回时，说明服务器已收到所有玩家的路线上报并完成了对比，
+        // 因此无需再次等待。跳过此步骤避免竞态条件（事件在订阅前已触发）。
         if (_multiplayerCoordinator != null && _config.MultiplayerEnabled)
         {
-            try
-            {
-                await _multiplayerCoordinator.WaitForRouteVerificationAsync(_ct);
-            }
-            catch (OperationCanceledException)
-            {
-                if (_ct.IsCancellationRequested) throw;
-                _logger.LogWarning("[联机] 路线验证同步等待超时，继续执行");
-            }
+            // 验证已在步骤2完成（服务器收到所有玩家上报后才广播 RouteVerificationPassed）
+            // 无需额外等待
+            _logger.LogDebug("[联机] 路线验证已在步骤2完成，跳过额外同步等待");
         }
 
         // 路线为0时直接返回，避免卡住
@@ -2240,7 +2241,7 @@ public class AutoHoeingTask : ISoloTask
             {
                 if (_executionEngine != null)
                 {
-                    var execResult = await _executionEngine.ExecuteRoute(route, _ct);
+                    var execResult = await _executionEngine.ExecuteRoute(route, _ct, currentRouteIndex);
                     _shouldSwitchFurina = execResult.ShouldSwitchFurina;
                     sw.Stop();
                     var duration = execResult.ActualDuration;
@@ -2255,15 +2256,9 @@ public class AutoHoeingTask : ISoloTask
                         _logger.LogWarning("[联机] 路线 {Name} 被跳过（原因: {Reason}），连续跳过: {Count}/{Max}",
                             route.FileName, execResult.SkipRouteReason, consecutiveSkipCount, _config.MaxConsecutiveSkips);
 
-                        // 上报状态
-                        if (_multiplayerCoordinator.IsHost)
-                        {
-                            try { await _coordinatorClientRef.ReportMemberStatusAsync(MemberStatus.Normal); } catch { }
-                        }
-                        else
-                        {
-                            try { await _coordinatorClientRef.ReportMemberStatusAsync(MemberStatus.Rejoining); } catch { }
-                        }
+                        // 不在这里上报 Normal — 保持 IsAbnormal 状态，
+                        // 让 MemberStatusChanged 重评估能放行正在等的正常玩家。
+                        // Normal 会在下一个同步点等待前上报（PathExecutor 中 _needReportNormalBeforeSync）。
 
                         // === 路线跳过对齐修复（sync-point-route-skip-alignment）===
                         // 智能跳过决策与进度广播

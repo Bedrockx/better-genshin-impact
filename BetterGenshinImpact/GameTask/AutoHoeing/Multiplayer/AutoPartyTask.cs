@@ -42,12 +42,21 @@ public class AutoPartyTask
     private const double ApplyBtnX = 1625, ApplyBtnY = 245;
 
     /// <summary>
+    /// UID 脱敏：保留前 3 位和后 3 位，中间用 *** 代替（用于日志输出）
+    /// </summary>
+    public static string MaskUid(string? uid)
+    {
+        if (string.IsNullOrEmpty(uid)) return "";
+        return uid!.Length > 6 ? $"{uid[..3]}***{uid[^3..]}" : uid;
+    }
+
+    /// <summary>
     /// 成员流程：搜索房主 UID，申请加入，等待进入世界
     /// 申请后按钮倒数 10 秒，倒数结束后可再次点击。房主同意后直接加载。
     /// </summary>
     public async Task<bool> JoinHostWorldAsync(string hostUid, CancellationToken ct)
     {
-        _logger.LogInformation("[自动组队-成员] 开始，房主 UID: {Uid}", hostUid);
+        _logger.LogInformation("[自动组队-成员] 开始，房主 UID: {Uid}", MaskUid(hostUid));
 
         // 1. 尝试回到主界面
         _logger.LogInformation("[自动组队-成员] 尝试回到主界面");
@@ -71,8 +80,37 @@ public class AutoPartyTask
             return false;
         }
 
-        // 3. 输入房主 UID 并搜索（只需做一次）
-        await InputUidAndSearch(hostUid, ct);
+        // 3. 输入房主 UID 并搜索，OCR 验证搜索结果（最多 10 次）
+        // 粘贴可能异常导致搜索失败，需要检测"申请加入"按钮数量：
+        //   == 1 → 搜索成功；== 0 或 > 1 → 失败重试
+        const int maxSearchRetries = 10;
+        bool searchOk = false;
+        for (int searchAttempt = 1; searchAttempt <= maxSearchRetries; searchAttempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            await InputUidAndSearch(hostUid, ct);
+            // 等待搜索结果渲染稳定
+            await Delay(800, ct);
+
+            var btnCount = CountApplyButtons();
+            if (btnCount == 1)
+            {
+                _logger.LogInformation("[自动组队-成员] 搜索成功（第 {N} 次尝试）", searchAttempt);
+                searchOk = true;
+                break;
+            }
+
+            _logger.LogWarning("[自动组队-成员] 搜索结果异常（\"申请加入\" 按钮数={Count}），第 {Attempt}/{Max} 次重试",
+                btnCount, searchAttempt, maxSearchRetries);
+        }
+
+        if (!searchOk)
+        {
+            _logger.LogError("[自动组队-成员] {Max} 次搜索仍未定位到房主，退出 F2 结束任务", maxSearchRetries);
+            Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
+            await Delay(500, ct);
+            return false;
+        }
 
         // 4. 循环申请加入，最多 30 次
         for (int attempt = 1; attempt <= 30; attempt++)
@@ -107,10 +145,30 @@ public class AutoPartyTask
             if (Bv.IsInMainUi(checkRa))
             {
                 // 已经回到主界面但不是房主世界（被拒绝后回到自己世界）
-                // 需要重新打开 F2 并搜索
+                // 需要重新打开 F2 并搜索（搜索失败时同样会重试 10 次）
                 _logger.LogInformation("[自动组队-成员] 回到主界面，重新打开 F2 搜索");
                 if (!await OpenCoOpScreen(ct)) continue;
-                await InputUidAndSearch(hostUid, ct);
+
+                bool reSearchOk = false;
+                for (int searchAttempt = 1; searchAttempt <= 10; searchAttempt++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    await InputUidAndSearch(hostUid, ct);
+                    await Delay(800, ct);
+                    if (CountApplyButtons() == 1)
+                    {
+                        reSearchOk = true;
+                        break;
+                    }
+                    _logger.LogWarning("[自动组队-成员] 重新搜索失败，第 {N}/10 次重试", searchAttempt);
+                }
+                if (!reSearchOk)
+                {
+                    _logger.LogError("[自动组队-成员] 重新搜索 10 次失败，结束任务");
+                    Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
+                    await Delay(500, ct);
+                    return false;
+                }
             }
             // 否则还在 F2 界面，按钮倒数结束，可以再次点击申请
         }
@@ -330,7 +388,38 @@ public class AutoPartyTask
         GameCaptureRegion.GameRegion1080PPosClick(SearchBtnX, SearchBtnY);
         await Delay(1500, ct);
 
-        _logger.LogInformation("[自动组队] 已输入 UID {Uid} 并搜索", uid);
+        _logger.LogInformation("[自动组队] 已输入 UID {Uid} 并搜索", MaskUid(uid));
+    }
+
+    /// <summary>
+    /// OCR 整页搜索"申请加入"按钮的数量。
+    /// == 1：成功定位到唯一房主；== 0 或 > 1：搜索结果异常（粘贴失败 / 多结果 / 渲染未完成）。
+    /// </summary>
+    private int CountApplyButtons()
+    {
+        try
+        {
+            using var ra = CaptureToRectArea();
+            var result = OcrFactory.Paddle.OcrResult(ra.SrcMat);
+            int count = 0;
+            foreach (var region in result.Regions)
+            {
+                var t = region.Text;
+                if (string.IsNullOrEmpty(t)) continue;
+                // 容错匹配："申请加入" / "申请加入 (10)" 等倒数文案
+                if (t.Contains("申请加入") || (t.Contains("申请") && t.Contains("加入")))
+                {
+                    count++;
+                }
+            }
+            _logger.LogDebug("[自动组队-成员] OCR 检测到 \"申请加入\" 按钮数: {Count}", count);
+            return count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[自动组队-成员] OCR 检测申请加入按钮异常");
+            return 0;
+        }
     }
 
     /// <summary>打开 F2 多人游戏界面，重试 3 次。每次重试间隙检测申请弹窗并处理。</summary>

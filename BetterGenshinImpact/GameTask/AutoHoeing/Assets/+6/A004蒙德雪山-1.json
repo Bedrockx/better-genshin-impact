@@ -1,0 +1,99 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时106.33秒，包含以下怪物：1只冰箭丘丘人、1只丘丘霜铠王。",
+    "enable_monster_loot_split": false,
+    "hash_res": "08530558",
+    "last_modified_time": 1777393699207,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "A004蒙德雪山-1",
+    "tags": [
+      "环境伤害"
+    ],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -410.84000000000015,
+      "y": 1161.3099999999995
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -433.375,
+      "y": 1134.8486328125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -432.8359375,
+      "y": 1109.97119140625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -413.5625,
+      "y": 1058.5546875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "jump",
+      "type": "path",
+      "x": -407.625,
+      "y": 1049.51025390625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -408.068359375,
+      "y": 1018.3740234375
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 7,
+      "locked": false,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -397.265625,
+      "y": 990.666015625
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 8,
+      "move_mode": "walk",
+      "type": "path",
+      "x": -397.265625,
+      "y": 990.666015625
+    }
+  ]
+}

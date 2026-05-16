@@ -14,30 +14,41 @@ public class RouteVerificationSyncTests
     public RouteVerificationSyncTests()
     {
         _loggerMock = new Mock<ILogger<RoomManager>>();
-        _roomManager = new RoomManager(_loggerMock.Object);
+        _roomManager = new RoomManager(50, _loggerMock.Object);
     }
 
     [Fact]
     public void RecordRouteVerificationDone_WithOfflinePlayer_ShouldIgnoreOfflinePlayer()
     {
-        // Arrange
-        var roomCode = "TEST123";
+        // Arrange: 创建房间
+        var roomCode = _roomManager.CreateRoom("conn-host", "Host", null, "host-uid", 1);
         var onlineConnectionId = "online-conn";
         var offlineConnectionId = "offline-conn";
-        
-        _roomManager.CreateRoom(roomCode, onlineConnectionId);
-        
-        // Add online player
-        _roomManager.AddPlayer(roomCode, new PlayerInfo 
-        { 
+
+        // Make host offline so only the test players are counted
+        var room = _roomManager.GetRoom(roomCode);
+        Assert.NotNull(room);
+        room!.Players[0].LastHeartbeat = DateTime.UtcNow.AddMinutes(-5);
+
+        // Add online player using helper (registers connection mapping)
+        _roomManager.AddPlayerForTesting(roomCode, new PlayerInfo
+        {
             ConnectionId = onlineConnectionId,
+            PlayerId = onlineConnectionId,
+            PlayerName = "Online",
+            PlayerUid = "100",
+            Status = PlayerStatus.Pathing,
             LastHeartbeat = DateTime.UtcNow
         });
-        
-        // Add offline player (old heartbeat)
-        _roomManager.AddPlayer(roomCode, new PlayerInfo 
-        { 
+
+        // Add offline player (old heartbeat) using helper
+        _roomManager.AddPlayerForTesting(roomCode, new PlayerInfo
+        {
             ConnectionId = offlineConnectionId,
+            PlayerId = offlineConnectionId,
+            PlayerName = "Offline",
+            PlayerUid = "101",
+            Status = PlayerStatus.Pathing,
             LastHeartbeat = DateTime.UtcNow.AddMinutes(-5) // 5 minutes ago
         });
 
@@ -51,22 +62,33 @@ public class RouteVerificationSyncTests
     [Fact]
     public void RecordRouteVerificationDone_WithAllOnlinePlayersReported_ShouldReturnTrue()
     {
-        // Arrange
-        var roomCode = "TEST123";
+        // Arrange: 创建房间
+        var roomCode = _roomManager.CreateRoom("conn-host", "Host", null, "host-uid", 1);
         var conn1 = "conn1";
         var conn2 = "conn2";
-        
-        _roomManager.CreateRoom(roomCode, conn1);
-        
-        // Add two online players
-        _roomManager.AddPlayer(roomCode, new PlayerInfo 
-        { 
+
+        // Make host offline so only the test players are counted
+        var room = _roomManager.GetRoom(roomCode);
+        Assert.NotNull(room);
+        room!.Players[0].LastHeartbeat = DateTime.UtcNow.AddMinutes(-5);
+
+        // Add two online players using helper (registers connection mapping)
+        _roomManager.AddPlayerForTesting(roomCode, new PlayerInfo
+        {
             ConnectionId = conn1,
+            PlayerId = conn1,
+            PlayerName = "Player1",
+            PlayerUid = "100",
+            Status = PlayerStatus.Pathing,
             LastHeartbeat = DateTime.UtcNow
         });
-        _roomManager.AddPlayer(roomCode, new PlayerInfo 
-        { 
+        _roomManager.AddPlayerForTesting(roomCode, new PlayerInfo
+        {
             ConnectionId = conn2,
+            PlayerId = conn2,
+            PlayerName = "Player2",
+            PlayerUid = "101",
+            Status = PlayerStatus.Pathing,
             LastHeartbeat = DateTime.UtcNow
         });
 
@@ -82,21 +104,34 @@ public class RouteVerificationSyncTests
     [Fact]
     public void GetRouteVerificationStatus_ShouldReturnCorrectCounts()
     {
-        // Arrange
-        var roomCode = "TEST123";
+        // Arrange: 创建房间
+        var roomCode = _roomManager.CreateRoom("conn-host", "Host", null, "host-uid", 1);
         var onlineConn = "online";
         var offlineConn = "offline";
-        
-        _roomManager.CreateRoom(roomCode, onlineConn);
-        
-        _roomManager.AddPlayer(roomCode, new PlayerInfo 
-        { 
+
+        // Make host offline so only the test players are counted
+        var room = _roomManager.GetRoom(roomCode);
+        Assert.NotNull(room);
+        room!.Players[0].LastHeartbeat = DateTime.UtcNow.AddMinutes(-5);
+
+        // Add online player using helper
+        _roomManager.AddPlayerForTesting(roomCode, new PlayerInfo
+        {
             ConnectionId = onlineConn,
+            PlayerId = onlineConn,
+            PlayerName = "Online",
+            PlayerUid = "100",
+            Status = PlayerStatus.Pathing,
             LastHeartbeat = DateTime.UtcNow
         });
-        _roomManager.AddPlayer(roomCode, new PlayerInfo 
-        { 
+        // Add offline player using helper
+        _roomManager.AddPlayerForTesting(roomCode, new PlayerInfo
+        {
             ConnectionId = offlineConn,
+            PlayerId = offlineConn,
+            PlayerName = "Offline",
+            PlayerUid = "101",
+            Status = PlayerStatus.Pathing,
             LastHeartbeat = DateTime.UtcNow.AddMinutes(-5)
         });
 

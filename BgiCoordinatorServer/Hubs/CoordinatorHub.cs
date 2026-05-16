@@ -399,19 +399,83 @@ public class CoordinatorHub : Hub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        // 先获取断线玩家所在的房间信息（在 LeaveRoom 之前）
+        var (disconnectedRoom, disconnectedRoomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        var wasHost = disconnectedRoom?.HostConnectionId == Context.ConnectionId;
+
         var affectedCodes = _roomManager.LeaveRoom(Context.ConnectionId);
 
         foreach (var code in affectedCodes)
         {
             var updatedRoom = _roomManager.GetRoom(code);
-            var players = updatedRoom?.Players ?? [];
+            if (updatedRoom == null) continue;
+
+            var players = updatedRoom.Players ?? [];
             await Clients.Group(code).SendAsync("PlayerListUpdated", players);
+
+            // 如果断线的是房主，优先广播 RoomClosed（风险 4 容错）
+            if (wasHost && code == disconnectedRoomCode)
+            {
+                _logger.LogWarning("[OnDisconnectedAsync] 房主断线，广播 RoomClosed: 房间={RoomCode}", code);
+                await Clients.Group(code).SendAsync("RoomClosed", "房主已断开连接");
+                continue; // 房主断线后不做 ArrivalSets 重评估（房间即将关闭）
+            }
+
+            // 重新评估所有未完成的同步点（风险 3：在 lock 内完成检查）
+            List<string> satisfiedSyncIds;
+            lock (updatedRoom)
+            {
+                satisfiedSyncIds = updatedRoom.ArrivalSets
+                    .Where(kvp => AllOnlineMembersReportedStatic(updatedRoom, kvp.Value))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+            }
+
+            // 广播满足条件的同步点（在 lock 外执行 await）
+            foreach (var syncId in satisfiedSyncIds)
+            {
+                _logger.LogInformation("[OnDisconnectedAsync] 玩家断线后重新评估：同步点 {SyncId} 条件满足，广播 AllArrived，房间={RoomCode}",
+                    syncId, code);
+                await Clients.Group(code).SendAsync("AllArrived", syncId);
+                _roomManager.ClearArrivalSet(code, syncId);
+            }
         }
 
         _logger.LogInformation("连接 {ConnId} 断开，影响房间：{Rooms}",
             Context.ConnectionId, string.Join(", ", affectedCodes));
 
         await base.OnDisconnectedAsync(exception);
+    }
+
+    /// <summary>
+    /// 静态版本的 AllOnlineMembersReported，用于 OnDisconnectedAsync 中的重新评估。
+    /// 必须在 lock(room) 内调用。
+    /// </summary>
+    private static bool AllOnlineMembersReportedStatic(Room room, HashSet<string> reported)
+    {
+        var onlinePlayers = room.Players
+            .Where(p => DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2))
+            .ToList();
+
+        if (onlinePlayers.Count == 0) return false;
+
+        return onlinePlayers.All(p => reported.Contains(p.ConnectionId));
+    }
+
+    /// <summary>
+    /// 检查所有正常（非异常）在线玩家是否都已到达。
+    /// 用于异常玩家上报后的重新评估。必须在 lock(room) 内调用。
+    /// </summary>
+    private static bool AllNormalOnlineMembersReported(Room room, HashSet<string> reported)
+    {
+        var normalOnlinePlayers = room.Players
+            .Where(p => !p.IsAbnormal)
+            .Where(p => DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2))
+            .ToList();
+
+        if (normalOnlinePlayers.Count == 0) return false;
+
+        return normalOnlinePlayers.All(p => reported.Contains(p.ConnectionId));
     }
 
     /// <summary>
@@ -877,24 +941,91 @@ public class CoordinatorHub : Hub
     }
 
     /// <summary>
-    /// 更新成员状态
+    /// 更新成员状态。
+    /// 当玩家上报 Reviving/Rejoining 时，标记为异常并重新评估 ArrivalSets；
+    /// 当玩家上报 Normal 时，清除异常标记。
+    /// targetProgress：异常玩家的目标进度值，用于判定其他玩家在某同步点是否需要等他。
     /// </summary>
-    public Task MemberStatusChanged(string playerUid, string status)
+    public async Task MemberStatusChanged(string playerUid, string status, long targetProgress = -1)
     {
         var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null) return Task.CompletedTask;
+        if (room == null || roomCode == null) return;
+
+        bool isAbnormalReport = status == "Reviving" || status == "Rejoining";
+        bool isNormalReport = status == "Normal";
+
+        // 收集每个同步点的进度值（用于判定）
+        // syncId → progress 映射需要从客户端推断，这里用 ArrivalSet 中第一个玩家的 CurrentProgress 作为参考
+        // 但更安全的做法是：对每个同步点，用 ShouldBroadcastAllArrived 重新判定
+        var satisfiedSyncs = new List<(string syncId, long progress)>();
 
         lock (room)
         {
             var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
-            if (player != null && Enum.TryParse<PlayerStatus>(status, out var parsedStatus))
+            if (player == null) return;
+
+            if (Enum.TryParse<PlayerStatus>(status, out var parsedStatus))
             {
                 player.Status = parsedStatus;
-                _logger.LogDebug("[MemberStatusChanged] 玩家={PlayerUid}, 状态={Status}", playerUid, parsedStatus);
+            }
+
+            if (isAbnormalReport)
+            {
+                player.IsAbnormal = true;
+                player.TargetProgress = targetProgress;
+                _logger.LogInformation("[MemberStatusChanged] 玩家={PlayerUid} 上报异常={Status}，目标进度={Target}",
+                    playerUid, status, targetProgress);
+
+                // 重新评估所有未完成的同步点
+                // 用每个同步点中已到达玩家的最大 CurrentProgress 作为 syncProgress
+                _logger.LogInformation("[MemberStatusChanged] 开始重评估，房间 ArrivalSets 数量: {N}", room.ArrivalSets.Count);
+                foreach (var kvp in room.ArrivalSets)
+                {
+                    var syncId = kvp.Key;
+                    var arrivals = kvp.Value;
+
+                    // route_sync_done 是全局同步点，使用 -1（按"等所有"处理）
+                    long syncProgress = -1;
+                    if (syncId != "route_sync_done")
+                    {
+                        // 用已到达玩家的最大 CurrentProgress
+                        syncProgress = room.Players
+                            .Where(p => arrivals.Contains(p.ConnectionId))
+                            .Select(p => p.CurrentProgress)
+                            .DefaultIfEmpty(-1)
+                            .Max();
+                    }
+
+                    _logger.LogInformation("[MemberStatusChanged] 评估同步点 {SyncId}, syncProgress={SP}, ArrivalSet={Arr}",
+                        syncId, syncProgress, string.Join(",", arrivals));
+
+                    if (ShouldBroadcastAllArrived(room, syncId, arrivals, syncProgress))
+                    {
+                        _logger.LogWarning("[MemberStatusChanged] 同步点 {SyncId} 满足放行条件！", syncId);
+                        satisfiedSyncs.Add((syncId, syncProgress));
+                    }
+                }
+            }
+            else if (isNormalReport)
+            {
+                player.IsAbnormal = false;
+                player.TargetProgress = -1;
+                _logger.LogInformation("[MemberStatusChanged] 玩家={PlayerUid} 恢复正常状态", playerUid);
+            }
+            else
+            {
+                _logger.LogDebug("[MemberStatusChanged] 玩家={PlayerUid}, 状态={Status}", playerUid, status);
             }
         }
 
-        return Task.CompletedTask;
+        // 广播满足条件的同步点（在 lock 外执行 await）
+        foreach (var (syncId, progress) in satisfiedSyncs)
+        {
+            _logger.LogInformation("[MemberStatusChanged] 异常上报后重评估：同步点 {SyncId} 满足条件，广播 AllArrived（房间={RoomCode}, 进度={Progress}）",
+                syncId, roomCode, progress);
+            await Clients.Group(roomCode).SendAsync("AllArrived", syncId);
+            _roomManager.ClearArrivalSet(roomCode, syncId);
+        }
     }
 
     /// <summary>
@@ -939,23 +1070,168 @@ public class CoordinatorHub : Hub
     }
 
     /// <summary>
-    /// 等待所有玩家到达指定同步点
+    /// 等待所有玩家到达指定同步点（非阻塞模式：记录到达 → 检查条件 → 广播 → 立即返回）
+    /// 客户端通过本地 TCS + AllArrived 事件等待，服务端不阻塞 SignalR 连接。
+    /// 
+    /// 判定规则（基于全局进度值）：
+    ///   对每个异常玩家 P：
+    ///     P.TargetProgress == syncProgress → P 正要去 X → 等他
+    ///     P.TargetProgress != syncProgress → P 跳过了 X 或不会到 X → 不等他
     /// </summary>
-    public async Task WaitForAllPlayers(string syncId)
+    public async Task WaitForAllPlayers(string syncId, long syncProgress = -1)
     {
         var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
         if (room == null || roomCode == null) return;
 
-        _logger.LogDebug("[WaitForAllPlayers] 房间={RoomCode}, 同步点={SyncId}", roomCode, syncId);
+        _logger.LogDebug("[WaitForAllPlayers] 房间={RoomCode}, 同步点={SyncId}, 进度={Progress}, 连接={ConnId}",
+            roomCode, syncId, syncProgress, Context.ConnectionId);
+
+        // 更新当前玩家的进度
+        if (syncProgress >= 0)
+        {
+            lock (room)
+            {
+                var caller = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
+                if (caller != null)
+                {
+                    caller.CurrentProgress = syncProgress;
+                }
+            }
+        }
 
         // 记录当前连接已到达
-        var allArrived = _roomManager.RecordArrival(roomCode, syncId, Context.ConnectionId, 0);
+        _roomManager.RecordArrival(roomCode, syncId, Context.ConnectionId, 0);
 
-        if (allArrived)
+        // 判定：检查需要等待的玩家是否都已到达
+        bool shouldBroadcast;
+        bool isAbnormalRecovered = false;
+        lock (room)
         {
-            _logger.LogInformation("[WaitForAllPlayers] 所有玩家已到达: 房间={RoomCode}, 同步点={SyncId}", roomCode, syncId);
-            await Clients.Group(roomCode).SendAsync("AllArrived", syncId);
+            var arrivals = room.ArrivalSets.TryGetValue(syncId, out var set) ? set : new HashSet<string>();
+            shouldBroadcast = ShouldBroadcastAllArrived(room, syncId, arrivals, syncProgress);
+
+            // 检查是否是异常玩家在汇合点恢复（异常玩家到达且条件满足，说明汇合了）
+            var caller = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
+            if (shouldBroadcast && caller != null && caller.IsAbnormal && syncProgress >= 0
+                && caller.TargetProgress > 0 && caller.TargetProgress <= syncProgress)
+            {
+                isAbnormalRecovered = true;
+            }
         }
+
+        if (shouldBroadcast)
+        {
+            _logger.LogInformation("[WaitForAllPlayers] 所需玩家已到达，广播 AllArrived: 房间={RoomCode}, 同步点={SyncId}", roomCode, syncId);
+            await Clients.Group(roomCode).SendAsync("AllArrived", syncId);
+            _roomManager.ClearArrivalSet(roomCode, syncId);
+
+            // 汇合后清理异常状态：所有 TargetProgress ≤ syncProgress 的异常玩家恢复正常
+            // （他们已经到达汇合点或更前面）
+            lock (room)
+            {
+                foreach (var p in room.Players)
+                {
+                    if (p.IsAbnormal && p.TargetProgress > 0 && syncProgress >= 0 && p.TargetProgress <= syncProgress)
+                    {
+                        _logger.LogInformation("[WaitForAllPlayers] 异常玩家 {Uid} 已汇合，清除异常状态", p.PlayerUid);
+                        p.IsAbnormal = false;
+                        p.TargetProgress = -1;
+                    }
+                }
+            }
+
+            // route_sync_done 完成后重置所有玩家的异常状态（防止跨 JSON 残留）
+            if (syncId == "route_sync_done")
+            {
+                lock (room)
+                {
+                    foreach (var p in room.Players)
+                    {
+                        p.IsAbnormal = false;
+                        p.TargetProgress = -1;
+                    }
+                }
+                _logger.LogDebug("[WaitForAllPlayers] route_sync_done 完成，已重置所有玩家异常状态");
+            }
+        }
+        // 非阻塞：不满足条件时直接返回，客户端通过 AllArrived 事件等待
+    }
+
+    /// <summary>
+    /// 判定同步点 X 是否应该广播 AllArrived。
+    /// 必须在 lock(room) 内调用。
+    /// 
+    /// 规则：
+    ///   X.Progress = syncProgress（当前同步点的全局进度值）
+    ///   对每个异常玩家 P：
+    ///     P.TargetProgress > syncProgress → P 会到 X → 计入等待
+    ///     P.TargetProgress ≤ syncProgress → P 跳过了 X → 不计入
+    ///   所有计入的玩家都到达 → 放行
+    /// </summary>
+    private bool ShouldBroadcastAllArrived(Room room, string syncId, HashSet<string> arrivals, long syncProgress)
+    {
+        var onlinePlayers = room.Players
+            .Where(p => DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2))
+            .ToList();
+
+        _logger.LogInformation("[ShouldBroadcast] syncId={SyncId}, syncProgress={SP}, 在线玩家数={Online}, ArrivalSet={Arrivals}",
+            syncId, syncProgress, onlinePlayers.Count, string.Join(",", arrivals));
+
+        if (onlinePlayers.Count == 0)
+        {
+            _logger.LogInformation("[ShouldBroadcast] 无在线玩家，不广播");
+            return false;
+        }
+
+        foreach (var p in onlinePlayers)
+        {
+            _logger.LogInformation("[ShouldBroadcast]   玩家={Uid}, ConnId={CID}, IsAbnormal={Abn}, Target={T}, Current={C}, Arrived={Arr}",
+                p.PlayerUid, p.ConnectionId, p.IsAbnormal, p.TargetProgress, p.CurrentProgress, arrivals.Contains(p.ConnectionId));
+        }
+
+        // 计算需要等待的玩家
+        var requiredPlayers = onlinePlayers.Where(p =>
+        {
+            if (!p.IsAbnormal) return true;
+            if (syncProgress < 0) return true;
+            return p.TargetProgress == syncProgress;
+        }).ToList();
+
+        _logger.LogInformation("[ShouldBroadcast] 需要等待的玩家: {List}",
+            string.Join(",", requiredPlayers.Select(p => $"{p.PlayerUid}(Abn={p.IsAbnormal},T={p.TargetProgress})")));
+
+        if (requiredPlayers.Count == 0)
+        {
+            _logger.LogInformation("[ShouldBroadcast] 无需要等待的玩家，不广播");
+            return false;
+        }
+
+        var allArrived = requiredPlayers.All(p => arrivals.Contains(p.ConnectionId));
+        _logger.LogInformation("[ShouldBroadcast] 全部到达？{Result}", allArrived);
+        return allArrived;
+    }
+
+    /// <summary>
+    /// 静态版本（兼容旧调用），无日志
+    /// </summary>
+    private static bool ShouldBroadcastAllArrived(Room room, HashSet<string> arrivals, long syncProgress)
+    {
+        var onlinePlayers = room.Players
+            .Where(p => DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2))
+            .ToList();
+
+        if (onlinePlayers.Count == 0) return false;
+
+        var requiredPlayers = onlinePlayers.Where(p =>
+        {
+            if (!p.IsAbnormal) return true;
+            if (syncProgress < 0) return true;
+            return p.TargetProgress == syncProgress;
+        }).ToList();
+
+        if (requiredPlayers.Count == 0) return false;
+
+        return requiredPlayers.All(p => arrivals.Contains(p.ConnectionId));
     }
 
     /// <summary>计算多份路线清单的差异文件名列表</summary>

@@ -1,0 +1,78 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时144.55秒，包含以下怪物：1只丘丘雷兜王。",
+    "enable_monster_loot_split": false,
+    "hash_res": "62061409",
+    "last_modified_time": 1777395403155,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "C062稻妻萌云神社",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -575.2099999999991,
+      "y": -3832.1800000000003
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -573.501953125,
+      "y": -3853.6357421875
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -511.80078125,
+      "y": -3890.396484375
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -501.638671875,
+      "y": -3900.8583984375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -466.162109375,
+      "y": -3938.5419921875
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -449.15625,
+      "y": -3988.333984375
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时54秒，包含以下怪物：1只遗迹猎者、1只遗迹重机。",
+    "enable_monster_loot_split": false,
+    "hash_res": "14919700",
+    "last_modified_time": 1778683078244,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "C048稻妻荒海",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -4217.889999999999,
+      "y": -2397.869999999999
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -4201.46484375,
+      "y": -2380.0439453125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "climb",
+      "type": "path",
+      "x": -4197.0859375,
+      "y": -2371.867208361162
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -4188.14453125,
+      "y": -2354.2744140625
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -4184.75,
+      "y": -2324.869999999999
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "walk",
+      "type": "path",
+      "x": -4192.919999999998,
+      "y": -2319.880000000001
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -4202.630000000001,
+      "y": -2314.3099999999995
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 8,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -4247.290000000001,
+      "y": -2287.2000000000007
+    }
+  ]
+}

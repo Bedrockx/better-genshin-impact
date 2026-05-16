@@ -1,0 +1,78 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时43秒，包含以下怪物：2只幼岩龙蜥、1只岩龙蜥。",
+    "enable_monster_loot_split": false,
+    "hash_res": "17551956",
+    "last_modified_time": 1777395278031,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B068璃月层岩北",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 1701.5,
+      "y": -582.3500000000004
+    },
+    {
+      "action": "combat_script",
+      "action_params": ";莉奈娅 e;芙宁娜 e; ;",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "orientation",
+      "x": 1738.2197265625,
+      "y": -557.01025390625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1738.2197265625,
+      "y": -557.01025390625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "walk",
+      "type": "path",
+      "x": 1742.2600000000002,
+      "y": -553.130000000001
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "walk",
+      "type": "path",
+      "x": 1747.201171875,
+      "y": -550.46142578125
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1778.3828125,
+      "y": -551.765625
+    }
+  ]
+}

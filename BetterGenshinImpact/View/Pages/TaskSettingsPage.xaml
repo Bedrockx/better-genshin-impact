@@ -2870,21 +2870,21 @@
                         <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="0表示无限循环" />
                     </StackPanel>
                     <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="0" Maximum="999" SpinButtonPlacementMode="Inline"
-                                  Value="{Binding Config.AutoFriendshipConfig.RunTimes, Mode=TwoWay}" />
+                                  Value="{Binding Config.AutoFriendshipConfig.RunTimes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </Grid>
 
                 <Grid Margin="16,8">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <ui:TextBlock Grid.Column="0" Text="OCR检测超时时间（秒）" />
                     <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="5" Maximum="60" SpinButtonPlacementMode="Inline"
-                                  Value="{Binding Config.AutoFriendshipConfig.OcrTimeoutSeconds, Mode=TwoWay}" />
+                                  Value="{Binding Config.AutoFriendshipConfig.OcrTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </Grid>
 
                 <Grid Margin="16,8">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <ui:TextBlock Grid.Column="0" Text="战斗超时时间（秒）" />
                     <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="30" Maximum="300" SpinButtonPlacementMode="Inline"
-                                  Value="{Binding Config.AutoFriendshipConfig.FightTimeoutSeconds, Mode=TwoWay}" />
+                                  Value="{Binding Config.AutoFriendshipConfig.FightTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </Grid>
 
                 <Grid Margin="16,8">
@@ -2921,7 +2921,7 @@
                         <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="设为0则不清理，仅对盗宝团有效" />
                     </StackPanel>
                     <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="0" Maximum="60" SpinButtonPlacementMode="Inline"
-                                  Value="{Binding Config.AutoFriendshipConfig.QiuQiuRenTimeoutSeconds, Mode=TwoWay}" />
+                                  Value="{Binding Config.AutoFriendshipConfig.QiuQiuRenTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </Grid>
 
                 <!-- 循环配置 -->

@@ -101,6 +101,25 @@ public class PathExecutor
     private bool _syncPointReached = false;
 
     /// <summary>
+    /// 异常恢复后，需要在下一个同步点等待前上报 Normal（恢复参与全员判定）。
+    /// </summary>
+    private bool _needReportNormalBeforeSync = false;
+
+    /// <summary>
+    /// 当前 JSON 路线在 ProcessRoutesByGroup 中的索引（路线级别），由外部注入。
+    /// 用于计算全局进度值。
+    /// </summary>
+    public int CurrentJsonRouteIndex { get; set; } = 0;
+
+    /// <summary>
+    /// 计算全局进度值：路线索引 × 1,000,000 + 段索引 × 1,000 + waypoint索引
+    /// </summary>
+    private long ComputeProgress(int segmentIndex, int waypointIndex)
+    {
+        return (long)CurrentJsonRouteIndex * 1_000_000 + (long)segmentIndex * 1_000 + waypointIndex;
+    }
+
+    /// <summary>
     /// 当前线路索引（用于异常上报）。
     /// </summary>
     public int CurrentRouteIndex { get; set; }
@@ -299,8 +318,9 @@ public class PathExecutor
             if (SkipToNextSegment)
             {
                 SkipToNextSegment = false;
-                Logger.LogInformation("[联机] 成员跳到新路线段（段{Idx}），等待同步", waypointsList.FindIndex(wps => wps == waypoints));
-                // 注意：Rejoining 状态已在 catch 块中上报，汇合成功后由同步点逻辑或 ProcessRoutesByGroup 上报 Normal
+                Logger.LogInformation("[联机] 跳到新路线段（段{Idx}），传送后在同步点前恢复正常状态", waypointsList.FindIndex(wps => wps == waypoints));
+                // 标记：本段第一个同步点等待前需要上报 Normal
+                _needReportNormalBeforeSync = true;
             }
 
             // 联机模式房主：SkipRouteRequested 已设置，跳过剩余所有段
@@ -364,8 +384,9 @@ public class PathExecutor
                             var mapKey = CurWaypoints.Item1 * 10000 + CurWaypoint.Item1;
                             if (_syncPointMap.TryGetValue(mapKey, out var syncId) && syncId != null)
                             {
-                                Logger.LogInformation("[联机] 到达集合点，等待所有玩家，syncId={SyncId}", syncId);
-                                await MultiplayerCoordinator.WaitForAllPlayers(syncId, ct);
+                                var progress = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
+                                Logger.LogInformation("[联机] 到达集合点，等待所有玩家，syncId={SyncId}, 进度={Progress}", syncId, progress);
+                                await MultiplayerCoordinator.WaitForAllPlayers(syncId, ct, progress);
                                 Logger.LogInformation("[联机] 集合完成，继续前进，syncId={SyncId}", syncId);
                             }
                         }
@@ -409,14 +430,23 @@ public class PathExecutor
                             // 正常同步点：按配置决定是否等待
                             if (MultiplayerCoordinator != null)
                             {
+                                // 异常恢复后，在同步点等待前上报 Normal（恢复参与全员判定）
+                                if (_needReportNormalBeforeSync)
+                                {
+                                    _needReportNormalBeforeSync = false;
+                                    Logger.LogInformation("[联机] 异常恢复：在同步点前上报 Normal，恢复全员等待判定");
+                                    try { await MultiplayerCoordinator.ReportMemberStatusAsync(MemberStatus.Normal); } catch { }
+                                }
+
                                 // 优先检查服务端指令的等待点（multiplayer-abnormal-wait-coordination）
                                 if (MultiplayerCoordinator.HasPendingWaitPoint)
                                 {
                                     var pendingPoint = MultiplayerCoordinator.GetPendingWaitPoint();
                                     if (pendingPoint != null && pendingPoint.IsForced)
                                     {
+                                        var progress = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
                                         Logger.LogInformation("[联机] 传送完成，检测到服务端指令的统一等待点 {SyncId}，强制等待", pendingPoint.SyncPointId);
-                                        await MultiplayerCoordinator.WaitForAllPlayers(pendingPoint.SyncPointId, ct);
+                                        await MultiplayerCoordinator.WaitForAllPlayers(pendingPoint.SyncPointId, ct, progress);
                                         Logger.LogInformation("[联机] 服务端指令等待点同步完成，继续前进，syncId={SyncId}", pendingPoint.SyncPointId);
                                         MultiplayerCoordinator.ClearPendingWaitPoint();
                                     }
@@ -426,21 +456,22 @@ public class PathExecutor
                                     var tpMapKey = CurWaypoints.Item1 * 10000 + CurWaypoint.Item1;
                                     if (_syncPointMap.TryGetValue(tpMapKey, out var tpSyncId) && tpSyncId != null)
                                     {
+                                        var tpProgress = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
                                         // 检查是否是异常等待点
                                         bool isAbnormalWaitingPoint = MultiplayerCoordinator.IsAbnormalWaitingAtPoint(tpSyncId);
                                         
                                         // 异常等待点：强制同步等待
                                         if (isAbnormalWaitingPoint)
                                         {
-                                            Logger.LogInformation("[联机] 传送完成，进入异常等待点 {SyncId}，强制等待", tpSyncId);
-                                            await MultiplayerCoordinator.WaitForAllPlayers(tpSyncId, ct);
+                                            Logger.LogInformation("[联机] 传送完成，进入异常等待点 {SyncId}，强制等待，进度={P}", tpSyncId, tpProgress);
+                                            await MultiplayerCoordinator.WaitForAllPlayers(tpSyncId, ct, tpProgress);
                                             Logger.LogInformation("[联机] 异常等待点同步完成，继续前进，syncId={SyncId}", tpSyncId);
                                         }
                                         // 正常同步点：统一等待（传送必等待默认启用）
                                         else
                                         {
-                                            Logger.LogInformation("[联机] 传送完成，等待所有玩家同步，syncId={SyncId}", tpSyncId);
-                                            await MultiplayerCoordinator.WaitForAllPlayers(tpSyncId, ct);
+                                            Logger.LogInformation("[联机] 传送完成，等待所有玩家同步，syncId={SyncId}, 进度={P}", tpSyncId, tpProgress);
+                                            await MultiplayerCoordinator.WaitForAllPlayers(tpSyncId, ct, tpProgress);
                                             Logger.LogInformation("[联机] 传送同步完成，继续前进，syncId={SyncId}", tpSyncId);
                                         }
                                     }
@@ -614,44 +645,68 @@ public class PathExecutor
                 }
                 catch (RetryException retryException)
                 {
-                    // 同步点后异常（_syncPointReached == true）：通知队友，跳下一线路
+                    // 计算目标进度：跳到下一段开头的传送点
+                    // 当前段索引 = CurWaypoints.Item1，下一段 = CurWaypoints.Item1 + 1，传送点是该段的 waypoint 0
+                    var nextSegmentIdx = CurWaypoints.Item1 + 1;
+                    long targetProgress;
+                    if (nextSegmentIdx < waypointsList.Count)
+                    {
+                        // 跳到当前 JSON 的下一段
+                        targetProgress = ComputeProgress(nextSegmentIdx, 0);
+                    }
+                    else
+                    {
+                        // 已是最后一段，跳到下一个 JSON 的第一段
+                        targetProgress = (long)(CurrentJsonRouteIndex + 1) * 1_000_000;
+                    }
+
+                    // 联机模式：同步点后异常 → 上报 Reviving + 目标进度 → 不重试 → 跳到下一段线路
                     if (_syncPointReached && MultiplayerCoordinator != null)
                     {
-                        Logger.LogWarning("[联机] 同步点后异常恢复：通知队友，跳下一线路，原因: {Msg}", retryException.Message);
+                        Logger.LogWarning("[联机] 同步点后异常：上报 Reviving，目标进度={Target}，跳到下一段，原因: {Msg}",
+                            targetProgress, retryException.Message);
                         try
                         {
                             await MultiplayerCoordinator.ReportFightingStatusAsync(false);
-                            // 通过异常状态管理器通知队友
-                            var myUid = MultiplayerCoordinator.PlayerUid;
-                            if (!string.IsNullOrEmpty(myUid))
-                            {
-                                MultiplayerCoordinator.StateManager?.MarkAbnormal(
-                                    myUid, "", "", $"同步点后异常: {retryException.Message}");
-                            }
+                            await MultiplayerCoordinator.ReportMemberStatusAsync(MemberStatus.Reviving, targetProgress);
                         }
                         catch { }
                         
-                        // 跳到下一条路线
-                        SkipRouteReason = retryException.Message;
-                        SkipRouteRequested = true;
+                        // 跳到下一段线路（下一个传送点），不是跳过整个 JSON
+                        SkipToNextSegment = true;
+                        // 标记需要在下一个同步点前上报 Normal
+                        _needReportNormalBeforeSync = true;
                         break;
                     }
 
-                    // 同步点前异常（_syncPointReached == false）：不通知队友，按原逻辑重试
-                    // 注意：上游的 RecoverWhenLowHp 已经处理了去七天神像
-                    
-                    // 联机模式房主：非最后一次重试，上报 Reviving 后继续重跑
-                    if (MultiplayerCoordinator != null && MultiplayerCoordinator.IsHost)
+                    // 联机模式：同步点前异常 → 上报 Reviving → 重试本线段（最多 3 次）→ 失败则跳到下一段
+                    if (MultiplayerCoordinator != null)
                     {
                         try
                         {
-                            await MultiplayerCoordinator.ReportFightingStatusAsync(false); // 清除可能残留的 Fighting 状态
-                            await MultiplayerCoordinator.ReportMemberStatusAsync(MemberStatus.Reviving);
+                            await MultiplayerCoordinator.ReportFightingStatusAsync(false);
+                            await MultiplayerCoordinator.ReportMemberStatusAsync(MemberStatus.Reviving, targetProgress);
                         }
                         catch { }
+                        
+                        // 重试次数耗尽 → 跳到下一段线路
+                        if (i >= RetryTimes - 1)
+                        {
+                            Logger.LogWarning("[联机] 同步点前异常重试耗尽，跳到下一段线路，目标进度={Target}，原因: {Msg}",
+                                targetProgress, retryException.Message);
+                            SkipToNextSegment = true;
+                            _needReportNormalBeforeSync = true;
+                            break;
+                        }
+                        
+                        // 还有重试机会，继续重试
+                        StartSkipOtherOperations();
+                        Logger.LogWarning("[联机] 同步点前异常，重试（{N}/{Max}），原因: {Msg}", i + 1, RetryTimes, retryException.Message);
+                        if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3) PathingConditionConfig.AutoEatCount = 0;
+                        continue; // 继续 for 循环重试
                     }
 
-                    // 同步点前异常或单机模式：保持原有重试行为
+                    // 单机模式：保持原有重试行为
                     StartSkipOtherOperations();
                     Logger.LogWarning(retryException.Message);
                     if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3)  PathingConditionConfig.AutoEatCount = 0;
@@ -1333,6 +1388,8 @@ public class PathExecutor
                 }
             }
             
+            // 联机模式：低血量去七天神像，由后续 RetryException 处理 Reviving 上报（带 targetProgress）
+            // 这里不上报，避免覆盖 targetProgress 为 -1
             await TpStatueOfTheSeven(switchOnly);
             if (PathingConditionConfig.AutoEatCount < 2) return;
             throw new RetryException("回血完成后重试路线-1");
@@ -1342,7 +1399,7 @@ public class PathExecutor
             await Bv.WaitForMainUi(ct); // 等待主界面加载完成
             Logger.LogInformation("复苏完成-1");
             await Delay(4000, ct);
-            // 血量肯定不满，直接去七天神像回血
+            // 联机模式：复苏后去七天神像，由后续 RetryException 处理 Reviving 上报
             await TpStatueOfTheSeven();
             if (PathingConditionConfig.AutoEatCount < 2) return;
             throw new RetryException("回血完成后重试路线-2");

@@ -784,14 +784,15 @@ public class CoordinatorClient : IAsyncDisposable
 
     /// <summary>
     /// 上报成员状态（Normal/Fighting/Rejoining/Reviving/Offline）
+    /// targetProgress：异常恢复后将到达的同步点进度值（仅 Reviving/Rejoining 时有意义，其他时候传 -1）
     /// </summary>
-    public async Task ReportMemberStatusAsync(MemberStatus status)
+    public async Task ReportMemberStatusAsync(MemberStatus status, long targetProgress = -1)
     {
         if (_connection == null || !IsConnected) return;
         try
         {
-            await _connection.InvokeAsync("MemberStatusChanged", PlayerUid ?? "", status.ToString());
-            _logger.LogDebug("[联机] 上报成员状态: {Status}", status);
+            await _connection.InvokeAsync("MemberStatusChanged", PlayerUid ?? "", status.ToString(), targetProgress);
+            _logger.LogDebug("[联机] 上报成员状态: {Status}, 目标进度={Target}", status, targetProgress);
         }
         catch (Exception ex)
         {
@@ -852,43 +853,54 @@ public class CoordinatorClient : IAsyncDisposable
 
     /// <summary>
     /// 等待所有玩家到达指定同步点
+    /// syncProgress：当前同步点的全局进度值（用于服务端判定异常玩家是否会经过此点）
     /// </summary>
-    public async Task WaitForAllPlayersAsync(string syncId, CancellationToken ct)
+    public async Task WaitForAllPlayersAsync(string syncId, CancellationToken ct, long syncProgress = -1)
     {
         if (_connection == null || !IsConnected) return;
+
+        // 使用与 SyncBarrier 相同的模式：先订阅事件，再发送动作，本地等待
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnArrived(string id)
+        {
+            if (id == syncId)
+            {
+                tcs.TrySetResult(true);
+            }
+        }
+        void OnRoomClosed(string reason)
+        {
+            tcs.TrySetCanceled();
+        }
+
+        AllArrived += OnArrived;
+        RoomClosed += OnRoomClosed;
+
         try
         {
-            await _connection.InvokeAsync("WaitForAllPlayers", syncId);
-            _logger.LogDebug("[联机] 请求等待所有玩家: {SyncId}", syncId);
+            // 使用 SendAsync（fire-and-forget），传入 syncId 和 syncProgress
+            await _connection.SendAsync("WaitForAllPlayers", syncId, syncProgress);
+            _logger.LogDebug("[联机] 请求等待所有玩家: {SyncId}, 进度={Progress}", syncId, syncProgress);
 
-            // 等待服务器通知所有玩家到达
-            var tcs = new TaskCompletionSource<bool>();
-            void OnArrived(string id)
-            {
-                if (id == syncId)
-                {
-                    tcs.TrySetResult(true);
-                }
-            }
-            AllArrived += OnArrived;
-            try
-            {
-                await tcs.Task.WaitAsync(ct);
-            }
-            finally
-            {
-                AllArrived -= OnArrived;
-            }
+            // 本地等待 AllArrived 事件（受 CT 控制，可被用户取消）
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            await tcs.Task.WaitAsync(linkedCts.Token);
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("[联机] 等待所有玩家超时: {SyncId}", syncId);
+            _logger.LogWarning("[联机] 等待所有玩家超时或被取消: {SyncId}", syncId);
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "WaitForAllPlayersAsync 失败: {SyncId}", syncId);
             throw;
+        }
+        finally
+        {
+            AllArrived -= OnArrived;
+            RoomClosed -= OnRoomClosed;
         }
     }
 

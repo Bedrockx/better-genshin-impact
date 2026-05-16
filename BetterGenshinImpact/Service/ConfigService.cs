@@ -1,4 +1,5 @@
 using BetterGenshinImpact.Core.Config;
+using BetterGenshinImpact.Helpers;
 using BetterGenshinImpact.Service.Interface;
 using BetterGenshinImpact.View.Windows;
 using OpenCvSharp;
@@ -25,6 +26,7 @@ public class ConfigService : IConfigService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters =
         {
+            new ExpandoObjectJsonConverter(),
             new OpenCvPointJsonConverter(),
             new OpenCvRectJsonConverter(),
         },

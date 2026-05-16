@@ -1,0 +1,86 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时90.4秒，包含以下怪物：1只丘丘人、1只射手丘丘人、1只火箭丘丘人、1只丘丘岩盔王。",
+    "enable_monster_loot_split": false,
+    "last_modified_time": 1777395014807,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B027璃月离沙郊",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 828.2800000000007,
+      "y": -583.3600000000006
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 852.162109375,
+      "y": -579.68359375
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "2000",
+      "id": 3,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 868.4130859375,
+      "y": -566.765625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 907.98828125,
+      "y": -541.6396484375
+    },
+    {
+      "action": "log_output",
+      "action_params": "这里有一只500摩拉的盗宝鼬,顺路赚点零花钱",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "orientation",
+      "x": 907.98828125,
+      "y": -541.6396484375
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 6,
+      "move_mode": "fly",
+      "type": "path",
+      "x": 915.66796875,
+      "y": -520.6171875
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 931.8125,
+      "y": -495.6865138359735
+    }
+  ]
+}

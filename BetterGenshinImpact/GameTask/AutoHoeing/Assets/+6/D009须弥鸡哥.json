@@ -1,0 +1,68 @@
+{
+  "info": {
+    "authors": [
+      {
+        "links": "",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时94.32秒，包含以下怪物：1只遗迹重机。",
+    "enable_monster_loot_split": false,
+    "hash_res": "08827396",
+    "last_modified_time": 1778767276938,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "D009须弥鸡哥",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 3932.162109375,
+      "y": -161.62353515625
+    },
+    {
+      "action": "combat_script",
+      "action_params": "keypress(x);芙宁娜 e;爱可菲 e;",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 3931.427734375,
+      "y": -194.37890625
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 3927.6953125,
+      "y": -230.115234375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 3958.0576171875,
+      "y": -243.4267578125
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 3974.890625,
+      "y": -249.2548828125
+    }
+  ]
+}

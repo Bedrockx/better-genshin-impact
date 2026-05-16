@@ -231,6 +231,20 @@ public class RoomManager
         }
     }
 
+    /// <summary>
+    /// 清理指定同步点的到达集合（用于新一轮开始时清除旧数据）
+    /// </summary>
+    public void ClearArrivalSet(string roomCode, string syncPointId)
+    {
+        if (!_rooms.TryGetValue(roomCode, out var room))
+            return;
+
+        lock (room)
+        {
+            room.ArrivalSets.Remove(syncPointId);
+        }
+    }
+
     /// <summary>记录战斗完成，当房间内所有在线成员均完成时返回 true</summary>
     public bool RecordFightDone(string roomCode, string syncPointId, string connectionId)
     {
@@ -624,8 +638,37 @@ public class RoomManager
             .Where(p => DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2))
             .ToList();
             
-        return onlinePlayers.Count > 0
-               && onlinePlayers.All(p => reported.Contains(p.ConnectionId));
+        if (onlinePlayers.Count == 0) return false;
+        
+        // 所有在线玩家都已上报：reported 集合应该覆盖所有在线玩家的 ConnectionId
+        return onlinePlayers.All(p => reported.Contains(p.ConnectionId));
+    }
+    
+    /// <summary>
+    /// 添加玩家到房间并注册连接映射（仅用于测试）
+    /// </summary>
+    public void AddPlayerForTesting(string roomCode, PlayerInfo player)
+    {
+        if (!_rooms.TryGetValue(roomCode, out var room)) return;
+        lock (room)
+        {
+            room.Players.Add(player);
+            _connectionRoomMap[player.ConnectionId] = roomCode;
+        }
+    }
+    
+    /// <summary>
+    /// 更新指定连接的心跳（仅用于测试，绕过连接映射验证）
+    /// </summary>
+    public void UpdateHeartbeatForConnectionId(string roomCode, string connectionId)
+    {
+        if (!_rooms.TryGetValue(roomCode, out var room)) return;
+        lock (room)
+        {
+            var player = room.Players.FirstOrDefault(p => p.ConnectionId == connectionId);
+            if (player != null)
+                player.LastHeartbeat = DateTime.UtcNow;
+        }
     }
 
     private static string GenerateCode()

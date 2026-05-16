@@ -302,6 +302,7 @@ public partial class AutoFriendshipTask : ISoloTask, IDisposable
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "清理战斗异常: {Message}", ex.Message);
+                        AutoFightTask.FightEndTotoly = true;
                     }
                 }
                 _fighting = false;
@@ -353,6 +354,7 @@ public partial class AutoFriendshipTask : ISoloTask, IDisposable
                         if (innerEx is not OperationCanceledException)
                         {
                             _logger.LogError(innerEx, "清理战斗异常: {Message}", innerEx.Message);
+                            AutoFightTask.FightEndTotoly = true;
                         }
                     }
                     
@@ -370,7 +372,11 @@ public partial class AutoFriendshipTask : ISoloTask, IDisposable
         finally
         {
             _fighting = false;
-            try { AutoFightTask.FightEndTotoly = true; } catch { }
+            try {
+                AutoFightTask.FightEndTotoly = true;
+                await Delay(5000, _ct);
+                cts.Cancel();
+            } catch { }
         }
     }
 
@@ -444,7 +450,7 @@ public partial class AutoFriendshipTask : ISoloTask, IDisposable
 
         var currentTimeStr = $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds:D2} 秒";
 
-        _logger.LogInformation("当前进度：{Current}/{Total} ({Percent:F1}%)", currentRound + 1, totalRounds, ((currentRound +1) / totalRounds * 100));
+        _logger.LogInformation("当前进度：{Current}/{Total} ({Percent:F1}%)", currentRound + 1, totalRounds, (currentRound + 1) * 100.0 / totalRounds);
         _logger.LogInformation("当前运行总时长：{Time}", currentTimeStr);
         _logger.LogInformation("预计完成时间：{Time} (约 {Minutes} 分钟)", estimatedCompletion.ToString("HH:mm:ss"), (int)(remainingTimeMs / 60000));
     }
@@ -910,7 +916,10 @@ public partial class AutoFriendshipTask : ISoloTask, IDisposable
         }
         finally
         {
-            try { AutoFightTask.FightEndTotoly = true; } catch { }
+            try { AutoFightTask.FightEndTotoly = true;
+                await Delay(5000, _ct);
+                cts.Cancel();}
+            catch { }
             Simulation.SendInput.Mouse.LeftButtonUp();
         }
     }
