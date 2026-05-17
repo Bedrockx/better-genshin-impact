@@ -591,8 +591,22 @@ public class AutoHoeingTask : ISoloTask
             _ct = _linkedStopCts.Token;
 
             // 成员侧：监听 RoomClosed 事件，设置 _sessionTerminated 确保多世界模式不继续下一轮
+            // 房主多世界轮次切换会主动调用 CloseRoomAsync，会触发 SignalR 回环 RoomClosed 广播；
+            // 通过 ConsumeSelfClosingRoomFlag 识别为自触发并跳过取消，避免误终止后续轮次。
+            // 多世界轮次切换期间（成员尚未离开旧 Group），旧房主关旧房间也会广播 RoomClosed，
+            // 必须用 WorldStateMonitor.IsRoundSwitching 抑制，否则成员会被误终止整个任务。
             client.RoomClosed += reason =>
             {
+                if (client.ConsumeSelfClosingRoomFlag())
+                {
+                    _logger.LogInformation("[联机] 收到 RoomClosed（自触发关房）: {Reason}，不取消任务（多世界轮次切换）", reason);
+                    return;
+                }
+                if (_worldStateMonitor != null && _worldStateMonitor.IsRoundSwitching)
+                {
+                    _logger.LogInformation("[联机] 收到 RoomClosed（轮次切换中）: {Reason}，不取消任务（旧房间关闭广播）", reason);
+                    return;
+                }
                 _stopReason = $"房间已关闭: {reason}";
                 _sessionTerminated = true;
                 try { _linkedStopCts?.Cancel(); }
@@ -1201,22 +1215,9 @@ public class AutoHoeingTask : ISoloTask
 
             if (round > 0)
             {
-                // 快速检查：如果已经不在联机世界了（被踢回自己世界），直接停止
-                try
-                {
-                    using var checkRegion = CaptureToRectArea();
-                    var checkStatus = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(checkRegion);
-                    if (!checkStatus.IsInMultiGame)
-                    {
-                        _logger.LogWarning("[多世界] 第 {Round} 轮开始前检测到已不在联机世界，停止后续轮次", round + 1);
-                        _sessionTerminated = true;
-                        break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "[多世界] 轮次切换前联机状态检查失败，继续");
-                }
+                // 注意：第 1 轮结束后房主和成员都已通过 LeaveCurrentWorldAsync 主动回到自己世界，
+                // 因此本轮开始时 IsInMultiGame 必然为 false，不能在此处用"是否在联机世界"做兜底检测。
+                // 成员被踢/掉线的异常场景由 WorldStateMonitor.OnDroppedFromRoom 和 RoomClosed 事件兜底。
 
                 // 非第一轮：需要重新组队进入新房主的世界，并重新加载 CD
                 _worldStateMonitor?.BeginRoundSwitch();

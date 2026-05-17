@@ -14,10 +14,61 @@ public class CoordinatorHub : Hub
     private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, List<RouteHash>>>
         RouteReports = new();
 
+    // 每个连接当前所属的 SignalR Group 列表（用于轮换房间时清理旧 Group 订阅，
+    // 避免上一个房间关闭/广播时串扰到已切换到新房间的连接）。
+    private static readonly ConcurrentDictionary<string, HashSet<string>> _connectionGroups = new();
+
     public CoordinatorHub(RoomManager roomManager, ILogger<CoordinatorHub> logger)
     {
         _roomManager = roomManager;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// 把当前连接从所有旧 Group 中移除，确保后续广播不会串扰到这个连接。
+    /// 多世界轮次切换时，玩家会从旧房间切到新房间，必须先离开旧 Group。
+    /// </summary>
+    private async Task LeaveAllGroupsAsync(string? excludeGroup = null)
+    {
+        if (!_connectionGroups.TryGetValue(Context.ConnectionId, out var groups))
+            return;
+        // 拷贝避免迭代时被并发修改
+        string[] toRemove;
+        lock (groups)
+        {
+            toRemove = groups.Where(g => g != excludeGroup).ToArray();
+        }
+        foreach (var g in toRemove)
+        {
+            try
+            {
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, g);
+                lock (groups) { groups.Remove(g); }
+                _logger.LogInformation("[GroupCleanup] 连接 {ConnId} 从旧 Group {Group} 移除",
+                    Context.ConnectionId, g);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[GroupCleanup] 连接 {ConnId} 离开 Group {Group} 失败（忽略）",
+                    Context.ConnectionId, g);
+            }
+        }
+    }
+
+    /// <summary>记录某连接已加入指定 Group，供 LeaveAllGroupsAsync 后续清理使用。</summary>
+    private void TrackGroup(string groupName)
+    {
+        var set = _connectionGroups.GetOrAdd(Context.ConnectionId, _ => new HashSet<string>());
+        lock (set) { set.Add(groupName); }
+    }
+
+    /// <summary>记录某连接已离开指定 Group。</summary>
+    private void UntrackGroup(string groupName)
+    {
+        if (_connectionGroups.TryGetValue(Context.ConnectionId, out var set))
+        {
+            lock (set) { set.Remove(groupName); }
+        }
     }
 
     /// <summary>创建房间，返回房间码</summary>
@@ -25,8 +76,11 @@ public class CoordinatorHub : Hub
     {
         _logger.LogInformation("CreateRoom 收到参数: playerName={Name}, playerUid={Uid}, expectedPlayerCount={Count}, whitelist={WL}",
             playerName, playerUid, expectedPlayerCount, whitelist != null ? string.Join(",", whitelist) : "null");
+        // 多世界轮次切换：先离开所有旧 Group，避免旧房间广播串扰
+        await LeaveAllGroupsAsync();
         var code = _roomManager.CreateRoom(Context.ConnectionId, playerName, whitelist, playerUid, expectedPlayerCount);
         await Groups.AddToGroupAsync(Context.ConnectionId, code);
+        TrackGroup(code);
         _logger.LogInformation("连接 {ConnId}({Name}) 创建房间 {Code}", Context.ConnectionId, playerName, code);
 
         var room = _roomManager.GetRoom(code)!;
@@ -47,7 +101,10 @@ public class CoordinatorHub : Hub
             return false;
         }
 
+        // 多世界轮次切换：先离开所有旧 Group，避免旧房间广播串扰
+        await LeaveAllGroupsAsync(excludeGroup: roomCode);
         await Groups.AddToGroupAsync(Context.ConnectionId, roomCode);
+        TrackGroup(roomCode);
         _logger.LogInformation("连接 {ConnId} 加入房间 {Code}", Context.ConnectionId, roomCode);
 
         var room = _roomManager.GetRoom(roomCode)!;
@@ -64,6 +121,7 @@ public class CoordinatorHub : Hub
         foreach (var code in affectedCodes)
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, code);
+            UntrackGroup(code);
             var updatedRoom = _roomManager.GetRoom(code);
             var players = updatedRoom?.Players ?? [];
             await Clients.Group(code).SendAsync("PlayerListUpdated", players);
@@ -236,6 +294,7 @@ public class CoordinatorHub : Hub
         // 删除整个房间，防止玩家重连后重新加入已关闭的房间
         _roomManager.DeleteRoom(roomCode);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomCode);
+        UntrackGroup(roomCode);
     }
 
     /// <summary>设置万叶玩家（仅房主）</summary>
@@ -443,6 +502,9 @@ public class CoordinatorHub : Hub
 
         _logger.LogInformation("连接 {ConnId} 断开，影响房间：{Rooms}",
             Context.ConnectionId, string.Join(", ", affectedCodes));
+
+        // 清理 group 跟踪表，避免静态字典内存泄漏
+        _connectionGroups.TryRemove(Context.ConnectionId, out _);
 
         await base.OnDisconnectedAsync(exception);
     }

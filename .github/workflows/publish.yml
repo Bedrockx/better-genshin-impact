@@ -351,6 +351,63 @@ jobs:
           }
           Copy-Item -Path "Build\micasetup.json" -Destination "."
           Copy-Item -Path "Build\micasetup" -Destination "." -Recurse -Force
+
+          # 兼容性补丁：MicaSetup v2.5.x 的 net472 项目里使用了
+          # string.Contains(string, StringComparison) 这个 .NET Core+ 才有的重载，
+          # 在 net472 下编译失败。需要替换为 .IndexOf(..., StringComparison.X) >= 0。
+          # 注意：MicaSetup 的 .cs 源文件被打包在 template/default.7z 里，
+          # 由 makemica.exe 在执行时解出并交给 msbuild 编译。
+          # 因此这里既要修补磁盘上的散文件（防御性），
+          # 也要修补 default.7z 内部的源文件（实际生效的来源）。
+          $regex = '\.Contains\((?<arg>[^,()]+(?:\([^()]*\))?)\s*,\s*StringComparison\.(?<cmp>\w+)\)'
+          $replacement = '.IndexOf(${arg}, StringComparison.${cmp}) >= 0'
+
+          function Patch-CsFile($path) {
+              $content = Get-Content -LiteralPath $path -Raw
+              $patched = [regex]::Replace($content, $regex, $replacement)
+              if ($patched -ne $content) {
+                  Set-Content -LiteralPath $path -Value $patched -Encoding UTF8
+                  Write-Host "  -> patched: $path"
+                  return $true
+              }
+              return $false
+          }
+
+          # 1) 修补散落在磁盘上的源文件（防御性兜底）
+          Get-ChildItem -Path . -Recurse -Filter "CloseApplicationHelper.cs" -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "Patching $($_.FullName)"
+              [void](Patch-CsFile $_.FullName)
+          }
+
+          # 2) 修补 template/default.7z 内部的源文件（msbuild 实际编译的来源）
+          $templateArchive = Join-Path (Get-Location) "template\default.7z"
+          if (Test-Path $templateArchive) {
+              Write-Host "Patching sources inside $templateArchive"
+              $extractDir = Join-Path (Get-Location) "template\default_patched"
+              if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+              & 7z x $templateArchive ("-o" + $extractDir) -y | Out-Null
+              $changed = $false
+              Get-ChildItem -Path $extractDir -Recurse -Filter "CloseApplicationHelper.cs" -ErrorAction SilentlyContinue | ForEach-Object {
+                  if (Patch-CsFile $_.FullName) { $changed = $true }
+              }
+              if ($changed) {
+                  Remove-Item $templateArchive -Force
+                  Push-Location $extractDir
+                  try {
+                      # 与 makemica.exe 期望的格式一致（7z, BCJ2 过滤器）
+                      & 7z a -t7z $templateArchive * -mx=5 -mf=BCJ2 -r -y | Select-Object -Last 3
+                  } finally {
+                      Pop-Location
+                  }
+                  Write-Host "  -> repacked $templateArchive"
+              } else {
+                  Write-Host "  -> nothing to patch inside default.7z"
+              }
+              Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+          } else {
+              Write-Host "template\default.7z not found, skip in-archive patch"
+          }
+
           .\makemica.exe micasetup.json
           ren BetterGI_Setup.exe BetterGI_Setup_v${{ needs.validate.outputs.version }}.exe
       - uses: actions/upload-artifact@v4

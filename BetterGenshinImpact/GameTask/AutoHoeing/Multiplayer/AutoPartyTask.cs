@@ -400,7 +400,12 @@ public class AutoPartyTask
         try
         {
             using var ra = CaptureToRectArea();
-            var result = OcrFactory.Paddle.OcrResult(ra.SrcMat);
+            //只识别ra的右半部分（申请加入按钮在右边），提高效率和准确率
+            var width = ra.SrcMat.Width;
+            var height = ra.SrcMat.Height;
+            var roiRect = new OpenCvSharp.Rect(width / 2, 0, width / 2, height);
+            using var roi = new OpenCvSharp.Mat(ra.SrcMat, roiRect);
+            var result = OcrFactory.Paddle.OcrResult(roi);
             int count = 0;
             foreach (var region in result.Regions)
             {

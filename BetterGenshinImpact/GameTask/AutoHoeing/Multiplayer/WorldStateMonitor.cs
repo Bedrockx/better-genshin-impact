@@ -55,6 +55,12 @@ public class WorldStateMonitor : IAsyncDisposable
     private DateTime _roundSwitchStart;
     private const int RoundSwitchTimeoutSeconds = 120;
 
+    /// <summary>
+    /// 多世界轮次是否正在切换中（公开只读访问，供 AutoHoeingTask 的事件处理器使用）。
+    /// 切换期间需要忽略服务端的 RoomClosed 广播，避免旧房间关闭误终止整个多世界任务。
+    /// </summary>
+    public bool IsRoundSwitching => _isRoundSwitching;
+
     // === 心跳失败独立退出路径（EC-03）===
     private int _consecutiveHeartbeatFailures;
     private const int HeartbeatFailureExitThreshold = 6; // 6次 × 5秒 = 30秒

@@ -34,6 +34,9 @@ public class RouteExecutionEngine
     private MultiplayerCoordinator? _coordinator;
     private WorldStateMonitor? _worldStateMonitor;
 
+    // 当前正在执行的 PathExecutor 引用（联机模式下供 AnomalyDetector 信号传递使用）
+    private PathExecutor? _activeExecutor;
+
     public void SetCoordinator(MultiplayerCoordinator? coordinator)
     {
         _coordinator = coordinator;
@@ -48,10 +51,20 @@ public class RouteExecutionEngine
                 Logger.LogInformation("[联机] 检测到复苏，等待 RetryException 路径上报 Reviving");
                 await Task.CompletedTask;
             };
+
+            // 联机模式专用：色块检测到"已倒下"时，向当前 PathExecutor 发信号，
+            // 让其在主循环抛 RetryException，进入"同步点前/后"统一异常处理流程。
+            // 注意：这个回调只对联机的色块检测生效（IsMultiplayerDefeated），
+            // 单机的模板匹配复苏走的是另一条 OnRevivalDetected 回调，不受影响。
+            _anomalyDetector.OnMultiplayerDefeatedDetected = () =>
+            {
+                _activeExecutor?.SignalMultiplayerRevival();
+            };
         }
         else
         {
             _anomalyDetector.OnRevivalDetected = null;
+            _anomalyDetector.OnMultiplayerDefeatedDetected = null;
         }
     }
     public void SetWorldStateMonitor(WorldStateMonitor? monitor) => _worldStateMonitor = monitor;
@@ -127,18 +140,31 @@ public class RouteExecutionEngine
                             _config.MultiplayerEnabled, _coordinator != null);
                     }
                     
-                    Logger.LogInformation("[DEBUG] 开始调用 executor.Pathing，路线: {Name}", route.FileName);
-                    await executor.Pathing(task);
-                    Logger.LogInformation("[DEBUG] executor.Pathing 完成，SuccessEnd={End}，路线: {Name}", executor.SuccessEnd, route.FileName);
-                    pathingFullyCompleted = executor.SuccessEnd;
-
-                    // 联机模式：传递路线跳过标志位（需求 1）
-                    if (executor.SkipRouteRequested)
+                    // 注册当前 executor，供 AnomalyDetector 异步信号使用
+                    _activeExecutor = executor;
+                    try
                     {
-                        skipRouteRequested = true;
-                        skipRouteReason = executor.SkipRouteReason;
-                        pathingFullyCompleted = false; // 跳过的路线不算完整完成
-                        Logger.LogInformation("[联机] 路线 {Name} 被标记为跳过: {Reason}", route.FileName, skipRouteReason);
+                        Logger.LogInformation("[DEBUG] 开始调用 executor.Pathing，路线: {Name}", route.FileName);
+                        await executor.Pathing(task);
+                        Logger.LogInformation("[DEBUG] executor.Pathing 完成，SuccessEnd={End}，路线: {Name}", executor.SuccessEnd, route.FileName);
+                        pathingFullyCompleted = executor.SuccessEnd;
+
+                        // 联机模式：传递路线跳过标志位（需求 1）
+                        if (executor.SkipRouteRequested)
+                        {
+                            skipRouteRequested = true;
+                            skipRouteReason = executor.SkipRouteReason;
+                            pathingFullyCompleted = false; // 跳过的路线不算完整完成
+                            Logger.LogInformation("[联机] 路线 {Name} 被标记为跳过: {Reason}", route.FileName, skipRouteReason);
+                        }
+                    }
+                    finally
+                    {
+                        // 路线结束（含异常路径）解除引用，避免下一条路线之前 AnomalyDetector 误信号到旧 executor
+                        if (ReferenceEquals(_activeExecutor, executor))
+                        {
+                            _activeExecutor = null;
+                        }
                     }
                 }
                 else

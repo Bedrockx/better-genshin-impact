@@ -32,6 +32,13 @@ public class AnomalyDetector
     /// </summary>
     public Func<Task>? OnRevivalDetected { get; set; }
 
+    /// <summary>
+    /// 联机模式专用：检测到"已倒下"色块（联机倒地复苏界面）时的同步回调。
+    /// 用于向当前 PathExecutor 发信号，让其在主循环抛 RetryException 进入异常处理流程。
+    /// 单机模板匹配复苏不会触发此回调。
+    /// </summary>
+    public Action? OnMultiplayerDefeatedDetected { get; set; }
+
     public void LoadTemplates(string assetsDir)
     {
         _frozenRo = LoadRo(assetsDir, "解除冰冻.png", 1379, 574, 84, 39);
@@ -126,8 +133,11 @@ public class AnomalyDetector
                         Logger.LogInformation("识别到联机已倒下界面（色块检测），点击复苏按钮");
                         region.ClickTo(960, 1020);
                         await Task.Delay(500, ct);
-                        
-                        // 联机模式：触发复苏回调上报异常状态
+
+                        // 联机模式：触发"已倒下"信号，PathExecutor 在主循环将抛 RetryException 走异常流程
+                        try { OnMultiplayerDefeatedDetected?.Invoke(); } catch { }
+
+                        // 兼容：仍保留通用复苏回调（当前为空操作，留作未来扩展）
                         if (OnRevivalDetected != null)
                         {
                             try { await OnRevivalDetected(); } catch { }

@@ -356,6 +356,9 @@ public class CoordinatorClient : IAsyncDisposable
         if (_connection == null) return;
         try
         {
+            // 标记本地正在主动关闭房间，使后续到达的 RoomClosed 广播能识别为"自触发"
+            // （本节点是房主，多世界轮次切换时主动关房，应避免 RoomClosed 取消主任务流程）
+            _selfClosingRoom = true;
             await _connection.InvokeAsync("CloseRoom");
             _isInRoom = false;
         }
@@ -363,6 +366,20 @@ public class CoordinatorClient : IAsyncDisposable
         {
             _logger.LogError(ex, "CloseRoomAsync 失败");
         }
+    }
+
+    /// <summary>本地是否正在主动关闭房间（CloseRoomAsync 已发起，等待广播回环）</summary>
+    private volatile bool _selfClosingRoom;
+
+    /// <summary>
+    /// 检查并消费"自触发关闭"标志位。供 RoomClosed 订阅方使用：
+    /// 若本次 RoomClosed 是本地主动关房导致的回环广播，应跳过取消逻辑。
+    /// </summary>
+    public bool ConsumeSelfClosingRoomFlag()
+    {
+        if (!_selfClosingRoom) return false;
+        _selfClosingRoom = false;
+        return true;
     }
 
     public async Task ResetWorldJoinedAsync()
@@ -481,19 +498,15 @@ public class CoordinatorClient : IAsyncDisposable
 
     /// <summary>
     /// 上报路线完成进度
+    /// 注意：服务端目前未实现 ReportRouteProgress Hub 方法，此调用会失败。
+    /// 当前的"进度值同步"机制（WaitForAllPlayers + MemberStatusChanged 重评估）
+    /// 已完整覆盖路线同步功能，故此处改为 no-op，避免日志噪声。
     /// </summary>
-    public async Task ReportRouteProgressAsync(int completedRouteIndex)
+    public Task ReportRouteProgressAsync(int completedRouteIndex)
     {
-        if (_connection == null || !IsConnected) return;
-        try
-        {
-            await _connection.InvokeAsync("ReportRouteProgress", PlayerUid ?? "", completedRouteIndex);
-            _logger.LogDebug("[联机] 上报路线进度: {Index}", completedRouteIndex);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "ReportRouteProgressAsync 失败（静默忽略）");
-        }
+        // No-op: 旧机制已被进度值同步替代，保留方法签名兼容现有调用方。
+        _logger.LogDebug("[联机] ReportRouteProgressAsync 调用（已 no-op）: completedRouteIndex={Index}", completedRouteIndex);
+        return Task.CompletedTask;
     }
 
     /// <summary>

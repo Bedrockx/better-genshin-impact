@@ -106,6 +106,24 @@ public class PathExecutor
     private bool _needReportNormalBeforeSync = false;
 
     /// <summary>
+    /// 联机模式：检测到"已倒下"色块（队友/自己倒地复苏）信号位。
+    /// 由 AnomalyDetector 通过 SignalMultiplayerRevival() 设置；
+    /// PathExecutor 在主循环中检测到后抛 RetryException 进入"同步点前/后"统一异常处理框架。
+    /// </summary>
+    private volatile bool _multiplayerRevivalDetected = false;
+
+    /// <summary>
+    /// 联机模式专用：外部（AnomalyDetector）检测到联机已倒下界面时调用。
+    /// 仅在联机模式下有效，单机模式忽略以保留原有行为。
+    /// </summary>
+    public void SignalMultiplayerRevival()
+    {
+        if (MultiplayerCoordinator == null) return;
+        _multiplayerRevivalDetected = true;
+        Logger.LogWarning("[联机] AnomalyDetector 信号：已倒下检测，将在下一个 waypoint 抛出 RetryException 进入异常处理流程");
+    }
+
+    /// <summary>
     /// 当前 JSON 路线在 ProcessRoutesByGroup 中的索引（路线级别），由外部注入。
     /// 用于计算全局进度值。
     /// </summary>
@@ -361,6 +379,16 @@ public class PathExecutor
                             SkipRouteReason = "收到中断重对齐指令";
                             break;
                         }
+
+                        // === 联机模式：已倒下复苏信号（来自 AnomalyDetector 色块检测）===
+                        // 把异步事件转为 RetryException，统一走"同步点前/后"异常处理流程：
+                        //   - 同步点后 → 上报 Reviving + 跳到下一段
+                        //   - 同步点前 → 重试本段，3 次失败后跳下一段
+                        if (_multiplayerRevivalDetected && MultiplayerCoordinator != null)
+                        {
+                            _multiplayerRevivalDetected = false;
+                            throw new RetryException("联机模式检测到已倒下复苏，按异常处理");
+                        }
                         
                         CurWaypoint = (waypoints.FindIndex(wps => wps == waypoint), waypoint);
                         
@@ -411,7 +439,30 @@ public class PathExecutor
                                     await Delay(1000, ct);
                                 }
                             }
-                            await HandleTeleportWaypoint(waypoint);
+                            // 联机模式：把传送类异常（TpPointNotActivate、tpTask 内部 5 次重试耗尽抛出的 InvalidOperationException）
+                            // 转成 RetryException，进入"同步点前/后"异常处理框架（重试 3 次后跳到下一段，而不是跳整个 JSON）。
+                            // 单机模式：保留原有行为，让异常自然上抛。
+                            if (MultiplayerCoordinator != null)
+                            {
+                                try
+                                {
+                                    await HandleTeleportWaypoint(waypoint);
+                                }
+                                catch (TaskCanceledException) { throw; }
+                                catch (NormalEndException) { throw; }
+                                catch (HandledException) { throw; }
+                                catch (RetryException) { throw; }
+                                catch (RetryNoCountException) { throw; }
+                                catch (Exception tpEx)
+                                {
+                                    Logger.LogWarning("[联机] 传送失败，转为 RetryException 进入异常处理流程，原因: {Msg}", tpEx.Message);
+                                    throw new RetryException($"传送失败：{tpEx.Message}");
+                                }
+                            }
+                            else
+                            {
+                                await HandleTeleportWaypoint(waypoint);
+                            }
                             
                             // 标记同步点已到达（第一个传送点）
                             if (!_syncPointReached)
