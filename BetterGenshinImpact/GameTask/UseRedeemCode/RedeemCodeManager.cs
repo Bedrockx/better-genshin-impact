@@ -65,7 +65,9 @@ public class RedeemCodeManager
         }
 
         Clipboard.Clear();
-        await new TaskRunner().RunSoloTaskAsync(new UseRedemptionCodeTask(codes));
+        // 剪贴板路径无 UID 上下文，显式传 null —— UseRedemptionCodeTask 内部以会话级成功 short-circuit
+        // 防御同会话内重兑（design.md 风险 5），但不写跨进程持久化记录。
+        await new TaskRunner().RunSoloTaskAsync(new UseRedemptionCodeTask(codes, uid: null));
     }
 
     public static List<string> ExtractAllCodes(string clipboardText)

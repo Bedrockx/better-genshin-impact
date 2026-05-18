@@ -20,10 +20,12 @@ public class AutoRedeemCodeChecker
 {
     private static readonly ILogger _logger = App.GetLogger<AutoRedeemCodeChecker>();
     private readonly AutoRedeemCodeConfig _config;
+    private readonly RedeemCodeHistoryStore _historyStore;
 
     public AutoRedeemCodeChecker()
     {
         _config = TaskContext.Instance().Config.AutoRedeemCodeConfig;
+        _historyStore = new RedeemCodeHistoryStore(_config);
     }
 
     /// <summary>
@@ -51,6 +53,11 @@ public class AutoRedeemCodeChecker
         {
             _logger.LogInformation("UID {Uid} 开始自动检查兑换码...", uid);
 
+            // 入口处清理过期/兜底 TTL 已超的已兑换记录（design.md "清理策略选择" 章节）。
+            // 由 IsFirstOneDragonToday(uid) 保证当日只跑一次，不依赖网络成功。
+            var today = ServerTimeHelper.GetServerTimeNow().ToString("yyyy-MM-dd");
+            _historyStore.Cleanup(today, DateTime.Now);
+
             // 获取最新兑换码列表
             var codeList = await FetchLatestRedeemCodesAsync();
 
@@ -62,7 +69,7 @@ public class AutoRedeemCodeChecker
             }
 
             // 过滤掉已过期的兑换码
-            var validCodeList = FilterExpiredCodes(codeList);
+            var validCodeList = FilterExpiredCodes(uid, codeList);
             if (validCodeList.Count == 0)
             {
                 _logger.LogInformation("UID {Uid} 当前没有未过期的兑换码（{ExpiredCount} 个已过期）", uid, codeList.Count);
@@ -71,7 +78,7 @@ public class AutoRedeemCodeChecker
             }
             // 执行兑换
             _logger.LogInformation("UID {Uid} 发现 {Count} 个可兑换码，开始自动兑换...", uid, validCodeList.Count);
-            var task = new UseRedemptionCodeTask(validCodeList);
+            var task = new UseRedemptionCodeTask(validCodeList, uid);
             await task.Start(ct);
 
             UpdateLastCheckDate(uid);
@@ -106,26 +113,49 @@ public class AutoRedeemCodeChecker
     private void UpdateLastCheckDate(string uid)
     {
         var today = ServerTimeHelper.GetServerTimeNow().ToString("yyyy-MM-dd");
-        _config.LastRedeemCodeCheckDates[uid] = today;
+        // 转调到 AutoRedeemCodeConfig 的 public 方法以显式触发 OnPropertyChanged → ConfigService.Save，
+        // 避免依赖"别的属性变更顺手把 AllConfig 写盘"的隐式行为（design.md 风险 1）。
+        _config.UpdateLastCheckDate(uid, today);
     }
 
     /// <summary>
-    /// 过滤已过期的兑换码和已知不可用的兑换码
+    /// 过滤已过期的兑换码和已知不可用的兑换码（按 UID 维度）。
+    /// 排除条件按短路顺序 OR：
+    /// <list type="number">
+    /// <item>持久化的已兑换记录（跨进程 UID 维度，覆盖主 bug）</item>
+    /// <item>会话级成功 short-circuit（不分 UID，剪贴板兜底，design.md 风险 5）</item>
+    /// <item>会话级失败 short-circuit（保留既有 1 天 TTL）</item>
+    /// <item>显式 Valid &lt; today（既有过期分支，保持不动）</item>
+    /// </list>
     /// </summary>
-    private List<RedeemCode> FilterExpiredCodes(List<RedeemCode> codeList)
+    private List<RedeemCode> FilterExpiredCodes(string uid, List<RedeemCode> codeList)
     {
         var today = ServerTimeHelper.GetServerTimeNow().ToString("yyyy-MM-dd");
 
         return codeList.Where(code =>
         {
-            // 检查是否在缓存中（已使用或已知失败）
-            if (RedeemCodeCache.IsCodeKnown(code.Code))
+            // 1) 跨进程 UID 维度：该 UID 历史上已成功兑换过该码
+            if (_historyStore.IsRedeemed(uid, code.Code))
             {
-                _logger.LogDebug("兑换码 {Code} 在缓存中，跳过", code.Code);
+                _logger.LogDebug("兑换码 {Code} 已在 UID {Uid} 历史记录中，跳过", code.Code, uid);
                 return false;
             }
 
-            // 如果没有过期日期设置，则认为有效
+            // 2) 会话级、不分 UID 的成功 short-circuit（覆盖剪贴板路径）
+            if (RedeemCodeCache.IsRecentlySucceededInSession(code.Code))
+            {
+                _logger.LogDebug("兑换码 {Code} 已在本会话内成功兑换，跳过", code.Code);
+                return false;
+            }
+
+            // 3) 会话级失败 short-circuit
+            if (RedeemCodeCache.IsRecentlyFailed(code.Code))
+            {
+                _logger.LogDebug("兑换码 {Code} 在本会话内已知失败，跳过", code.Code);
+                return false;
+            }
+
+            // 4) 如果没有过期日期设置，则认为有效
             if (string.IsNullOrEmpty(code.Valid))
                 return true;
 
@@ -182,16 +212,28 @@ public class AutoRedeemCodeChecker
     }
 
     /// <summary>
-    /// 重置所有UID的检查状态
+    /// 重置所有UID的检查状态。
     /// </summary>
+    /// <remarks>
+    /// 注意：此处直接 mutate <c>_config.LastRedeemCodeCheckDates</c>，
+    /// 字典内部 mutation 不会触发 <c>[ObservableProperty]</c> setter，因此**不会**触发
+    /// <c>OnPropertyChanged → ConfigService.Save</c>，属于既有行为（面向用户主动 Reset 操作，
+    /// 通常会伴随其它属性变更顺手写盘）。本次 bugfix 未修，参见 design.md 风险 1 附带说明。
+    /// </remarks>
     public void ResetAllCheckStatus()
     {
         _config.LastRedeemCodeCheckDates.Clear();
     }
 
     /// <summary>
-    /// 重置指定UID的检查状态
+    /// 重置指定UID的检查状态。
     /// </summary>
+    /// <remarks>
+    /// 注意：此处直接 mutate <c>_config.LastRedeemCodeCheckDates</c>，
+    /// 字典内部 mutation 不会触发 <c>[ObservableProperty]</c> setter，因此**不会**触发
+    /// <c>OnPropertyChanged → ConfigService.Save</c>，属于既有行为（面向用户主动 Reset 操作，
+    /// 通常会伴随其它属性变更顺手写盘）。本次 bugfix 未修，参见 design.md 风险 1 附带说明。
+    /// </remarks>
     public void ResetCheckStatus(string uid)
     {
         _config.LastRedeemCodeCheckDates.Remove(uid);

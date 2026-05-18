@@ -24,18 +24,24 @@ public class UseRedemptionCodeTask : ISoloTask
 
 
     private readonly List<RedeemCode> _list;
+    private readonly string? _uid;
+    private readonly RedeemCodeHistoryStore _historyStore;
 
-    public UseRedemptionCodeTask(List<RedeemCode> list)
+    public UseRedemptionCodeTask(List<RedeemCode> list, string? uid = null)
     {
-        this._list = list;
+        _list = list;
+        _uid = uid;
+        _historyStore = new RedeemCodeHistoryStore(TaskContext.Instance().Config.AutoRedeemCodeConfig);
     }
-    
-    public UseRedemptionCodeTask(List<string> strList)
+
+    public UseRedemptionCodeTask(List<string> strList, string? uid = null)
     {
         _list = strList
             .Where(code => !string.IsNullOrWhiteSpace(code))
             .Select(code => new RedeemCode(code, null))
             .ToList();
+        _uid = uid;
+        _historyStore = new RedeemCodeHistoryStore(TaskContext.Instance().Config.AutoRedeemCodeConfig);
     }
 
     public string Name => "使用兑换码";
@@ -115,7 +121,14 @@ public class UseRedemptionCodeTask : ISoloTask
         if (list.Count > 0)
         {
             _logger.LogInformation("兑换码 {Code} 兑换成功", redeemCode.Code);
-            RedeemCodeCache.MarkAsUsed(redeemCode.Code);
+            // 总是写入会话级成功 short-circuit（不分 UID、不持久化），覆盖剪贴板路径与显式 UID 路径，
+            // 避免同会话内对同一码重复触发兑换 UI（design.md 风险 5）。
+            RedeemCodeCache.MarkAsSucceededInSession(redeemCode.Code);
+            // 仅在显式传入 UID 时写入跨进程持久化记录，避免剪贴板路径污染任何 UID 桶。
+            if (!string.IsNullOrEmpty(_uid))
+            {
+                _historyStore.MarkRedeemed(_uid, redeemCode.Code, redeemCode.Valid);
+            }
             // 点击确认
             await page.Locator(ElementAssets.Instance.BtnBlackConfirm).Click();
             await page.Wait(5100);
