@@ -2808,139 +2808,6 @@
             </StackPanel>
         </ui:CardExpander>
 
-        <!-- 好感任务自动完成 -->
-        <ui:CardExpander Margin="0,0,0,12" ContentPadding="0"
-                         Visibility="{Binding AutoFriendshipVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <ui:CardExpander.Icon>
-                <ui:FontIcon Glyph="&#xe0e6;" Style="{StaticResource FaFontIconStyle}" />
-            </ui:CardExpander.Icon>
-            <ui:CardExpander.Header>
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <ui:TextBlock Grid.Row="0"
-                                  Grid.Column="0"
-                                  FontTypography="Body"
-                                  Text="好感任务"
-                                  TextWrapping="Wrap" />
-                    <ui:TextBlock Grid.Row="1"
-                                  Grid.Column="0"
-                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                  TextWrapping="Wrap">
-                        自动完成好感任务，支持多种敌人类型
-                    </ui:TextBlock>
-                    <controls:TwoStateButton Grid.Row="0"
-                                             Grid.RowSpan="2"
-                                             Grid.Column="1"
-                                             Margin="0,0,24,0"
-                                             DisableCommand="{Binding StopSoloTaskCommand}"
-                                             DisableContent="停止"
-                                             EnableCommand="{Binding SwitchAutoFriendshipCommand}"
-                                             EnableContent="{Binding SwitchAutoFriendshipButtonText}"
-                                             IsChecked="{Binding SwitchAutoFriendshipEnabled}" />
-                </Grid>
-            </ui:CardExpander.Header>
-            <StackPanel>
-                <!-- 执行配置 -->
-                <ui:TextBlock Margin="16,12,16,4" FontTypography="BodyStrong" Text="执行配置" />
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <ui:TextBlock Text="敌人类型" />
-                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="选择要刷的敌人类型" />
-                    </StackPanel>
-                    <ComboBox Grid.Column="1" Width="180" Margin="0,0,36,0"
-                              ItemsSource="{Binding EnemyTypeDict}"
-                              SelectedValuePath="Key"
-                              DisplayMemberPath="Value"
-                              SelectedValue="{Binding Config.AutoFriendshipConfig.EnemyType, Mode=TwoWay}" />
-                </Grid>
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <ui:TextBlock Text="执行次数" />
-                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="0表示无限循环" />
-                    </StackPanel>
-                    <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="0" Maximum="999" SpinButtonPlacementMode="Inline"
-                                  Value="{Binding Config.AutoFriendshipConfig.RunTimes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock Grid.Column="0" Text="OCR检测超时时间（秒）" />
-                    <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="5" Maximum="60" SpinButtonPlacementMode="Inline"
-                                  Value="{Binding Config.AutoFriendshipConfig.OcrTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock Grid.Column="0" Text="战斗超时时间（秒）" />
-                    <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="30" Maximum="300" SpinButtonPlacementMode="Inline"
-                                  Value="{Binding Config.AutoFriendshipConfig.FightTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock Grid.Column="0" Text="禁用自动拾取" />
-                    <ui:ToggleSwitch Grid.Column="1" Margin="0,0,36,0" IsChecked="{Binding Config.AutoFriendshipConfig.DisablePickup, Mode=TwoWay}" />
-                </Grid>
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock Grid.Column="0" Text="禁用异步战斗" />
-                    <ui:ToggleSwitch Grid.Column="1" Margin="0,0,36,0" IsChecked="{Binding Config.AutoFriendshipConfig.DisableAsyncFight, Mode=TwoWay}" />
-                </Grid>
-
-                <!-- 队伍配置 -->
-                <ui:TextBlock Margin="16,12,16,4" FontTypography="BodyStrong" Text="队伍配置" />
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <ui:TextBlock Text="队伍名称" />
-                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="留空则使用当前队伍" />
-                    </StackPanel>
-                    <ui:TextBox Grid.Column="1" MinWidth="180" Margin="0,0,36,0" Text="{Binding Config.AutoFriendshipConfig.PartyName, Mode=TwoWay}" />
-                </Grid>
-
-                <!-- 丘丘人清理 -->
-                <ui:TextBlock Margin="16,12,16,4" FontTypography="BodyStrong" Text="丘丘人清理" />
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                        <ui:TextBlock Text="清理丘丘人超时时间（秒）" />
-                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="设为0则不清理，仅对盗宝团有效" />
-                    </StackPanel>
-                    <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="0" Maximum="60" SpinButtonPlacementMode="Inline"
-                                  Value="{Binding Config.AutoFriendshipConfig.QiuQiuRenTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-
-                <!-- 循环配置 -->
-                <ui:TextBlock Margin="16,12,16,4" FontTypography="BodyStrong" Text="循环配置" />
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock Grid.Column="0" Text="使用千番替代退出重登" />
-                    <ui:ToggleSwitch Grid.Column="1" Margin="0,0,36,0" IsChecked="{Binding Config.AutoFriendshipConfig.Use1000Stars, Mode=TwoWay}" />
-                </Grid>
-
-                <Grid Margin="16,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock Grid.Column="0" Text="无掉落时自动停止" />
-                    <ui:ToggleSwitch Grid.Column="1" Margin="0,0,36,0" IsChecked="{Binding Config.AutoFriendshipConfig.LoopTillNoExpOrMora, Mode=TwoWay}" />
-                </Grid>
-            </StackPanel>
-        </ui:CardExpander>
-
         <!-- 自动地脉花 -->
         <ui:CardExpander Margin="0,0,0,12" ContentPadding="0">
             <ui:CardExpander.Icon>
@@ -5305,6 +5172,139 @@
                         </StackPanel>
                     </StackPanel>
                 </ui:CardExpander>
+            </StackPanel>
+        </ui:CardExpander>
+
+        <!-- 好感任务自动完成 -->
+        <ui:CardExpander Margin="0,0,0,12" ContentPadding="0"
+                         Visibility="{Binding AutoFriendshipVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ui:CardExpander.Icon>
+                <ui:FontIcon Glyph="&#xe0e6;" Style="{StaticResource FaFontIconStyle}" />
+            </ui:CardExpander.Icon>
+            <ui:CardExpander.Header>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Row="0"
+                                  Grid.Column="0"
+                                  FontTypography="Body"
+                                  Text="好感任务"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBlock Grid.Row="1"
+                                  Grid.Column="0"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  TextWrapping="Wrap">
+                        自动完成好感任务，支持多种敌人类型
+                    </ui:TextBlock>
+                    <controls:TwoStateButton Grid.Row="0"
+                                             Grid.RowSpan="2"
+                                             Grid.Column="1"
+                                             Margin="0,0,24,0"
+                                             DisableCommand="{Binding StopSoloTaskCommand}"
+                                             DisableContent="停止"
+                                             EnableCommand="{Binding SwitchAutoFriendshipCommand}"
+                                             EnableContent="{Binding SwitchAutoFriendshipButtonText}"
+                                             IsChecked="{Binding SwitchAutoFriendshipEnabled}" />
+                </Grid>
+            </ui:CardExpander.Header>
+            <StackPanel>
+                <!-- 执行配置 -->
+                <ui:TextBlock Margin="16,12,16,4" FontTypography="BodyStrong" Text="执行配置" />
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <ui:TextBlock Text="敌人类型" />
+                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="选择要刷的敌人类型" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="1" Width="180" Margin="0,0,36,0"
+                              ItemsSource="{Binding EnemyTypeDict}"
+                              SelectedValuePath="Key"
+                              DisplayMemberPath="Value"
+                              SelectedValue="{Binding Config.AutoFriendshipConfig.EnemyType, Mode=TwoWay}" />
+                </Grid>
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <ui:TextBlock Text="执行次数" />
+                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="0表示无限循环" />
+                    </StackPanel>
+                    <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="0" Maximum="999" SpinButtonPlacementMode="Inline"
+                                  Value="{Binding Config.AutoFriendshipConfig.RunTimes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </Grid>
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Column="0" Text="OCR检测超时时间（秒）" />
+                    <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="5" Maximum="60" SpinButtonPlacementMode="Inline"
+                                  Value="{Binding Config.AutoFriendshipConfig.OcrTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </Grid>
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Column="0" Text="战斗超时时间（秒）" />
+                    <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="30" Maximum="300" SpinButtonPlacementMode="Inline"
+                                  Value="{Binding Config.AutoFriendshipConfig.FightTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </Grid>
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Column="0" Text="禁用自动拾取" />
+                    <ui:ToggleSwitch Grid.Column="1" Margin="0,0,36,0" IsChecked="{Binding Config.AutoFriendshipConfig.DisablePickup, Mode=TwoWay}" />
+                </Grid>
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Column="0" Text="禁用异步战斗" />
+                    <ui:ToggleSwitch Grid.Column="1" Margin="0,0,36,0" IsChecked="{Binding Config.AutoFriendshipConfig.DisableAsyncFight, Mode=TwoWay}" />
+                </Grid>
+
+                <!-- 队伍配置 -->
+                <ui:TextBlock Margin="16,12,16,4" FontTypography="BodyStrong" Text="队伍配置" />
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <ui:TextBlock Text="队伍名称" />
+                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="留空则使用当前队伍" />
+                    </StackPanel>
+                    <ui:TextBox Grid.Column="1" MinWidth="180" Margin="0,0,36,0" Text="{Binding Config.AutoFriendshipConfig.PartyName, Mode=TwoWay}" />
+                </Grid>
+
+                <!-- 丘丘人清理 -->
+                <ui:TextBlock Margin="16,12,16,4" FontTypography="BodyStrong" Text="丘丘人清理" />
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <ui:TextBlock Text="清理丘丘人超时时间（秒）" />
+                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" Text="设为0则不清理，仅对盗宝团有效" />
+                    </StackPanel>
+                    <ui:NumberBox Grid.Column="1" Width="120" Margin="0,0,36,0" Minimum="0" Maximum="60" SpinButtonPlacementMode="Inline"
+                                  Value="{Binding Config.AutoFriendshipConfig.QiuQiuRenTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </Grid>
+
+                <!-- 循环配置 -->
+                <ui:TextBlock Margin="16,12,16,4" FontTypography="BodyStrong" Text="循环配置" />
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Column="0" Text="使用千番替代退出重登" />
+                    <ui:ToggleSwitch Grid.Column="1" Margin="0,0,36,0" IsChecked="{Binding Config.AutoFriendshipConfig.Use1000Stars, Mode=TwoWay}" />
+                </Grid>
+
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Column="0" Text="无掉落时自动停止" />
+                    <ui:ToggleSwitch Grid.Column="1" Margin="0,0,36,0" IsChecked="{Binding Config.AutoFriendshipConfig.LoopTillNoExpOrMora, Mode=TwoWay}" />
+                </Grid>
             </StackPanel>
         </ui:CardExpander>
 
