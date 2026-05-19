@@ -2402,9 +2402,21 @@ public class AutoHoeingTask : ISoloTask
                                 _logger.LogWarning(ex, "[联机] 路线完成进度上报异常");
                             }
                         }
-                        
-                        _cdManager.RecordCompletion(route, duration);
-                        _cdManager.UpdateAllRecords(routes);
+
+                        // 联机模式下只有房主记录 CD（刷的是房主家的怪，成员只是协助）。
+                        // 成员记 CD 会导致：第二轮自己当房主时上传给服务器的"非 CD 路线"少一大块，
+                        // 自己家的怪没被刷却被记成已完成（测试反馈：4p 做地主只刷第 8 条，2/3p 做地主一条都不刷）。
+                        bool shouldRecordCd = !_config.MultiplayerEnabled
+                            || (_multiplayerCoordinator?.IsHost ?? false);
+                        if (shouldRecordCd)
+                        {
+                            _cdManager.RecordCompletion(route, duration);
+                            _cdManager.UpdateAllRecords(routes);
+                        }
+                        else
+                        {
+                            _logger.LogDebug("[联机] 成员模式：路线 {Name} 正常完成，但刷的是房主世界，不记本地 CD", route.FileName);
+                        }
                     }
                     else
                     {
