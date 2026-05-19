@@ -733,15 +733,27 @@ public class PathExecutor
                     // 联机模式：同步点前异常 → 上报 Reviving → 重试本线段（最多 3 次）→ 失败则跳到下一段
                     if (MultiplayerCoordinator != null)
                     {
+                        // 关键修复（targetProgress 必须与玩家实际行为一致）：
+                        //   - 还有重试机会 → 玩家会重新跑本段开头到结尾，本段那个还没过的同步点会再次到达
+                        //                    → 应承诺"本段开头"，让服务端在本段同步点继续等本玩家
+                        //   - 重试耗尽段跳 → 玩家会跳到下一段开头，本段同步点不会再到
+                        //                    → 应承诺"下一段开头"
+                        // 错误案例：重试时也报"下一段开头"，服务端按豁免逻辑放行了本段同步点的等待，
+                        // 玩家重跑本段到达同步点时已无人在等，独自卡 60s 超时（测试反馈症状）。
+                        bool willRetryCurrentSegment = i < RetryTimes - 1;
+                        long progressForReport = willRetryCurrentSegment
+                            ? ComputeProgress(CurWaypoints.Item1, 0)   // 本段开头
+                            : targetProgress;                          // 下一段开头
+
                         try
                         {
                             await MultiplayerCoordinator.ReportFightingStatusAsync(false);
-                            await MultiplayerCoordinator.ReportMemberStatusAsync(MemberStatus.Reviving, targetProgress);
+                            await MultiplayerCoordinator.ReportMemberStatusAsync(MemberStatus.Reviving, progressForReport);
                         }
                         catch { }
-                        
+
                         // 重试次数耗尽 → 跳到下一段线路
-                        if (i >= RetryTimes - 1)
+                        if (!willRetryCurrentSegment)
                         {
                             Logger.LogWarning("[联机] 同步点前异常重试耗尽，跳到下一段线路，目标进度={Target}，原因: {Msg}",
                                 targetProgress, retryException.Message);
@@ -749,10 +761,11 @@ public class PathExecutor
                             _needReportNormalBeforeSync = true;
                             break;
                         }
-                        
+
                         // 还有重试机会，继续重试
                         StartSkipOtherOperations();
-                        Logger.LogWarning("[联机] 同步点前异常，重试（{N}/{Max}），原因: {Msg}", i + 1, RetryTimes, retryException.Message);
+                        Logger.LogWarning("[联机] 同步点前异常，重试（{N}/{Max}），目标进度={Target}（本段重跑），原因: {Msg}",
+                            i + 1, RetryTimes, progressForReport, retryException.Message);
                         if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3) PathingConditionConfig.AutoEatCount = 0;
                         continue; // 继续 for 循环重试
                     }
