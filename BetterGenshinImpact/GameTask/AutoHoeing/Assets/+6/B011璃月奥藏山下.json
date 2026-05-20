@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时47秒，包含以下怪物：1只岩龙蜥。",
     "enable_monster_loot_split": false,
     "hash_res": "01936902",
-    "last_modified_time": 1777394907004,
+    "last_modified_time": 1779205629816,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "B011璃月奥藏山下",
@@ -53,8 +53,8 @@
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": 1632.21484375,
-      "y": 1101.68505859375
+      "x": 1631.1328125,
+      "y": 1097.6142578125
     }
   ]
 }

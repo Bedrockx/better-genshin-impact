@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时96.02秒，包含以下怪物：1只打手丘丘人、2只冲锋丘丘人、1只岩盾丘丘人、3只雷箭丘丘人、2只冰箭丘丘人、1只丘丘岩盔王、1只岩丘丘萨满。",
     "enable_monster_loot_split": false,
     "hash_res": "16343844",
-    "last_modified_time": 1778682730734,
+    "last_modified_time": 1779383123273,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "B013璃月珉林北",
@@ -31,66 +31,40 @@
     },
     {
       "action": "combat_script",
-      "action_params": "keypress(x);莉奈娅 e;芙宁娜 e;玛薇卡 e;爱可菲 e;伊涅芙 e;",
+      "action_params": ";钟离 keypress(q),keydown(e),wait(1),keyup(e);茜特菈莉 e;莱依拉 e;伊涅芙 e; ;",
       "id": 2,
-      "move_mode": "run",
-      "type": "path",
-      "x": 1099.880000000001,
-      "y": 1189.5599999999995
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 3,
-      "move_mode": "run",
-      "type": "path",
-      "x": 1056.3400000000001,
-      "y": 1182.8999999999996
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 4,
-      "move_mode": "run",
-      "type": "path",
-      "x": 1033.130000000001,
-      "y": 1186.2799999999988
-    },
-    {
-      "action": "combat_script",
-      "action_params": "keypress(x);茜特菈莉 e;莱依拉 e;芙宁娜 e;玛薇卡 e;爱可菲 e;伊涅芙 e;",
-      "id": 5,
       "move_mode": "dash",
       "type": "path",
-      "x": 1044.6533203125,
-      "y": 1169.1640625
-    },
-    {
-      "action": "stop_flying",
-      "action_params": "",
-      "id": 6,
-      "move_mode": "fly",
-      "type": "path",
-      "x": 1047.84375,
-      "y": 1125.537109375
+      "x": 1073.78515625,
+      "y": 1164.1455078125
     },
     {
       "action": "combat_script",
-      "action_params": ";哥伦比娅 e,wait(0.15),keypress(e); ;",
-      "id": 7,
-      "move_mode": "walk",
+      "action_params": ";钟离 attack(0.2);茜特菈莉 attack(0.2);莱依拉 attack(0.2);伊涅芙 attack(0.2);keydown(w)",
+      "id": 3,
+      "move_mode": "fly",
       "type": "path",
-      "x": 1048.1248372544906,
-      "y": 1123.0627427108248
+      "x": 1053.427734375,
+      "y": 1130.31005859375
+    },
+    {
+      "action": "combat_script",
+      "action_params": "attack(0.2)",
+      "id": 4,
+      "locked": false,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1049.75390625,
+      "y": 1125.4951171875
     },
     {
       "action": "fight",
       "action_params": "",
-      "id": 8,
-      "move_mode": "walk",
+      "id": 5,
+      "move_mode": "dash",
       "type": "path",
-      "x": 1048.1248372544906,
-      "y": 1123.0627427108248
+      "x": 1049.75390625,
+      "y": 1125.4951171875
     }
   ]
 }

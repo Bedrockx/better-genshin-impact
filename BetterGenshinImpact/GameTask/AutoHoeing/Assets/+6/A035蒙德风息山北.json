@@ -38,7 +38,7 @@
     },
     {
       "action": "combat_script",
-      "action_params": "moveby(0,-3000),keypress(t),wait(0.15),keypress(t),moveby(0,-1500),keypress(t),wait(0.15),keypress(t),click(middle),wait(0.6)",
+      "action_params": "moveby(0,-3000),wait(0.25),keypress(t),wait(0.15),keypress(t),moveby(0,-1500),wait(0.25),keypress(t),wait(0.15),keypress(t),click(middle),wait(0.6)",
       "id": 3,
       "move_mode": "walk",
       "type": "orientation",

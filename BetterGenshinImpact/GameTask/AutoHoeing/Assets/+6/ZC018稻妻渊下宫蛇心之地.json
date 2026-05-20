@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时133.19秒，包含以下怪物：1只岩史莱姆、1只丘丘雷兜王、1只深海龙蜥·原种_600。",
     "enable_monster_loot_split": false,
     "hash_res": "26834014",
-    "last_modified_time": 1779042447352,
+    "last_modified_time": 1779381762300,
     "map_match_method": "",
     "map_name": "Enkanomiya",
     "name": "ZC018稻妻渊下宫蛇心之地",
@@ -66,13 +66,22 @@
       "y": -323.793701171875
     },
     {
-      "action": "fight",
+      "action": "",
       "action_params": "",
       "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": 382.382080078125,
       "y": -319.832275390625
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 7,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 367.57373046875,
+      "y": -307.906005859375
     }
   ]
 }

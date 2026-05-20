@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时149.06秒，包含以下怪物：1只遗迹重机、1只深海龙蜥·原种_600。",
     "enable_monster_loot_split": false,
     "hash_res": "07204760",
-    "last_modified_time": 1778773496627,
+    "last_modified_time": 1779381334988,
     "map_match_method": "",
     "map_name": "Enkanomiya",
     "name": "ZC001稻妻渊下宫常夜灵庙东北",
@@ -44,22 +44,31 @@
       "id": 3,
       "move_mode": "dash",
       "type": "path",
-      "x": -404.027099609375,
-      "y": 526.1221923828125
-    },
-    {
-      "action": "fight",
-      "action_params": "",
-      "id": 4,
-      "move_mode": "dash",
-      "type": "path",
-      "x": -423.6669921875,
-      "y": 504.8812255859375
+      "x": -405.060791015625,
+      "y": 522.740966796875
     },
     {
       "action": "",
       "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -399.901123046875,
+      "y": 513.8536376953125
+    },
+    {
+      "action": "fight",
+      "action_params": "",
       "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -424.342041015625,
+      "y": 499.175537109375
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 6,
       "move_mode": "walk",
       "type": "teleport",
       "x": -306.720458984375,
@@ -68,29 +77,29 @@
     {
       "action": "",
       "action_params": "",
-      "id": 6,
+      "id": 7,
       "move_mode": "dash",
       "type": "path",
-      "x": -319.200927734375,
-      "y": 464.77197265625
+      "x": -310.2900390625,
+      "y": 460.11181640625
     },
     {
       "action": "stop_flying",
       "action_params": "",
-      "id": 7,
+      "id": 8,
       "move_mode": "fly",
       "type": "path",
-      "x": -313.611083984375,
-      "y": 485.0782470703125
+      "x": -305.632568359375,
+      "y": 496.057861328125
     },
     {
       "action": "fight",
       "action_params": "",
-      "id": 8,
+      "id": 9,
       "move_mode": "dash",
       "type": "path",
-      "x": -310.1953125,
-      "y": 502.076416015625
+      "x": -305.632568359375,
+      "y": 496.057861328125
     }
   ]
 }

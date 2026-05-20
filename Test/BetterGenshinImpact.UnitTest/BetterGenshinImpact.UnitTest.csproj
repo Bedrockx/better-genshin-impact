@@ -43,6 +43,8 @@
     <Compile Remove="GameTaskTests\AutoFightTests\**" />
     <!-- Re-include the double-check bug exploration test -->
     <Compile Include="GameTaskTests\AutoFightTests\CheckFightFinishDoubleCheckTests.cs" />
+    <!-- multiplayer-kazuha-pre-cast-positioning: re-include PBT-1 测试文件 -->
+    <Compile Include="GameTaskTests\AutoFightTests\AutoFightSeekDecisionsTests.cs" />
     <!-- 排除有编译错误的测试文件 -->
     <Compile Remove="GameTaskTests\UseRedeemCodeTests\RedeemCodeExpiredCodesBugConditionTest.cs" />
     <Compile Remove="GameTaskTests\AutoHoeingTests\CoordinatorClientWaitPointTests.cs" />

@@ -388,6 +388,7 @@ public class Avatar
                             if (okRa.IsExist())
                             {
                                 Logger.LogInformation("自动吃药：{text} 复活界面-2", "退出");
+                                Task.Delay(200, Ct).Wait(1000);
                                 Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
                                 Task.Delay(500, Ct).Wait(1000);
                                 try

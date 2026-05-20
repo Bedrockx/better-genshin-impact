@@ -77,6 +77,26 @@ internal class AutoFightHandler : IActionHandler
             }
         }
 
+        // 联机锄地：禁用 AutoFightTask 内置的万叶聚物拾取（kazuha-pickup-disable-in-multiplayer-hoeing）
+        // 联机模式下"战后聚物"由 KazuhaCollectSyncCoordinator.WaitAtFightPointAsync 统一调度，
+        // 否则会出现两套 E 聚物互相打架（AutoFightTask 战斗末尾放一次 E + 协调器战后回点又放一次 E）。
+        // PathingConditionConfig.MultiplayerFightTimeoutOverride.HasValue 是联机锄地专属信号
+        // （AutoHoeingTask 进入联机时设置、Start finally 块清空），单机路径不受影响。
+        if (PathingConditionConfig.MultiplayerFightTimeoutOverride.HasValue)
+        {
+            taskParams.KazuhaPickupEnabled = false;
+
+            // multiplayer-kazuha-pre-cast-positioning EB2: 联机锄地 + 当前为万叶玩家时，
+            // 开启 SeekAndFightAsync 内"战斗中持续回点"模式，避免万叶玩家被怪追走脱离 fightPoint。
+            // 单机路径下 CurrentMultiplayerCoordinator == null，不进入此分支；
+            // 联机非万叶玩家路径下 IsCurrentPlayerKazuha == false，也不进入。
+            if (PathExecutor.CurrentMultiplayerCoordinator?.KazuhaCollectSync?.IsCurrentPlayerKazuha == true)
+            {
+                taskParams.KazuhaContinuousReturn = true;
+                _logger.LogInformation("[联机][万叶] 启用战斗中持续回点 (returnInterval=1000ms, distanceThreshold=1.0)");
+            }
+        }
+
         //根据怪物标签，调整拾取配置
         if (waypointForTrack!=null && waypointForTrack.EnableMonsterLootSplit)
         {

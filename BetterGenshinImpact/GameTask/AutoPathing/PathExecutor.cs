@@ -108,9 +108,14 @@ public class PathExecutor
     /// <summary>
     /// 联机模式：检测到"已倒下"色块（队友/自己倒地复苏）信号位。
     /// 由 AnomalyDetector 通过 SignalMultiplayerRevival() 设置；
-    /// PathExecutor 在主循环中检测到后抛 RetryException 进入"同步点前/后"统一异常处理框架。
+    /// PathExecutor 在战斗结束钩子 / 脱困入口 / 主循环检查 三处通过 TryConsumeRevivalSignal()
+    /// CAS 消费，命中后先 TpStatueOfTheSeven 再抛 RetryException 走"同步点前/后"分流。
+    ///
+    /// 字段语义：0 = 未触发，1 = 已触发未消费。
+    /// 用 int 而非 bool 是因为 Interlocked.CompareExchange 不支持 bool 重载。
+    /// volatile 保证多线程下读到最新值（AnomalyDetector 后台线程写、PathExecutor 主线程读）。
     /// </summary>
-    private volatile bool _multiplayerRevivalDetected = false;
+    private volatile int _multiplayerRevivalDetected = 0;
 
     /// <summary>
     /// 联机模式专用：外部（AnomalyDetector）检测到联机已倒下界面时调用。
@@ -119,8 +124,28 @@ public class PathExecutor
     public void SignalMultiplayerRevival()
     {
         if (MultiplayerCoordinator == null) return;
-        _multiplayerRevivalDetected = true;
-        Logger.LogWarning("[联机] AnomalyDetector 信号：已倒下检测，将在下一个 waypoint 抛出 RetryException 进入异常处理流程");
+        // 用 Interlocked.Exchange 保证写入对所有线程立即可见，且与 TryConsumeRevivalSignal 的 CAS 配对
+        MultiplayerRevivalGate.Signal(ref _multiplayerRevivalDetected);
+        Logger.LogWarning("[联机] AnomalyDetector 信号：已倒下检测，将在战斗结束钩子 / 脱困入口 / 主循环检查 任一处先消费并去七天神像回血");
+    }
+
+    /// <summary>
+    /// CAS 消费 <see cref="_multiplayerRevivalDetected"/> 信号位。
+    /// 联机模式下：原值为 1 时返回 true 并将值置为 0；其他情况返回 false。
+    /// 单机模式下：直接返回 false（信号位本就不会被设置，但额外守卫便于调用方写法统一）。
+    ///
+    /// 调用方典型用法：
+    ///     if (TryConsumeRevivalSignal())
+    ///     {
+    ///         await TpStatueOfTheSeven();
+    ///         throw new RetryException("...");
+    ///     }
+    ///
+    /// 详见 design.md §1.3 / bugfix.md 2.5 / 2.11。
+    /// </summary>
+    private bool TryConsumeRevivalSignal()
+    {
+        return MultiplayerRevivalGate.TryConsume(ref _multiplayerRevivalDetected, MultiplayerCoordinator != null);
     }
 
     /// <summary>
@@ -151,6 +176,15 @@ public class PathExecutor
     /// 静态引用，供 Avatar.TpForRecover 等静态方法在传送时通知 WorldStateMonitor。
     /// </summary>
     public static WorldStateMonitor? CurrentWorldStateMonitor { get; set; }
+
+    /// <summary>
+    /// 静态引用，供 AutoFightHandler 在构造 AutoFightParam 时判断"当前是否联机锄地 + 万叶玩家"，
+    /// 决定是否显式 set <see cref="AutoFightParam.KazuhaContinuousReturn"/> = true。
+    /// 单机模式下值为 null，AutoFightHandler 不读取——零感知。
+    /// 由 RouteExecutionEngine 注入、AutoHoeingTask finally 块清理，与 CurrentWorldStateMonitor 同生命周期。
+    /// 详见 .kiro/specs/multiplayer-kazuha-pre-cast-positioning/design.md §3.4。
+    /// </summary>
+    public static MultiplayerCoordinator? CurrentMultiplayerCoordinator { get; set; }
 
     /// <summary>
     /// fight waypoint 索引 → syncPointId 的映射，由 SyncPointResolver 预计算。
@@ -320,6 +354,9 @@ public class PathExecutor
         {
             // 重置同步点到达标记（新线路开始）
             _syncPointReached = false;
+            // 防御性重置：新段开始时清空复苏信号位，避免跨段残留
+            // （正常情况下消费点会清理，但显式重置确保语义清晰）
+            MultiplayerRevivalGate.Reset(ref _multiplayerRevivalDetected);
             CurrentRouteIndex = waypointsList.FindIndex(wps => wps == waypoints);
 
             // === 实时中断检查（multiplayer-abort-and-realign spec）===
@@ -384,10 +421,12 @@ public class PathExecutor
                         // 把异步事件转为 RetryException，统一走"同步点前/后"异常处理流程：
                         //   - 同步点后 → 上报 Reviving + 跳到下一段
                         //   - 同步点前 → 重试本段，3 次失败后跳下一段
-                        if (_multiplayerRevivalDetected && MultiplayerCoordinator != null)
+                        // 此为兜底路径：战斗结束钩子和脱困入口未能消费时由这里兜底处理
+                        if (TryConsumeRevivalSignal())
                         {
-                            _multiplayerRevivalDetected = false;
-                            throw new RetryException("联机模式检测到已倒下复苏，按异常处理");
+                            Logger.LogWarning("[联机] 主循环兜底路径检测到复苏信号，前往七天神像回血");
+                            await TpStatueOfTheSeven();
+                            throw new RetryException("联机：主循环检测到已倒下复苏，神像回血后按异常处理");
                         }
                         
                         CurWaypoint = (waypoints.FindIndex(wps => wps == waypoint), waypoint);
@@ -631,6 +670,18 @@ public class PathExecutor
                                 
                                 if (waypoint.Action == ActionEnum.Fight.Code)
                                 {
+                                    // === 联机模式：战斗中触发复苏的统一处理 ===
+                                    // 优先级：先消费复苏信号 → 去神像 → 抛 RetryException 跳到下一段汇合
+                                    // 设计参考 design.md §3 / bugfix.md 2.1 / 2.2 / 2.9
+                                    // 钩子放在最开头：先于其他重置（MainAvatarIndex / AutoEatCount / CombatScenesGoBackUp），
+                                    // 避免无谓重置后又抛异常
+                                    if (TryConsumeRevivalSignal())
+                                    {
+                                        Logger.LogWarning("[联机] 战斗中曾触发复苏（已倒下色块检测），战斗结束后前往七天神像回血");
+                                        await TpStatueOfTheSeven();
+                                        throw new RetryException("联机：战斗中触发复苏，神像回血后跳到下一段汇合");
+                                    }
+
                                     if(!string.IsNullOrEmpty(PartyConfig.MainAvatarIndex)) PartyConfig.MainAvatarIndex = PathingConditionConfig.InitialMainAvatarIndex;
                                     PathingConditionConfig.CombatScenesGoBackUp = null;
                                     if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3)
@@ -641,17 +692,79 @@ public class PathExecutor
                                     // 联机模式：战斗完成后走回战斗点集合
                                     if (MultiplayerCoordinator != null)
                                     {
-                                        var config = TaskContext.Instance().Config.AutoHoeingConfig;
-                                        if (config.ReturnToFightPointAfterBattle)
+                                        // 读 KazuhaCollectSync.IsConfigEnabled（持有 AutoHoeingTask 拷贝/覆盖后的 _config），
+                                        // 不能读 TaskContext.Instance().Config.AutoHoeingConfig（全局）：
+                                        // 配置组（ScriptGroup）启动时 AutoHoeingTask 在深拷贝上应用 ApplySettingsOverride，
+                                        // 全局未被覆盖；若读全局会导致"配置组开了万叶聚物但 PathExecutor 跳过聚物分支"。
+                                        // 此处用 IsConfigEnabled（仅判配置）而非 IsEnabled（含 IsConnected）：
+                                        // SignalR 临时断开时仍进 WaitAtFightPointAsync，由其内部走兜底 Delay，
+                                        // 与原代码 if (config.EnableKazuhaSync) 行为对齐。
+                                        //
+                                        // 同战斗点连战跳过：当前是 Fight ∧ nextWaypoint 也是 Fight ∧ 两点距离 < 10.0 时
+                                        // 跳过整个聚物流程（路线由房主同步，所有客户端 nextWaypoint 一致，决策必然全员对齐，
+                                        // 不会出现万叶等其他玩家、其他玩家在等万叶的死锁）。
+                                        // 两战斗点距离 ≥ 10.0 时视为独立战斗点，仍正常聚物。
+                                        // 详见 PathExecutorDecisions.ShouldSkipKazuhaCollectWhenNextIsFight。
+                                        var distanceToNext = nextWaypoint == null
+                                            ? double.PositiveInfinity
+                                            : Navigation.GetDistance(waypoint, new Point2f((float)nextWaypoint.X, (float)nextWaypoint.Y));
+                                        var skipForNextFight = PathExecutorDecisions.ShouldSkipKazuhaCollectWhenNextIsFight(
+                                            waypoint.Action, nextWaypoint?.Action, distanceToNext, 10.0, ActionEnum.Fight.Code);
+                                        if (MultiplayerCoordinator.KazuhaCollectSync?.IsConfigEnabled == true && !skipForNextFight)
                                         {
                                             Logger.LogInformation("[联机] 战斗完成，走回战斗点集合");
-                                            await MoveCloseTo(waypoint);
-                                            var stayMs = config.ReturnToFightPointStaySeconds * 1000;
-                                            if (stayMs > 0)
+                                            waypoint.Type =  WaypointType.Target.Code;
+
+                                            // multiplayer-kazuha-collect-speedup-and-position-fix:
+                                            // BC3+BC4: MoveCloseTo 之前 kick off 后台预备（仅万叶玩家+缓存命中时实际工作，
+                                            //          否则立即返回 PreparationResult.Skipped）。必须在 MoveCloseTo 之前
+                                            //          kick off，才能与走路时间并行。
+                                            var prepTask = MultiplayerCoordinator.KazuhaCollectSync.BeginPreparationAsync(ct);
+
+                                            // multiplayer-kazuha-pre-cast-positioning EB1: 二段式接近——长距离 (>4.0) 先用 MoveTo
+                                            // 真寻路 (自动赶路 / 卡死回退完整鲁棒) 粗接近，再交给 MoveCloseTo 精接近至 < 1.0；
+                                            // 短距离 (<=4.0) 直接 MoveCloseTo 单段快速路径，零额外开销。
+                                            // 仅本调用点显式生效，PathExecutor 其它 MoveCloseTo 调用保持原行为。
+                                            // 详见 .kiro/specs/multiplayer-kazuha-pre-cast-positioning/design.md §3.6
+                                            //
+                                            // 注意：用 Navigation.GetPosition（公开 static）直接取小地图坐标，
+                                            // 不能用 PathExecutor.GetPosition（默认 isPoint:true 会触发 ResolveAnomalies / 按 ESC）。
+                                            // 位置识别失败 → 返回 (0,0) → 跳过 MoveTo 走 MoveCloseTo 单段兜底。
                                             {
-                                                Logger.LogInformation("[联机] 到达战斗点，停留 {Sec}s 等待其他玩家", config.ReturnToFightPointStaySeconds);
-                                                await Delay(stayMs, ct);
+                                                Point2f currentPos;
+                                                try
+                                                {
+                                                    using var screen = CaptureToRectArea();
+                                                    currentPos = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
+                                                }
+                                                catch (OperationCanceledException) { throw; }
+                                                catch (Exception ex)
+                                                {
+                                                    Logger.LogDebug(ex, "[联机] 战后聚物分支距离预判位置识别失败，跳过 MoveTo 走 MoveCloseTo 兜底");
+                                                    currentPos = new Point2f(0, 0);
+                                                }
+                                                if (currentPos is not { X: 0, Y: 0 })
+                                                {
+                                                    var preDistance = Navigation.GetDistance(waypoint, currentPos);
+                                                    if (PathExecutorDecisions.ShouldPreMoveTo(preDistance, 4.0))
+                                                    {
+                                                        Logger.LogInformation("[联机] 距战斗点 {Dist:F1} > 4.0，先 MoveTo 粗接近", preDistance);
+                                                        await MoveTo(waypoint, isGetOut: true, task: null, nextWaypoint: null,
+                                                            nextDistance: null, retryDis: 4, isPoint: false);
+                                                    }
+                                                }
                                             }
+
+                                            // BC1+BC5: 显式覆盖 closeDistance: 1.0（缩小停点误差让非万叶玩家落点覆盖
+                                            //          万叶 HoldE 风场拾取半径） / tailDelayMs: 0（去掉到点后硬编码 1s 停顿）。
+                                            //          maxSteps: 10（前面已用 MoveTo 粗接近，这里只需少量精接近步数；
+                                            //          配合 closeDistance: 1.0 仍能 0.8 秒内收敛到 1 单位以内）。
+                                            //          仅本调用点显式传新参数，其它所有 MoveCloseTo 调用保持默认参数 = 原行为，单机零回归。
+                                            await MoveCloseTo(waypoint, closeDistance: 1.0, tailDelayMs: 0, maxSteps: 10);
+
+                                            // multiplayer-kazuha-collect-sync: 走"万叶分支 / 普通成员分支"的同步流程
+                                            Logger.LogInformation("[联机] 到达战斗点，进入聚物同步流程");
+                                            await MultiplayerCoordinator.KazuhaCollectSync.WaitAtFightPointAsync(waypoint, prepTask, ct);
                                         }
                                     }
                                 }
@@ -2588,6 +2701,18 @@ public class PathExecutor
                         var delta = prevPositions[^1] - prevPositions[^8];
                         if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 3)
                         {
+                            // === 联机模式：路上复苏后卡住的统一处理 ===
+                            // 优先于原有随机脱困逻辑：复苏后残血玩家随机扭动 / 跳跃大概率走不动，
+                            // 直接传送神像回血 + 抛 RetryException 跳到下一段汇合更可靠
+                            // 设计参考 design.md §5 / bugfix.md 2.3
+                            // 注意：此处不修改 _inTrap 计数（不增不减），保持隐含语义；段入口段循环重置即可
+                            if (TryConsumeRevivalSignal())
+                            {
+                                Logger.LogWarning("[联机] 路上检测到复苏 + 位置不变（疑似复苏后卡住），跳过随机脱困，前往七天神像回血");
+                                await TpStatueOfTheSeven();
+                                throw new RetryException("联机：路上复苏 + 卡住，神像回血后跳到下一段汇合");
+                            }
+
                             //停止吃药
                             var autoEatCount = PathingConditionConfig.AutoEatCount;
                             var recoverCount =  AutoFightTask.RecoverCount;
@@ -2831,7 +2956,24 @@ public class PathExecutor
         }
     }
 
-    private async Task MoveCloseTo(WaypointForTrack waypoint)
+    /// <summary>
+    /// 精确接近目标 waypoint。
+    /// <paramref name="closeDistance"/> 默认 2.0：等价于原硬编码 `Navigation.GetDistance(...) < 2` 行为；
+    /// 联机万叶聚物战后回点分支显式传 1.0，缩小停点误差让非万叶玩家落点覆盖万叶 HoldE 风场拾取半径。
+    /// <paramref name="tailDelayMs"/> 默认 null：走原 `_hurryOnAvatar 空 ? 1000 : 300` 三元逻辑；
+    /// 联机万叶聚物战后回点分支显式传 0，跳过到点后的硬编码 1s 停顿。
+    /// 单机 / 联机其它调用点不传新参数即保持原行为，单机零回归。
+    /// <summary>
+    /// 精确接近目标 waypoint。
+    /// <paramref name="closeDistance"/> 默认 2.0：等价于原硬编码 `Navigation.GetDistance(...) < 2` 行为；
+    /// 联机万叶聚物战后回点分支显式传 1.0，缩小停点误差让非万叶玩家落点覆盖万叶 HoldE 风场拾取半径。
+    /// <paramref name="tailDelayMs"/> 默认 null：走原 `_hurryOnAvatar 空 ? 1000 : 300` 三元逻辑；
+    /// 联机万叶聚物战后回点分支显式传 0，跳过到点后的硬编码 1s 停顿。
+    /// <paramref name="maxSteps"/> 默认 25：每步约 60ms + 20ms ≈ 80ms，整体上限约 2 秒（适合长距离最后定位）；
+    /// 联机万叶聚物战后回点分支已经先用 MoveTo 粗接近至 < 4，故只需少量精接近步数即可，传 10（约 0.8 秒）即可。
+    /// 单机 / 联机其它调用点不传新参数即保持原行为，单机零回归。
+    /// </summary>
+    public async Task MoveCloseTo(WaypointForTrack waypoint, double closeDistance = 2.0, int? tailDelayMs = null, int maxSteps = 25)
     {
         ImageRegion screen;
         Point2f position;
@@ -2842,7 +2984,7 @@ public class PathExecutor
         while (!ct.IsCancellationRequested)
         {
             stepsTaken++;
-            if (stepsTaken > 25)
+            if (stepsTaken > maxSteps)
             {
                 Logger.LogWarning("精确接近超时");
                 break;
@@ -2853,7 +2995,7 @@ public class PathExecutor
             EndJudgment(screen);
 
             position = await GetPosition(screen, waypoint);
-            if (Navigation.GetDistance(waypoint, position) < 2)
+            if (MoveCloseToDecisions.ShouldStop(Navigation.GetDistance(waypoint, position), closeDistance))
             {
                 Logger.LogDebug("已到达路径点");
                 break;
@@ -2872,9 +3014,12 @@ public class PathExecutor
 
         Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
 
-        // 到达目的地后停顿一秒
-        await Delay(string.IsNullOrEmpty(_hurryOnAvatar)?1000:300, ct);
-      
+        // 到达目的地后停顿（默认行为：_hurryOnAvatar 空=1000ms / 非空=300ms；显式覆盖：tailDelayMs 非 null 时使用，0 即跳过）
+        var tail = MoveCloseToDecisions.ComputeTailDelayMs(tailDelayMs, string.IsNullOrEmpty(_hurryOnAvatar));
+        if (tail > 0)
+        {
+            await Delay(tail, ct);
+        }
     }
 
     private async Task BeforeMoveCloseToTarget(WaypointForTrack waypoint)
@@ -3346,5 +3491,26 @@ public class PathExecutor
         {
             throw new HandledException("达成结束条件，结束地图追踪");
         }
+    }
+}
+
+/// <summary>
+/// MoveCloseTo 判停 + 尾部 Delay 数值化为纯函数，让 PBT-1 / PBT-2 可在不依赖 Navigation / Delay
+/// 的前提下守住默认参数下与原硬编码 (`< 2` / `1000` / `300`) 行为完全等价。
+/// 详见 design.md §6 PBT-1 / PBT-2。
+/// </summary>
+public static class MoveCloseToDecisions
+{
+    /// <summary>判定是否应停止靠近：传入当前距离与可选阈值，返回是否应该 break。</summary>
+    public static bool ShouldStop(double distance, double closeDistance) => distance < closeDistance;
+
+    /// <summary>
+    /// 计算尾部 Delay 毫秒数：tailDelayMs 非 null 时直接使用（含 0、负数 —— 调用方负责自然数语义）；
+    /// null 时走 _hurryOnAvatar 三元逻辑（empty=1000ms / non-empty=300ms）。
+    /// </summary>
+    public static int ComputeTailDelayMs(int? tailDelayMs, bool hurryOnAvatarEmpty)
+    {
+        var defaultTail = hurryOnAvatarEmpty ? 1000 : 300;
+        return tailDelayMs ?? defaultTail;
     }
 }

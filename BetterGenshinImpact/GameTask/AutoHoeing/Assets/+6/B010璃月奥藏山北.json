@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时121.94秒，包含以下怪物：2只冰史莱姆、2只狂风之核。",
     "enable_monster_loot_split": false,
     "hash_res": "82151108",
-    "last_modified_time": 1778766045527,
+    "last_modified_time": 1779205501180,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "B010璃月奥藏山北",
@@ -33,33 +33,24 @@
       "action": "",
       "action_params": "",
       "id": 2,
-      "move_mode": "walk",
+      "move_mode": "climb",
       "type": "path",
-      "x": 1607.5300000000007,
-      "y": 1039.1900000000005
+      "x": 1609.9638671875,
+      "y": 1041.13232421875
     },
     {
       "action": "",
       "action_params": "",
       "id": 3,
-      "move_mode": "climb",
-      "type": "path",
-      "x": 1611.380000000001,
-      "y": 1043.9400000000005
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 4,
       "move_mode": "fly",
       "type": "path",
-      "x": 1624.7900000000009,
-      "y": 1057.9599999999991
+      "x": 1622.66796875,
+      "y": 1054.59375
     },
     {
       "action": "stop_flying",
       "action_params": "",
-      "id": 5,
+      "id": 4,
       "move_mode": "fly",
       "type": "path",
       "x": 1629.3099999999995,
@@ -68,7 +59,7 @@
     {
       "action": "combat_script",
       "action_params": "keypress(x);芙宁娜 e;玛薇卡 e;伊涅芙 e;",
-      "id": 6,
+      "id": 5,
       "move_mode": "dash",
       "type": "path",
       "x": 1613.3099999999995,
@@ -77,7 +68,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 7,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": 1617.2999999999993,
@@ -86,7 +77,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 8,
+      "id": 7,
       "move_mode": "dash",
       "type": "path",
       "x": 1627.30078125,

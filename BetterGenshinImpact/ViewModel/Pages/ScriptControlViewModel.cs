@@ -2137,13 +2137,26 @@ public partial class ScriptControlViewModel : ViewModel
         var minPlayersBox = new TextBox { Text = GetInt("minPlayersToSync", globalCfg.MinPlayersToSync).ToString(), PlaceholderText = "0=等齐" };
         var syncPointMinDistBox = new TextBox { Text = GetStr("syncPointMinDistance", globalCfg.SyncPointMinDistance.ToString()), PlaceholderText = "默认30" };
         var startRouteIndexBox = new TextBox { Text = GetInt("startRouteIndex", globalCfg.StartRouteIndex).ToString(), PlaceholderText = "0=从头" };
-        var kazuhaIndexBox = new TextBox { Text = GetInt("kazuhaPlayerIndex", globalCfg.KazuhaPlayerIndex).ToString(), PlaceholderText = "0=不指定" };
-        var returnToFightCheck = new System.Windows.Controls.CheckBox { Content = "战斗后走回战斗点", IsChecked = GetBool("returnToFightPointAfterBattle", globalCfg.ReturnToFightPointAfterBattle) };
-        var returnStaySecondsBox = new TextBox { Text = GetInt("returnToFightPointStaySeconds", globalCfg.ReturnToFightPointStaySeconds).ToString(), PlaceholderText = "秒" };
+        var enableKazuhaSyncCheck = new System.Windows.Controls.CheckBox { Content = "启用万叶聚物同步", IsChecked = GetBool("enableKazuhaSync", globalCfg.EnableKazuhaSync) };
         var fightTimeoutBox = new TextBox { Text = GetInt("fightTimeoutSeconds", globalCfg.FightTimeoutSeconds).ToString(), PlaceholderText = "秒，默认120" };
-        returnStaySecondsBox.IsEnabled = returnToFightCheck.IsChecked ?? false;
-        returnToFightCheck.Checked += (_, _) => returnStaySecondsBox.IsEnabled = true;
-        returnToFightCheck.Unchecked += (_, _) => returnStaySecondsBox.IsEnabled = false;
+
+        // ===== 万叶聚物同步配置（multiplayer-kazuha-collect-sync + kazuha-player-auto-detection）=====
+        var kazuhaSyncWaitSecondsBox = new TextBox { Text = GetInt("kazuhaSyncWaitSeconds", globalCfg.KazuhaSyncWaitSeconds).ToString(), PlaceholderText = "秒，0-30，默认1" };
+        var kazuhaSyncTimeoutSecondsBox = new TextBox { Text = GetInt("kazuhaSyncTimeoutSeconds", globalCfg.KazuhaSyncTimeoutSeconds).ToString(), PlaceholderText = "秒，5-120，默认20" };
+        var kazuhaWaitSkillCdSecondsBox = new TextBox { Text = GetInt("kazuhaWaitSkillCdSeconds", globalCfg.KazuhaWaitSkillCdSeconds).ToString(), PlaceholderText = "秒，3-10，默认5" };
+
+        // 联动启用：仅当勾选"启用万叶聚物同步"时三个输入框才有效
+        // kazuha-player-auto-detection: 替换原"按 KazuhaPlayerIndex ∈ [1,4] 判定"，改为 EnableKazuhaSync 布尔门控
+        void UpdateKazuhaSyncEnabled()
+        {
+            var enabled = enableKazuhaSyncCheck.IsChecked ?? false;
+            kazuhaSyncWaitSecondsBox.IsEnabled = enabled;
+            kazuhaSyncTimeoutSecondsBox.IsEnabled = enabled;
+            kazuhaWaitSkillCdSecondsBox.IsEnabled = enabled;
+        }
+        enableKazuhaSyncCheck.Checked += (_, _) => UpdateKazuhaSyncEnabled();
+        enableKazuhaSyncCheck.Unchecked += (_, _) => UpdateKazuhaSyncEnabled();
+        UpdateKazuhaSyncEnabled();
         var debugModeCheck = new System.Windows.Controls.CheckBox { Content = "调试模式（跳过路线一致性验证）", IsChecked = GetBool("debugMode", globalCfg.DebugMode) };
         var useFixedRoutesCheck = new System.Windows.Controls.CheckBox { Content = "固定调试线路（按顺序执行内置线路）", IsChecked = GetBool("useFixedDebugRoutes", globalCfg.UseFixedDebugRoutes) };
         var fixedRoutePathBox = new TextBox { Text = GetStr("fixedDebugRoutePath", globalCfg.FixedDebugRoutePath), PlaceholderText = "调试线路目录（留空使用内置）" };
@@ -2291,18 +2304,15 @@ public partial class ScriptControlViewModel : ViewModel
         // 第二行：集合点最小距离 + 万叶序号
         hostPanel.Children.Add(MakeSmallRow(
             MakeSmallField("集合点最小距离", syncPointMinDistBox, 65),
-            MakeSmallField("万叶序号（0=不指定）", kazuhaIndexBox, 50)));
+            MakeSmallField("启用万叶聚物同步", enableKazuhaSyncCheck, 130)));
         hostPanel.Children.Add(MakeSmallRow(
             MakeSmallField("从第几条路线开始（0=从头）", startRouteIndexBox, 65)));
 
-        // 战斗后走回战斗点
-        var returnRow = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-        returnRow.Children.Add(returnToFightCheck);
-        returnRow.Children.Add(new TextBlock { Text = "  停留", FontSize = 12, Foreground = SystemColors.GrayTextBrush, VerticalAlignment = VerticalAlignment.Center });
-        returnStaySecondsBox.Width = 50; returnStaySecondsBox.HorizontalAlignment = HorizontalAlignment.Left;
-        returnRow.Children.Add(returnStaySecondsBox);
-        returnRow.Children.Add(new TextBlock { Text = " 秒", FontSize = 12, Foreground = SystemColors.GrayTextBrush, VerticalAlignment = VerticalAlignment.Center });
-        hostPanel.Children.Add(returnRow);
+        // 万叶聚物同步配置（仅在启用万叶聚物同步时生效）
+        hostPanel.Children.Add(MakeSmallRow(
+            MakeSmallField("万叶聚物完成后停留（秒，0-30）", kazuhaSyncWaitSecondsBox, 70),
+            MakeSmallField("聚物同步总超时（秒，5-120）", kazuhaSyncTimeoutSecondsBox, 70),
+            MakeSmallField("万叶 E 技 CD 等待上限（秒，3-10）", kazuhaWaitSkillCdSecondsBox, 70)));
 
         // 分组4：战斗配置
         hostPanel.Children.Add(MakeGroupHeader("战斗配置"));
@@ -2525,9 +2535,10 @@ public partial class ScriptControlViewModel : ViewModel
                     if (int.TryParse(minPlayersBox.Text, out var mp)) settings["minPlayersToSync"] = mp;
                     if (double.TryParse(syncPointMinDistBox.Text, out var spd)) settings["syncPointMinDistance"] = spd;
                     if (int.TryParse(startRouteIndexBox.Text, out var sri)) settings["startRouteIndex"] = sri;
-                    if (int.TryParse(kazuhaIndexBox.Text, out var ki)) settings["kazuhaPlayerIndex"] = ki;
-                    settings["returnToFightPointAfterBattle"] = returnToFightCheck.IsChecked ?? false;
-                    if (int.TryParse(returnStaySecondsBox.Text, out var rss)) settings["returnToFightPointStaySeconds"] = rss;
+                    settings["enableKazuhaSync"] = enableKazuhaSyncCheck.IsChecked ?? false;
+                    if (int.TryParse(kazuhaSyncWaitSecondsBox.Text, out var ksw)) settings["kazuhaSyncWaitSeconds"] = ksw;
+                    if (int.TryParse(kazuhaSyncTimeoutSecondsBox.Text, out var kst)) settings["kazuhaSyncTimeoutSeconds"] = kst;
+                    if (int.TryParse(kazuhaWaitSkillCdSecondsBox.Text, out var kwc)) settings["kazuhaWaitSkillCdSeconds"] = kwc;
                     if (int.TryParse(fightTimeoutBox.Text, out var fts)) settings["fightTimeoutSeconds"] = fts;
                     settings["debugMode"] = debugModeCheck.IsChecked ?? false;
                     settings["useFixedDebugRoutes"] = useFixedRoutesCheck.IsChecked ?? false;
@@ -2568,8 +2579,8 @@ public partial class ScriptControlViewModel : ViewModel
                         "playerName", "playerUid", "multiplayerPartyName", "multiplayerStartAvatarName", 
                         "expectedPlayerCount", "roomWhitelist",
                         "partyTimeoutSeconds", "partyTimeoutAction", "syncTimeoutSeconds", "minPlayersToSync",
-                        "syncPointMinDistance", "startRouteIndex", "kazuhaPlayerIndex",
-                        "returnToFightPointAfterBattle", "returnToFightPointStaySeconds",
+                        "syncPointMinDistance", "startRouteIndex", "enableKazuhaSync",
+                        "kazuhaSyncWaitSeconds", "kazuhaSyncTimeoutSeconds", "kazuhaWaitSkillCdSeconds",
                         "fightTimeoutSeconds",
                         "debugMode", "useFixedDebugRoutes", "fixedDebugRoutePath", "selectedBuiltinRoute",
                         "multiWorldEnabled", "multiWorldCount"

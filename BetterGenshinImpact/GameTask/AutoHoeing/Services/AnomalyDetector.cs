@@ -131,6 +131,7 @@ public class AnomalyDetector
                     if (IsMultiplayerDefeated(region))
                     {
                         Logger.LogInformation("识别到联机已倒下界面（色块检测），点击复苏按钮");
+                        await Task.Delay(300, ct);
                         region.ClickTo(960, 1020);
                         await Task.Delay(500, ct);
 

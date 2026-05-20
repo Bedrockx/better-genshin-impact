@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时181.66秒，包含以下怪物：2只丘丘人、1只丘丘雷兜王、1只风丘丘萨满。",
     "enable_monster_loot_split": false,
     "hash_res": "03882928",
-    "last_modified_time": 1777395321138,
+    "last_modified_time": 1779210599202,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "C007稻妻九条海滩",
@@ -35,22 +35,31 @@
       "id": 2,
       "move_mode": "dash",
       "type": "path",
-      "x": -3436.21484375,
-      "y": -3277.2236328125
+      "x": -3432.94140625,
+      "y": -3289.73046875
     },
     {
       "action": "",
       "action_params": "",
       "id": 3,
-      "move_mode": "fly",
+      "move_mode": "dash",
       "type": "path",
-      "x": -3446.626953125,
-      "y": -3256.6533203125
+      "x": -3445.3515625,
+      "y": -3260.392578125
     },
     {
       "action": "",
       "action_params": "",
       "id": 4,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -3450.09765625,
+      "y": -3248.8955078125
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 5,
       "move_mode": "dash",
       "type": "path",
       "x": -3455.109375,
@@ -59,7 +68,7 @@
     {
       "action": "combat_script",
       "action_params": "attack(0.5)",
-      "id": 5,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": -3457.21484375,
@@ -68,16 +77,16 @@
     {
       "action": "",
       "action_params": "",
-      "id": 6,
+      "id": 7,
       "move_mode": "dash",
       "type": "path",
-      "x": -3447.544921875,
-      "y": -3159.5078125
+      "x": -3445.236328125,
+      "y": -3160.2900390625
     },
     {
       "action": "fight",
       "action_params": "",
-      "id": 7,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
       "x": -3459.51171875,

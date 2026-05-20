@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时71秒，包含以下怪物：1只丘丘雷兜王、1只盗宝团·火之药剂师、1只盗宝团·冰之药剂师、1只盗宝团·海上男儿、1只野伏·阵刀番、1只海乱鬼·炎威。",
     "enable_monster_loot_split": false,
     "hash_res": "95307930",
-    "last_modified_time": 1777152828421,
+    "last_modified_time": 1779210643436,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "C008稻妻相之火旁",
@@ -62,22 +62,13 @@
       "id": 5,
       "move_mode": "dash",
       "type": "path",
-      "x": -3243.63,
-      "y": -3101.16
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 6,
-      "move_mode": "dash",
-      "type": "path",
       "x": -3270.13,
       "y": -2990.28
     },
     {
       "action": "fight",
       "action_params": "",
-      "id": 7,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": -3303,

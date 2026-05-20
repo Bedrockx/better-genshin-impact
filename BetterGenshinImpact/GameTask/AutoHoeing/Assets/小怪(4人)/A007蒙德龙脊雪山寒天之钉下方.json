@@ -1,0 +1,61 @@
+{
+  "info": {
+    "authors": [
+      {
+        "links": "",
+        "name": "蜜柑魚"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时42秒，包含以下怪物：3只冰萤。",
+    "enable_monster_loot_split": false,
+    "hash_res": "05340204",
+    "last_modified_time": 1779537232350,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "A007蒙德龙脊雪山寒天之钉下方",
+    "tags": [
+      "环境伤害"
+    ],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": -1013.4000000000015,
+      "y": 1028.42
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -965.48828125,
+      "y": 1024.8037109375
+    },
+    {
+      "action": "stop_flying",
+      "action_params": "",
+      "id": 3,
+      "move_mode": "fly",
+      "type": "path",
+      "x": -938.38671875,
+      "y": 1015.71484375
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -921.2799999999988,
+      "y": 996.0699999999997
+    }
+  ]
+}

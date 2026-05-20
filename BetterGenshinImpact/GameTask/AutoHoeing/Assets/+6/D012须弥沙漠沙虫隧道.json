@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时61.47秒，包含以下怪物：1只遗迹重机。",
     "enable_monster_loot_split": false,
     "hash_res": "84542485",
-    "last_modified_time": 1778767688820,
+    "last_modified_time": 1779365472844,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "D012须弥沙漠沙虫隧道",
@@ -31,17 +31,8 @@
     },
     {
       "action": "combat_script",
-      "action_params": "keypress(x);伊涅芙 e;莉奈娅 e;芙宁娜 e;玛薇卡 e;爱可菲 e;菈乌玛 e; ;",
+      "action_params": "keypress(x);伊涅芙 e;莉奈娅 e;哥伦比娅 e;芙宁娜 e;玛薇卡 e;爱可菲 e;菈乌玛 e(hold); ;",
       "id": 2,
-      "move_mode": "dash",
-      "type": "orientation",
-      "x": 4610.7236328125,
-      "y": -1037.38671875
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 3,
       "move_mode": "dash",
       "type": "path",
       "x": 4610.7236328125,
@@ -50,29 +41,20 @@
     {
       "action": "combat_script",
       "action_params": "attack(0.2)",
-      "id": 4,
+      "id": 3,
       "move_mode": "jump",
       "type": "path",
-      "x": 4615.076171875,
-      "y": -1026.0390625
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 5,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 4622.197265625,
-      "y": -997.837890625
+      "x": 4613.484375,
+      "y": -1024.1098339455657
     },
     {
       "action": "fight",
       "action_params": "",
-      "id": 6,
+      "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": 4644.7421875,
-      "y": -1004.88671875
+      "x": 4618.296837704154,
+      "y": -988.7001691288897
     }
   ]
 }

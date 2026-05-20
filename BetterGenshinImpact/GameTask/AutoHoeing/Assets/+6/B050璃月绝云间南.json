@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时118.59秒，包含以下怪物：1只岩龙蜥。",
     "enable_monster_loot_split": false,
     "hash_res": "03592890",
-    "last_modified_time": 1777395229731,
+    "last_modified_time": 1779210286293,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "B050璃月绝云间南",
@@ -35,58 +35,22 @@
       "id": 2,
       "move_mode": "dash",
       "type": "path",
-      "x": 1302.599609375,
-      "y": 501.75634765625
+      "x": 1295.3359375,
+      "y": 509.87890625
     },
     {
-      "action": "",
-      "action_params": "",
+      "action": "stop_flying",
+      "action_params": "2000",
       "id": 3,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 1285.6728515625,
-      "y": 489.1923828125
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 4,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 1263.625,
-      "y": 478.2509406487643
-    },
-    {
-      "action": "stop_flying",
-      "action_params": "",
-      "id": 5,
       "move_mode": "fly",
       "type": "path",
-      "x": 1242.125,
-      "y": 468.3129399808731
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 6,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 1213.25,
-      "y": 477.5
-    },
-    {
-      "action": "stop_flying",
-      "action_params": "",
-      "id": 7,
-      "move_mode": "fly",
-      "type": "path",
-      "x": 1204,
-      "y": 493
+      "x": 1223.5166015625,
+      "y": 492.3291015625
     },
     {
       "action": "fight",
       "action_params": "",
-      "id": 8,
+      "id": 4,
       "move_mode": "dash",
       "type": "path",
       "x": 1178.90625,

@@ -323,25 +323,76 @@ public class AutoPartyTask
                     var inMainUi = Bv.IsInMainUi(checkRa);
                     var signalRCount = client.CurrentRoomPlayerCount;
 
-                    if (inMainUi)
+                    // F2 踢出按钮扫描仅在非主界面时执行（主界面下 F2 关闭，f2Count 不可观测）。
+                    // 主界面分支不读取 f2Count，传 0 即可——决策函数已约束 InMainUi=true 时不读 F2Count。
+                    var f2Count = 0;
+                    var kickCount = 0;
+                    if (!inMainUi)
                     {
-                        // 信号 A：主界面 + SignalR 人数已达标 → 直接开始
-                        if (signalRCount >= expectedCount)
+                        // 不在主界面：派蒙不可见，多半在 F2 页面
+                        // 信号 B：F2 页面 → 数右侧红色"踢出"按钮（房主自己没有，每个成员对应 1 个）
+                        // 实际进入世界人数 = 踢出按钮数量 + 1
+                        for (var i = 4; i > 0; i--)
                         {
-                            _logger.LogInformation("[自动组队-房主] 检测到主界面且人数已满 {N}，开始锄地", signalRCount);
-                            return signalRCount;
+                            var aa = RecognitionObject.Ocr(checkRa.Width * 0.5, checkRa.Height * 0.61 - 125 * (4 - i), checkRa.Width * 0.5, checkRa.Height * 0.4 - 30);
+                            AutoFightAssets.Instance.KickBtnRa.RegionOfInterest = aa.RegionOfInterest;
+                            if (checkRa.Find(AutoFightAssets.Instance.KickBtnRa).IsExist())
+                            {
+                                kickCount = i;
+                                break;
+                            }
                         }
+                        f2Count = kickCount + 1;
+                        // 诊断日志：每轮 F2 检测都输出当前人数对比，便于定位卡住时实际值
+                        _logger.LogInformation("[自动组队-房主][F2诊断] 踢出按钮={Kick}，实际人数={F2Count}/{Expected}，SignalR人数={SignalR}",
+                            kickCount, f2Count, expectedCount, signalRCount);
+                    }
 
-                        // 人数未满，如果之前在 F2 界面，说明有人加入触发了加载
-                        if (isInF2Screen)
-                        {
-                            _logger.LogInformation("[自动组队-房主] 检测到主界面（玩家加入触发加载），人数: {Count}/{Expected}", signalRCount, expectedCount);
+                    var decision = HostPartyReadinessDecisions.Decide(new HostPartyReadinessInput(
+                        InMainUi: inMainUi,
+                        SignalRCount: signalRCount,
+                        F2Count: f2Count,
+                        ExpectedCount: expectedCount,
+                        IsInF2Screen: isInF2Screen));
+
+                    switch (decision.Kind)
+                    {
+                        case HostPartyDecisionKind.StartHoeing:
+                            // 仅 InMainUi=false 路径会到达这里（F2 信号 B 满员 + 通过陌生人交叉校验）
+                            _logger.LogInformation("[自动组队-房主] F2 检测到实际进入世界人数已满 {Count}/{Expected}（踢出按钮={Kick}），主动关闭 F2 开始锄地",
+                                decision.ReturnedCount, expectedCount, kickCount);
+                            Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
+                            await Delay(500, ct);
+                            await WaitForMainUi(ct, 10);
+                            return decision.ReturnedCount;
+
+                        case HostPartyDecisionKind.KickStrangers:
+                            _logger.LogWarning("[自动组队-房主] 检测到陌生人闯入：游戏内 {F2} 人 > BGI 房间 {Bgi} 人，暂不开锄",
+                                f2Count, signalRCount);
+                            if ((DateTime.Now - lastAcceptTime).TotalSeconds >= StrangerKickAcceptCooldownSec)
+                            {
+                                await KickStrangersAsync(client, ct);
+                                lastKickScanTime = DateTime.Now;
+                            }
+                            await Delay(1000, ct);
+                            continue;
+
+                        case HostPartyDecisionKind.ReopenF2WithLoadDelay:
+                            // 上一轮在 F2，本轮被弹回主界面 → 多半是有玩家加入触发了加载
+                            // 注意：signalRCount 是否达标都走这条路径——区别只在日志措辞
+                            if (signalRCount >= expectedCount)
+                            {
+                                _logger.LogInformation("[自动组队-房主] 主界面检测到 SignalR 人数已达 {N}/{Expected}，切回 F2 复核游戏世界实际人数",
+                                    signalRCount, expectedCount);
+                            }
+                            else
+                            {
+                                _logger.LogInformation("[自动组队-房主] 检测到主界面（玩家加入触发加载），人数: {Count}/{Expected}",
+                                    signalRCount, expectedCount);
+                            }
                             isInF2Screen = false;
-
-                            // 等待加载稳定后重新打开 F2
                             await Delay(2000, ct);
                             await WaitForMainUi(ct, 10);
-
                             if (!await OpenCoOpScreen(ct, whitelist))
                             {
                                 _logger.LogWarning("[自动组队-房主] 重新打开 F2 失败，重试");
@@ -349,11 +400,19 @@ public class AutoPartyTask
                                 continue;
                             }
                             isInF2Screen = true;
-                        }
-                        else
-                        {
-                            // 一直在主界面，说明 F2 没打开成功，尝试重新打开
-                            _logger.LogDebug("[自动组队-房主] 在主界面但 F2 未打开，尝试打开 F2");
+                            continue;
+
+                        case HostPartyDecisionKind.ReopenF2NoDelay:
+                            // 一直在主界面（上一轮也没在 F2）→ F2 没开成功
+                            if (signalRCount >= expectedCount)
+                            {
+                                _logger.LogInformation("[自动组队-房主] 主界面检测到 SignalR 人数已达 {N}/{Expected}，但 F2 未打开，重新打开 F2 复核",
+                                    signalRCount, expectedCount);
+                            }
+                            else
+                            {
+                                _logger.LogDebug("[自动组队-房主] 在主界面但 F2 未打开，尝试打开 F2");
+                            }
                             if (!await OpenCoOpScreen(ct, whitelist))
                             {
                                 await Delay(1000, ct);
@@ -362,45 +421,11 @@ public class AutoPartyTask
                             {
                                 isInF2Screen = true;
                             }
-                        }
-                        continue;
-                    }
-
-                    // 不在主界面：派蒙不可见，多半在 F2 页面
-                    // 信号 B：F2 页面 → 数右侧红色"踢出"按钮（房主自己没有，每个成员对应 1 个）
-                    // 实际进入世界人数 = 踢出按钮数量 + 1
-                    var kickCount = checkRa.FindMulti(AutoFightAssets.Instance.KickBtnRa).Count;
-                    var f2Count = kickCount + 1;
-                    if (f2Count >= expectedCount)
-                    {
-                        // 交叉校验（方案 B）：游戏内人数 > BGI 房间人数 → 有陌生人闯入
-                        // 不开锄，等用户/自动踢人逻辑处理
-                        var bgiCount = client.CurrentRoomPlayerCount;
-                        if (f2Count > bgiCount && bgiCount > 0)
-                        {
-                            _logger.LogWarning("[自动组队-房主] 检测到陌生人闯入：游戏内 {F2} 人 > BGI 房间 {Bgi} 人，暂不开锄",
-                                f2Count, bgiCount);
-                            // 触发一次踢陌生人扫描（避开同意申请后的保护期）
-                            if ((DateTime.Now - lastAcceptTime).TotalSeconds >= StrangerKickAcceptCooldownSec)
-                            {
-                                await KickStrangersAsync(client, ct);
-                                lastKickScanTime = DateTime.Now;
-                            }
-                            await Delay(1000, ct);
                             continue;
-                        }
 
-                        _logger.LogInformation("[自动组队-房主] F2 检测到实际进入世界人数已满 {Count}/{Expected}（踢出按钮={Kick}），主动关闭 F2 开始锄地",
-                            f2Count, expectedCount, kickCount);
-                        Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
-                        await Delay(500, ct);
-                        await WaitForMainUi(ct, 10);
-                        return f2Count;
-                    }
-                    if (kickCount > 0)
-                    {
-                        _logger.LogDebug("[自动组队-房主] F2 当前实际人数 {Count}/{Expected}（踢出按钮={Kick}），继续等待",
-                            f2Count, expectedCount, kickCount);
+                        case HostPartyDecisionKind.WaitInF2:
+                            // 落到循环底部的"周期性踢陌生人扫描 + 按 Y 触发申请弹窗"逻辑
+                            break;
                     }
                 }
 
@@ -419,14 +444,20 @@ public class AutoPartyTask
                     lastKickScanTime = DateTime.Now;
                 }
 
-                // 在 F2 界面，按 Y 触发申请弹窗（如果有待处理的申请）
+                // 在 F2 界面，持续按 Y 触发申请弹窗（弹窗本身由循环顶部 ConfirmBtnRo 持续检测捕获）
+                // 设计：按 Y 与弹窗检测解耦——Y 不停按让游戏尽快弹出申请，识别由顶部统一处理。
+                // 间隔 250ms（按 Y 后给游戏足够响应时间但不过度等待），让弹窗 10s 倒计时窗口内
+                // 能容纳更多次顶部检测机会（约 25+ 次），减少漏识。
                 if (isInF2Screen)
                 {
                     Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_Y);
+                    await Delay(250, ct);
+                }
+                else
+                {
+                    // 不在 F2（理论上不应该出现，主界面分支会补开 F2），保底休眠避免空转
                     await Delay(500, ct);
                 }
-
-                await Delay(500, ct);
             }
 
             // 超时：返回 0，由调用方根据 PartyTimeoutAction 决定
@@ -731,6 +762,22 @@ public class AutoPartyTask
             {
                 return false;
             }
+
+            // 关键守卫：陌生人闯入 ⇔ 游戏内实际人数（踢出按钮 + 1）> BGI 房间登记人数
+            // 游戏世界硬上限 4 人，所以只有 BGI 没满 + 游戏世界先被陌生人占满才会触发。
+            // 没有这道守卫时，调用方（满员判定 / 周期性扫描）一旦因模板偶发漏识或 OCR
+            // 偏差走到 KickStrangersAsync，会把队伍内合法成员当陌生人误踢。
+            var f2Count = kickRegions.Count + 1;
+            var bgiCount = client.CurrentRoomPlayerCount;
+            if (bgiCount <= 0 || f2Count <= bgiCount)
+            {
+                _logger.LogDebug("[踢陌生人] 游戏内 {F2} 人 <= BGI 房间 {Bgi} 人，无陌生人，跳过扫描",
+                    f2Count, bgiCount);
+                return false;
+            }
+
+            _logger.LogInformation("[踢陌生人] 检测到陌生人闯入：游戏内 {F2} 人 > BGI 房间 {Bgi} 人，开始扫描",
+                f2Count, bgiCount);
 
             // 按 Y 坐标排序：从上到下对应 2P / 3P / 4P
             var sorted = kickRegions.OrderBy(r => r.Y).ToList();

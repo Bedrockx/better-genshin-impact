@@ -1,0 +1,79 @@
+#nullable enable
+using System;
+using BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.Models;
+
+namespace BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer;
+
+/// <summary>
+/// 非万叶玩家分支等待终态的种类，用于 PBT 建模"终态发生后统一等待时长"性质。
+/// 合并后所有终态都触发同一段 KazuhaSyncWaitSeconds 等待，与 kind 无关（design.md PBT-5）。
+/// </summary>
+public enum TerminalKind
+{
+    FinishedSuccess,
+    FinishedFailure,
+    Skipped,
+    Timeout
+}
+
+/// <summary>
+/// 万叶聚物同步功能的纯决策函数集合。
+/// 抽离成 static class 是为了 PBT 友好（无外部依赖、可重复调用）。
+/// 由 <see cref="KazuhaCollectSyncCoordinator"/> 使用。
+/// kazuha-player-auto-detection: 删除原 ResolveKazuhaUid，改为运行时声明协议（DeclareKazuhaCapabilityAsync）。
+/// </summary>
+public static class KazuhaCollectSyncDecisions
+{
+    /// <summary>
+    /// 判断当前周期是否需要启用万叶聚物同步流程。
+    /// 等价于：<c>EnableKazuhaSync ∧ isConnected</c>。
+    /// kazuha-player-auto-detection: 删除 KazuhaPlayerIndex ∈ [1,4] 判定，改为 EnableKazuhaSync 布尔门控。
+    /// </summary>
+    /// <param name="config">联机锄地配置（房主同步过来的，已包含 EnableKazuhaSync 字段）</param>
+    /// <param name="isConnected">SignalR 客户端当前是否已连接服务器</param>
+    /// <returns>true 表示启用万叶聚物同步流程</returns>
+    public static bool IsEnabled(AutoHoeingConfig config, bool isConnected)
+    {
+        if (config == null) return false;
+        if (!isConnected) return false;
+        return config.EnableKazuhaSync;
+    }
+
+    /// <summary>
+    /// PathExecutor 在战后回点判断是否走"回战斗点 → 进入 WaitAtFightPointAsync"分支的纯决策函数。
+    /// 与 <see cref="IsEnabled"/> 区别：本函数不感知 SignalR 连接状态，
+    /// 让 IsConnected==false 的临时断连仍能进 WaitAtFightPointAsync 走兜底 Delay（preservation）。
+    ///
+    /// PathExecutor 必须经由 <see cref="KazuhaCollectSyncCoordinator.IsConfigEnabled"/>（持有 AutoHoeingTask
+    /// 拷贝/覆盖后的 _config）调用，不能直接读 TaskContext.Instance().Config.AutoHoeingConfig（全局未应用配置组覆盖）。
+    /// </summary>
+    public static bool IsConfigEnabledForPathExecutor(AutoHoeingConfig? config)
+    {
+        return config?.EnableKazuhaSync == true;
+    }
+
+    /// <summary>
+    /// 非万叶玩家收到任意终态（Finished true / Finished false / Skipped / Timeout）后应停留的毫秒数。
+    /// 合并后统一返回 <c>Math.Max(0, KazuhaSyncWaitSeconds) * 1000</c>，与 kind 无关。
+    /// 是 PBT-5 "Unified Wait Duration On Terminal" 的载体（design.md "Property-Based Testing Plan"）。
+    /// </summary>
+    public static int ComputePostTerminalWaitMs(AutoHoeingConfig config, TerminalKind kind)
+    {
+        if (config == null) return 0;
+        return Math.Max(0, config.KazuhaSyncWaitSeconds) * 1000;
+    }
+
+    /// <summary>
+    /// BeginPreparationAsync 入口处的三连判 gate：
+    /// 仅 IsEnabled ∧ IsCurrentPlayerKazuha ∧ HasCombatScenesCached 全为 true 时才执行实际后台预备；
+    /// 任意一项 false 都立即返回 PreparationResult.Skipped，避免走 ReturnMainUiTask 分支按 ESC 中断 MoveCloseTo 走位。
+    /// 详见 design.md §3.3 / §6 PBT-3。
+    /// </summary>
+    public static bool ShouldRunBackgroundPreparation(
+        bool isEnabled,
+        bool isCurrentPlayerKazuha,
+        bool hasCombatScenesCached)
+    {
+        return isEnabled && isCurrentPlayerKazuha && hasCombatScenesCached;
+    }
+}

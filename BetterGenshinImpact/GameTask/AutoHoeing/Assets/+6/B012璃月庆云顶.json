@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时126.58秒，包含以下怪物：2只狂风之核、1只岩龙蜥。",
     "enable_monster_loot_split": false,
     "hash_res": "06786534",
-    "last_modified_time": 1777394988712,
+    "last_modified_time": 1779363569942,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "B012璃月庆云顶",
@@ -66,9 +66,19 @@
       "y": 966.1499999999996
     },
     {
+      "action": "combat_script",
+      "action_params": "attack(0.3);伊涅芙 e;芙宁娜 e;玛薇卡 e;爱可菲 e; ;",
+      "id": 6,
+      "locked": false,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1407.7000000000007,
+      "y": 931.3400000000001
+    },
+    {
       "action": "fight",
       "action_params": "",
-      "id": 6,
+      "id": 7,
       "move_mode": "dash",
       "type": "path",
       "x": 1407.7000000000007,
@@ -77,7 +87,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 7,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
       "x": 1410.25,
@@ -86,7 +96,7 @@
     {
       "action": "stop_flying",
       "action_params": "",
-      "id": 8,
+      "id": 9,
       "move_mode": "fly",
       "type": "path",
       "x": 1404.1900000000005,
@@ -95,7 +105,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 9,
+      "id": 10,
       "move_mode": "dash",
       "type": "path",
       "x": 1414.1900000000005,
@@ -104,7 +114,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 10,
+      "id": 11,
       "move_mode": "fly",
       "type": "path",
       "x": 1421.0599999999995,
@@ -113,7 +123,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 11,
+      "id": 12,
       "move_mode": "dash",
       "type": "path",
       "x": 1436.8046875,
@@ -122,7 +132,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 12,
+      "id": 13,
       "move_mode": "dash",
       "type": "path",
       "x": 1442.740234375,

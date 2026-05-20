@@ -107,7 +107,7 @@ public class UseRedemptionCodeTask : ISoloTask
     private async Task UseRedeemCode(RedeemCode redeemCode, BvPage page)
     {
         Rect captureRect = TaskContext.Instance().SystemInfo.ScaleMax1080PCaptureRect;
-        
+
         _logger.LogInformation("输入兑换码: {Code}", redeemCode.Code);
         // 将要输入的文本复制到剪贴板
         UIDispatcherHelper.Invoke(() => Clipboard.SetDataObject(redeemCode.Code!));
@@ -116,32 +116,45 @@ public class UseRedemptionCodeTask : ISoloTask
         // 点击兑换
         await page.Locator(ElementAssets.Instance.BtnWhiteConfirm).Click();
 
-        // 兑换成功
+        // === OQ-1 (a) 锚点：BtnWhiteConfirm.Click 已 await 返回 = 已向服务器提交一次 (uid, code)。
+        // 立即标记为终态，无视后续 OCR 结果（OQ-2 a 删除拒绝识别 / OQ-6 b 仅做日志区分）。
+        // 罕见的"提交未真正成功"少数派由用户接受为可接受代价（bugfix.md 2.4）。 ===
+        // 总是写入会话级成功 short-circuit（不分 UID、不持久化），覆盖剪贴板路径与显式 UID 路径，
+        // 避免同会话内对同一码重复触发兑换 UI（3.14 / 风险 5 不变量）。
+        RedeemCodeCache.MarkAsSucceededInSession(redeemCode.Code);
+        // OQ-4 (a) 守卫：剪贴板路径（_uid 为 null/empty）不写持久化，与 3.8 不变量保持一致。
+        // 仅在显式传入 UID 时写入跨进程持久化记录，避免污染任何 UID 桶。
+        if (!string.IsNullOrEmpty(_uid))
+        {
+            _historyStore.MarkRedeemed(_uid, redeemCode.Code, redeemCode.Valid);
+        }
+
+        // === OQ-6 (b) 保留 1 秒 OCR 等待 —— 仅做日志区分，不再影响标记决策。 ===
         var list = await page.GetByText("兑换成功").TryWaitFor(1000);
         if (list.Count > 0)
         {
             _logger.LogInformation("兑换码 {Code} 兑换成功", redeemCode.Code);
-            // 总是写入会话级成功 short-circuit（不分 UID、不持久化），覆盖剪贴板路径与显式 UID 路径，
-            // 避免同会话内对同一码重复触发兑换 UI（design.md 风险 5）。
-            RedeemCodeCache.MarkAsSucceededInSession(redeemCode.Code);
-            // 仅在显式传入 UID 时写入跨进程持久化记录，避免剪贴板路径污染任何 UID 桶。
-            if (!string.IsNullOrEmpty(_uid))
-            {
-                _historyStore.MarkRedeemed(_uid, redeemCode.Code, redeemCode.Valid);
-            }
-            // 点击确认
+            // 成功路径仍点击确认按钮 + 等待动画（3.10 不变量）。
             await page.Locator(ElementAssets.Instance.BtnBlackConfirm).Click();
             await page.Wait(5100);
+            return;
         }
-        else
-        {
-            _logger.LogWarning("兑换码 {Code} 兑换失败，可能是过期、错误或已被使用", redeemCode.Code);
-            RedeemCodeCache.MarkAsFailed(redeemCode.Code);
-            // 点击清除
-            await page.GetByText("清除").WithRoi(captureRect.CutRight(0.5)).Click();
-        }
-    }
 
+        // OCR 未识别到"兑换成功" —— 可能是已使用 / 已过期 / 不存在 / 无效 / 网络异常等任意状态。
+        // 标记已在 OQ-1 锚点完成，这里不再决定持久化；仅打日志区分。
+        _logger.LogInformation(
+            "兑换码 {Code} 提交完成，未识别到兑换成功文本（可能是已使用 / 过期 / 网络异常）",
+            redeemCode.Code);
+        // OQ-3 (b) 降级保留：剪贴板路径（_uid 空）补一个会话级失败缓存（1 天 TTL），
+        // 用于同会话内若用户再次粘贴同一码时由 FilterExpiredCodes 第 3 排除条件 short-circuit。
+        // _uid 非空路径不调 MarkAsFailed —— 持久化层已在 OQ-1 锚点写入，
+        // 再调失败缓存会让同一码同时存在于"已兑换桶"与"会话失败缓存"，语义混乱。
+        if (string.IsNullOrEmpty(_uid))
+        {
+            RedeemCodeCache.MarkAsFailed(redeemCode.Code);
+        }
+        await page.GetByText("清除").WithRoi(captureRect.CutRight(0.5)).Click();
+    }
 
     private static void InitLog(List<RedeemCode> list)
     {

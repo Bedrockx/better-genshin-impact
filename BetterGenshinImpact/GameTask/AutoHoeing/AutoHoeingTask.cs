@@ -102,6 +102,79 @@ public class AutoHoeingTask : ISoloTask
     }
 
     /// <summary>
+    /// 把 KazuhaSyncWaitSeconds 钳到合法范围 [0, 30]。纯函数，PBT 友好。
+    /// </summary>
+    private static int ClampSyncWait(int value) => Math.Clamp(value, 0, 30);
+
+    /// <summary>
+    /// 把 KazuhaSyncTimeoutSeconds 钳到合法范围 [5, 120]。纯函数，PBT 友好。
+    /// </summary>
+    private static int ClampSyncTimeout(int value) => Math.Clamp(value, 5, 120);
+
+    /// <summary>
+    /// 把 KazuhaWaitSkillCdSeconds 钳到合法范围 [3, 10]。纯函数，PBT 友好。
+    /// </summary>
+    private static int ClampWaitCd(int value) => Math.Clamp(value, 3, 10);
+
+    /// <summary>
+    /// 客户端识别本地联机队伍是否含万叶，含则向服务端声明候选身份（kazuha-player-auto-detection）。
+    /// 调用时机：
+    ///   1. 房主路径：联机队伍切换完成（MultiplayerPartyName/MultiplayerStartAvatarName）后、第一条路线开锄前
+    ///   2. 成员路径：JoinHostWorldAsync 完成后、第一条路线开锄前
+    ///   3. 多世界第 N 轮：新房间 SetRoomConfigAsync 完成后再次调用
+    /// 失败静默：识别失败/SignalR 失败仅 LogWarning 不阻塞主任务。
+    /// </summary>
+    private async Task DeclareKazuhaCapabilityIfPresentAsync(CancellationToken ct)
+    {
+        // 守卫语义：声明能否进行只取决于联机连接状态，不再依赖 _multiplayerCoordinator 是否已构造
+        // kazuha-declare-after-team-switch: 删除原 if (_multiplayerCoordinator == null) return; 这一行
+        if (!_config.MultiplayerEnabled) return;       // 单机路径不感知
+        if (!_config.EnableKazuhaSync) return;          // 用户未开启同步不声明
+
+        var client = _coordinatorClientRef;
+        if (client == null || !client.IsConnected) return;  // SignalR 未就绪不声明
+
+        BetterGenshinImpact.GameTask.AutoFight.Model.CombatScenes? combatScenes = null;
+        try
+        {
+            combatScenes = await RunnerContext.Instance.GetCombatScenes(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[联机][聚物] 识别队伍场景失败，跳过万叶声明");
+            return;
+        }
+
+        if (combatScenes == null)
+        {
+            _logger.LogInformation("[联机][聚物] CombatScenes 不可用，跳过万叶声明");
+            return;
+        }
+
+        var hasKazuha = combatScenes.SelectAvatar("枫原万叶") != null;
+        if (hasKazuha)
+        {
+            await client.DeclareKazuhaCapabilityAsync();
+            _logger.LogInformation("[联机][聚物] 本地联机队伍含万叶，已向服务端声明候选身份");
+        }
+        else
+        {
+            _logger.LogInformation("[联机][聚物] 本地联机队伍不含万叶，跳过声明");
+        }
+    }
+
+    /// <summary>
+    /// 保证 KazuhaWaitSkillCdSeconds &lt; KazuhaSyncTimeoutSeconds 的派生约束。
+    /// 当违例时把 KazuhaSyncTimeoutSeconds 提升为 KazuhaWaitSkillCdSeconds + 5。
+    /// </summary>
+    private static void NormalizeKazuhaTimeoutOrder(AutoHoeingConfig config)
+    {
+        if (config.KazuhaWaitSkillCdSeconds >= config.KazuhaSyncTimeoutSeconds)
+        {
+            config.KazuhaSyncTimeoutSeconds = config.KazuhaWaitSkillCdSeconds + 5;
+        }
+    }
+
     /// <summary>
     /// 多世界模式下，保存第一任房主的配置，后续轮次都使用这个配置
     /// </summary>
@@ -137,9 +210,10 @@ public class AutoHoeingTask : ISoloTask
             _config.SyncTimeoutSeconds = 60;
             _config.MinPlayersToSync = 0;
             _config.SyncPointMinDistance = 30.0;
-            _config.KazuhaPlayerIndex = 0;
-            _config.ReturnToFightPointAfterBattle = false;
-            _config.ReturnToFightPointStaySeconds = 5;
+            _config.EnableKazuhaSync = false;
+            _config.KazuhaSyncWaitSeconds = 1;
+            _config.KazuhaSyncTimeoutSeconds = 20;
+            _config.KazuhaWaitSkillCdSeconds = 5;
             _config.MultiWorldEnabled = false;
             _config.MultiWorldCount = 2;
             _config.FightExtraWaitSeconds = 60;
@@ -194,6 +268,7 @@ public class AutoHoeingTask : ISoloTask
             // 清除联机战斗超时覆盖值
             PathingConditionConfig.MultiplayerFightTimeoutOverride = null;
             PathExecutor.CurrentWorldStateMonitor = null;
+            PathExecutor.CurrentMultiplayerCoordinator = null;
 
             // 房主兜底：确保关闭房间通知已发送
             if (_multiplayerCoordinator != null && _multiplayerCoordinator.IsHost)
@@ -434,11 +509,9 @@ public class AutoHoeingTask : ISoloTask
 
             // 房主/成员标识（用于后续配置同步）
             var isHost = !isMember;
-            if (_config.KazuhaPlayerIndex > 0)
-            {
-                await client.SetKazuhaPlayerAsync(_config.KazuhaPlayerIndex);
-                _logger.LogInformation("[联机] 已设置万叶玩家序号: {Idx}", _config.KazuhaPlayerIndex);
-            }
+            // kazuha-declare-after-team-switch: 删除此处旧调用——
+            // 此位置早于 _multiplayerCoordinator 构造（line 582）且早于 PrepareMultiplayerPartyAndAvatar 完成，
+            // 调用窗口非法。新调用点已移至 RunTask 内 InitializeMultiplayerAsync 返回之后。
 
             // 配置同步：房主上传，成员拉取
             if (isHost)
@@ -452,9 +525,10 @@ public class AutoHoeingTask : ISoloTask
                     UseFixedDebugRoutes = _config.UseFixedDebugRoutes,
                     FixedDebugRoutePath = _config.FixedDebugRoutePath,
                     DebugMode = _config.DebugMode,
-                    ReturnToFightPointAfterBattle = _config.ReturnToFightPointAfterBattle,
-                    ReturnToFightPointStaySeconds = _config.ReturnToFightPointStaySeconds,
-                    KazuhaPlayerIndex = _config.KazuhaPlayerIndex,
+                    EnableKazuhaSync = _config.EnableKazuhaSync,
+                    KazuhaSyncWaitSeconds = _config.KazuhaSyncWaitSeconds,
+                    KazuhaSyncTimeoutSeconds = _config.KazuhaSyncTimeoutSeconds,
+                    KazuhaWaitSkillCdSeconds = _config.KazuhaWaitSkillCdSeconds,
                     PartyTimeoutSeconds = _config.PartyTimeoutSeconds,
                     MultiWorldEnabled = _config.MultiWorldEnabled,
                     MultiWorldCount = _config.MultiWorldCount,
@@ -508,7 +582,7 @@ public class AutoHoeingTask : ISoloTask
 
             var barrier = new SyncBarrier(client, _config.SyncTimeoutSeconds);
             var resolver = new SyncPointResolver();
-            _multiplayerCoordinator = new MultiplayerCoordinator(client, barrier, resolver, _config.MinPlayersToSync, _config.SyncTimeoutSeconds);
+            _multiplayerCoordinator = new MultiplayerCoordinator(client, barrier, resolver, _config.MinPlayersToSync, _config.SyncTimeoutSeconds, _config);
 
             _logger.LogInformation("[联机] MultiplayerCoordinator 初始化完成，超时={Timeout}s，最低人数={Min}", _config.SyncTimeoutSeconds, _config.MinPlayersToSync);
 
@@ -519,10 +593,9 @@ public class AutoHoeingTask : ISoloTask
             _logger.LogInformation("[联机] ===== 当前联机参数（房主同步）=====");
             _logger.LogInformation("[联机] 集合点超时={SyncTimeout}s，最低同步人数={MinPlayers}，集合点最小距离={MinDist}",
                 _config.SyncTimeoutSeconds, _config.MinPlayersToSync, _config.SyncPointMinDistance);
-            _logger.LogInformation("[联机] 战斗超时={FightTimeout}s，万叶玩家序号={Kazuha}，从第{Start}条路线开始",
-                _config.FightTimeoutSeconds, _config.KazuhaPlayerIndex, _config.StartRouteIndex);
-            _logger.LogInformation("[联机] 战斗后走回={ReturnFight}（停留{Stay}s），调试模式={Debug}",
-                _config.ReturnToFightPointAfterBattle, _config.ReturnToFightPointStaySeconds, _config.DebugMode);
+            _logger.LogInformation("[联机] 战斗超时={FightTimeout}s，启用万叶聚物同步={Sync}，从第{Start}条路线开始",
+                _config.FightTimeoutSeconds, _config.EnableKazuhaSync, _config.StartRouteIndex);
+            _logger.LogInformation("[联机] 调试模式={Debug}", _config.DebugMode);
             _logger.LogInformation("[联机] 组队超时={PartyTimeout}s，多世界={MultiWorld}（{Rounds}轮），内置线路={Route}",
                 _config.PartyTimeoutSeconds, _config.MultiWorldEnabled, _config.MultiWorldCount, _config.SelectedBuiltinRoute);
             _logger.LogInformation("[联机] 战斗额外等待={FightExtra}s，重新加入最大等待={RejoinMax}s，传送必同步（默认）",
@@ -815,9 +888,10 @@ public class AutoHoeingTask : ISoloTask
                         _config.UseFixedDebugRoutes = hostConfig.UseFixedDebugRoutes;
                         _config.FixedDebugRoutePath = hostConfig.FixedDebugRoutePath;
                         _config.DebugMode = hostConfig.DebugMode;
-                        _config.ReturnToFightPointAfterBattle = hostConfig.ReturnToFightPointAfterBattle;
-                        _config.ReturnToFightPointStaySeconds = hostConfig.ReturnToFightPointStaySeconds;
-                        _config.KazuhaPlayerIndex = hostConfig.KazuhaPlayerIndex;
+                        _config.EnableKazuhaSync = hostConfig.EnableKazuhaSync;
+                        _config.KazuhaSyncWaitSeconds = hostConfig.KazuhaSyncWaitSeconds;
+                        _config.KazuhaSyncTimeoutSeconds = hostConfig.KazuhaSyncTimeoutSeconds;
+                        _config.KazuhaWaitSkillCdSeconds = hostConfig.KazuhaWaitSkillCdSeconds;
                         _config.PartyTimeoutSeconds = hostConfig.PartyTimeoutSeconds;
                         _config.MultiWorldEnabled = hostConfig.MultiWorldEnabled;
                         _config.MultiWorldCount = hostConfig.MultiWorldCount;
@@ -909,6 +983,13 @@ public class AutoHoeingTask : ISoloTask
             _executionEngine?.SetCoordinator(_multiplayerCoordinator);
             _executionEngine?.SetWorldStateMonitor(_worldStateMonitor);
             _logger.LogInformation("[联机] 初始化完成，房间码：{Code}", _config.CurrentRoomCode);
+
+            // 房主路径：开锄前锁定房间，从此服务端拒绝非重连新玩家（spec lock-room-after-start §4.2 / bugfix §2.8）
+            // 成员路径不调（成员无房主权限，调了服务端也会拒）
+            if (client.IsHost)
+            {
+                await client.MarkRoomStartedAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -930,10 +1011,7 @@ public class AutoHoeingTask : ISoloTask
         
         _logger.LogInformation("[联机] 开始准备联机队伍和角色");
 
-        // 0a. 检测当前是否在多人联机世界，如是则先退出
-        await EnsureInOwnWorldBeforeMultiplayerAsync();
-
-        // 0b. 设置世界权限为确认后才能加入
+        // 0a. 设置世界权限为确认后才能加入
         await SetWorldPermissionToConfirmJoin();
         
         // 1. 切换队伍
@@ -1117,10 +1195,23 @@ public class AutoHoeingTask : ISoloTask
             if (_partyConfig != null)
                 _partyConfig.DisableAutoFetchDispatch = true;
 
+            // 任务最开始：检测当前是否在多人联机世界（前一次任务残留），如是则先退出。
+            // 必须在所有联机准备步骤之前一次性做完，且只做一次——
+            // 否则放在 PrepareMultiplayerPartyAndAvatar 里会被多世界每一轮重复调用，
+            // 把刚刚 WaitForMembersAsync 拉进来的成员误当残留踢出去。
+            await EnsureInOwnWorldBeforeMultiplayerAsync();
+
             // 联机前准备：切换队伍和角色
             await PrepareMultiplayerPartyAndAvatar();
             
             await InitializeMultiplayerAsync();
+
+            // kazuha-declare-after-team-switch: 合法声明窗口
+            // 时序保证：PrepareMultiplayerPartyAndAvatar 已返回（tTeam ≤ tCall）
+            //         + InitializeMultiplayerAsync 内 _multiplayerCoordinator 已构造（tCoord ≤ tCall）
+            //         + 第一条路线尚未开锄（tCall < tRoute）
+            // 多世界第 1 轮幂等：本调用 + RunMultiWorldAsync round==0 内同名调用，由服务端 Hub 幂等检查保证安全
+            await DeclareKazuhaCapabilityIfPresentAsync(_ct);
 
             // 多世界模式：循环执行多轮
             if (_config.MultiWorldEnabled && _coordinatorClientRef != null)
@@ -1222,6 +1313,15 @@ public class AutoHoeingTask : ISoloTask
                 // 因此本轮开始时 IsInMultiGame 必然为 false，不能在此处用"是否在联机世界"做兜底检测。
                 // 成员被踢/掉线的异常场景由 WorldStateMonitor.OnDroppedFromRoom 和 RoomClosed 事件兜底。
 
+                // === 在自己世界内强制切回 MultiplayerStartAvatarName ===
+                // 游戏机制：访客在房主世界只能操控进世界瞬间的活跃角色。前一轮锄完时活跃角色
+                // 可能不是 MultiplayerStartAvatarName（典型为辅助角色），导致本轮做客时该角色不在场。
+                // 必须在 SetupNextRoundAsync 加入新房主世界之前，在自己世界内强制切回 MultiplayerStartAvatarName。
+                // 详见 design.md §1 / bugfix.md 2.1 / 2.2 / 2.7
+                _teamAlreadySwitched = false;
+                _logger.LogInformation("[多世界] 第 {Round} 轮入口：在自己世界内重新切换队伍 + 切到 MultiplayerStartAvatarName", round + 1);
+                await PrepareMultiplayerPartyAndAvatar();
+
                 // 非第一轮：需要重新组队进入新房主的世界，并重新加载 CD
                 _worldStateMonitor?.BeginRoundSwitch();
                 await SetupNextRoundAsync(round, roundHostPlayer, amIHost, client, playerOrder.Count);
@@ -1238,9 +1338,23 @@ public class AutoHoeingTask : ISoloTask
                 _cdManager.Load(_dataDir, accountName);
             }
 
-            // 每轮开始前重新准备队伍和角色
-            await PrepareMultiplayerPartyAndAvatar();
-            
+            // 第 1 轮：在 if (round > 0) 分支没走过 Prepare，由这里调（在自己世界内）
+            // 第 N+1 轮（round > 0）：if (round > 0) 分支开头已经调过 Prepare，这里跳过避免重复
+            //                       —— 重复调会在房主世界内尝试切换（无效且会触发游戏内 UI 干扰）
+            // 详见 design.md §2 / bugfix.md 2.4
+            if (round == 0)
+            {
+                await PrepareMultiplayerPartyAndAvatar();
+            }
+
+            // kazuha-declare-after-team-switch: 合法声明窗口（每轮所有客户端各自识别）
+            // 时序保证：本轮 PrepareMultiplayerPartyAndAvatar 已返回（tTeam ≤ tCall）
+            //         + _multiplayerCoordinator 已就绪（round==0 由 InitializeMultiplayerAsync 构造，
+            //           round>0 由 SetupNextRoundAsync 末尾重建，均早于本调用，tCoord ≤ tCall）
+            //         + RunSingleWorldCoreAsync 尚未开锄（tCall < tRoute）
+            // 第 1 轮 2 次声明（RunTask 内 + 此处 round==0）由服务端 Hub 幂等检查保证安全
+            await DeclareKazuhaCapabilityIfPresentAsync(_ct);
+
             // 执行本轮锄地
             var groupTags = BuildGroupTags();
             await RunSingleWorldCoreAsync(accountName, groupTags);
@@ -1289,14 +1403,19 @@ public class AutoHoeingTask : ISoloTask
                 ? null
                 : _config.RoomWhitelist.Split(new[] { ',', '，' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-            // 多世界模式下，确保所有参与玩家都在白名单中（避免轮换后原房主无法加入新房间）
-            List<string>? multiWorldWhitelist = null;
-            if (whitelist != null)
-            {
-                var allPlayerNames = client.CurrentPlayerList.Select(p => p.PlayerName).Where(n => !string.IsNullOrEmpty(n));
-                multiWorldWhitelist = whitelist.Union(allPlayerNames).ToList();
-                _logger.LogInformation("[多世界] 第 {Round} 轮白名单（含所有参与玩家）: {List}", round + 1, string.Join(", ", multiWorldWhitelist));
-            }
+            // 多世界模式下：无论用户是否配置 _config.RoomWhitelist，都必须把"上一轮 client.CurrentPlayerList
+            // 中所有非空 PlayerName"自动注入新房间白名单——否则用户白名单为空时新房间裸奔，
+            // 任何陌生人都能在 GetOnlineRooms 看到新房间并 JoinRoom（spec lock-room-after-start §5 / bugfix §1.6 / §2.10）。
+            // 用户原始白名单（whitelist）取并集保留，确保用户已配置但不在 CurrentPlayerList 中
+            // 的玩家不丢失（bugfix §3.13）。
+            var allPlayerNames = client.CurrentPlayerList
+                .Select(p => p.PlayerName)
+                .Where(n => !string.IsNullOrEmpty(n));
+            List<string> multiWorldWhitelist = whitelist != null
+                ? whitelist.Union(allPlayerNames).ToList()
+                : allPlayerNames.ToList();
+            _logger.LogInformation("[多世界] 第 {Round} 轮白名单（含所有参与玩家）: {List}",
+                round + 1, string.Join(", ", multiWorldWhitelist));
 
             if (amIHost)
             {
@@ -1305,7 +1424,7 @@ public class AutoHoeingTask : ISoloTask
                 string? newCode = null;
                 for (int retry = 1; retry <= 3; retry++)
                 {
-                    newCode = await client.CreateRoomAsync(_config.PlayerName, multiWorldWhitelist?.ToList() ?? whitelist?.ToList(), _config.PlayerUid, playerCount);
+                    newCode = await client.CreateRoomAsync(_config.PlayerName, multiWorldWhitelist, _config.PlayerUid, playerCount);
                     if (newCode != null)
                     {
                         _logger.LogInformation("[多世界] 第 {Round} 轮创建房间成功（第{N}次尝试）: {Code}", round + 1, retry, newCode);
@@ -1346,6 +1465,10 @@ public class AutoHoeingTask : ISoloTask
                             await client.SetRoomConfigAsync(_firstHostConfig);
                             uploadSuccess = true;
                             _logger.LogInformation("[多世界] 第 {Round} 轮已上传第一任房主的配置（第{N}次尝试）", round + 1, retry);
+
+                            // kazuha-declare-after-team-switch: 删除此处旧调用——
+                            // 此位置只在房主分支触发（成员永远不调用），且早于 line 1647 的 _multiplayerCoordinator 重建。
+                            // 新调用点已移至 RunMultiWorldAsync 主循环内 RunSingleWorldCoreAsync 之前，每轮所有客户端都触发。
                             break;
                         }
                         catch (Exception ex)
@@ -1502,9 +1625,10 @@ public class AutoHoeingTask : ISoloTask
                     _config.UseFixedDebugRoutes = hostConfig.UseFixedDebugRoutes;
                     _config.FixedDebugRoutePath = hostConfig.FixedDebugRoutePath;
                     _config.DebugMode = hostConfig.DebugMode;
-                    _config.ReturnToFightPointAfterBattle = hostConfig.ReturnToFightPointAfterBattle;
-                    _config.ReturnToFightPointStaySeconds = hostConfig.ReturnToFightPointStaySeconds;
-                    _config.KazuhaPlayerIndex = hostConfig.KazuhaPlayerIndex;
+                    _config.EnableKazuhaSync = hostConfig.EnableKazuhaSync;
+                    _config.KazuhaSyncWaitSeconds = hostConfig.KazuhaSyncWaitSeconds;
+                    _config.KazuhaSyncTimeoutSeconds = hostConfig.KazuhaSyncTimeoutSeconds;
+                    _config.KazuhaWaitSkillCdSeconds = hostConfig.KazuhaWaitSkillCdSeconds;
                     _config.PartyTimeoutSeconds = hostConfig.PartyTimeoutSeconds;
                     _config.MultiWorldEnabled = hostConfig.MultiWorldEnabled;
                     _config.MultiWorldCount = hostConfig.MultiWorldCount;
@@ -1552,7 +1676,7 @@ public class AutoHoeingTask : ISoloTask
             var barrier = new SyncBarrier(client, _config.SyncTimeoutSeconds);
             var resolver = new SyncPointResolver();
             _multiplayerCoordinator = new MultiplayerCoordinator(client, barrier, resolver,
-                _config.MinPlayersToSync, _config.SyncTimeoutSeconds);
+                _config.MinPlayersToSync, _config.SyncTimeoutSeconds, _config);
 
             _multiplayerCoordinator.OnDegraded += reason =>
                 _logger.LogWarning("[联机] 已降级为单机模式，原因：{Reason}", reason);
@@ -1585,6 +1709,14 @@ public class AutoHoeingTask : ISoloTask
             // 轮次切换完成，恢复 WorldStateMonitor 检测（需求 2）
             _worldStateMonitor?.EndRoundSwitch();
             _logger.LogInformation("[多世界] 第 {Round} 轮初始化完成", round + 1);
+
+            // 多世界轮换：新房主路径锁定新房间（spec lock-room-after-start §4.3 / bugfix §2.9）
+            // 新房间天然 IsStarted=false，需要重新调一次 MarkRoomStartedAsync
+            // 成员路径不调（amIHost==client.IsHost；成员无房主权限）
+            if (amIHost)
+            {
+                await client.MarkRoomStartedAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -2749,9 +2881,11 @@ public class AutoHoeingTask : ISoloTask
             _config.SyncTimeoutSeconds = Get("syncTimeoutSeconds", _config.SyncTimeoutSeconds);
             _config.MinPlayersToSync = Get("minPlayersToSync", _config.MinPlayersToSync);
             _config.SyncPointMinDistance = Get("syncPointMinDistance", _config.SyncPointMinDistance);
-            _config.KazuhaPlayerIndex = Get("kazuhaPlayerIndex", _config.KazuhaPlayerIndex);
-            _config.ReturnToFightPointAfterBattle = Get("returnToFightPointAfterBattle", _config.ReturnToFightPointAfterBattle);
-            _config.ReturnToFightPointStaySeconds = Get("returnToFightPointStaySeconds", _config.ReturnToFightPointStaySeconds);
+            _config.EnableKazuhaSync = Get("enableKazuhaSync", _config.EnableKazuhaSync);
+            _config.KazuhaSyncWaitSeconds = ClampSyncWait(Get("kazuhaSyncWaitSeconds", _config.KazuhaSyncWaitSeconds));
+            _config.KazuhaSyncTimeoutSeconds = ClampSyncTimeout(Get("kazuhaSyncTimeoutSeconds", _config.KazuhaSyncTimeoutSeconds));
+            _config.KazuhaWaitSkillCdSeconds = ClampWaitCd(Get("kazuhaWaitSkillCdSeconds", _config.KazuhaWaitSkillCdSeconds));
+            NormalizeKazuhaTimeoutOrder(_config);
             _config.FightTimeoutSeconds = Get("fightTimeoutSeconds", _config.FightTimeoutSeconds);
         }
         else
@@ -2760,9 +2894,10 @@ public class AutoHoeingTask : ISoloTask
             _config.SyncTimeoutSeconds = 60;
             _config.MinPlayersToSync = 0;
             _config.SyncPointMinDistance = 30.0;
-            _config.KazuhaPlayerIndex = 0;
-            _config.ReturnToFightPointAfterBattle = false;
-            _config.ReturnToFightPointStaySeconds = 5;
+            _config.EnableKazuhaSync = false;
+            _config.KazuhaSyncWaitSeconds = 1;
+            _config.KazuhaSyncTimeoutSeconds = 20;
+            _config.KazuhaWaitSkillCdSeconds = 5;
             _config.FightTimeoutSeconds = 120;
 
             // 单机模式：重置固定调试线路字段，避免联机全局配置残留影响
@@ -2871,9 +3006,10 @@ public class AutoHoeingTask : ISoloTask
                 Options = new() { "0", "1" } },
             new() { Name = "syncTimeoutSeconds", Label = "集合点等待超时（秒）", Type = "number", DefaultValue = config.SyncTimeoutSeconds },
             new() { Name = "minPlayersToSync", Label = "最低开始人数\n低于此人数时集合点直接放行，0=自动等齐所有人", Type = "number", DefaultValue = config.MinPlayersToSync },
-            new() { Name = "kazuhaPlayerIndex", Label = "万叶玩家序号\n0=不指定，1-4=对应玩家序号", Type = "number", DefaultValue = config.KazuhaPlayerIndex },
-            new() { Name = "returnToFightPointAfterBattle", Label = "战斗完成后是否走回战斗点集合", Type = "bool", DefaultValue = config.ReturnToFightPointAfterBattle },
-            new() { Name = "returnToFightPointStaySeconds", Label = "走回战斗点后停留时间（秒）\n等待其他玩家拾取", Type = "number", DefaultValue = config.ReturnToFightPointStaySeconds },
+            new() { Name = "enableKazuhaSync", Label = "启用万叶聚物同步\n勾选后战后回点时由声明顺序首位含万叶的玩家自动放 E 聚物", Type = "bool", DefaultValue = config.EnableKazuhaSync },
+            new() { Name = "kazuhaSyncWaitSeconds", Label = "万叶聚物完成后非万叶玩家停留（秒）\n0-30，默认1，仅在指定万叶玩家+启用走回战斗点时生效", Type = "number", DefaultValue = config.KazuhaSyncWaitSeconds },
+            new() { Name = "kazuhaSyncTimeoutSeconds", Label = "万叶聚物同步总超时（秒）\n5-120，默认20，所有玩家在战斗点等待万叶完成的最长时间", Type = "number", DefaultValue = config.KazuhaSyncTimeoutSeconds },
+            new() { Name = "kazuhaWaitSkillCdSeconds", Label = "万叶 E 技 CD 等待上限（秒）\n3-10，默认5，超时后直接尝试释放 E 技", Type = "number", DefaultValue = config.KazuhaWaitSkillCdSeconds },
             new() { Name = "syncPointMinDistance", Label = "集合点与战斗点的最小距离阈值\n小于此距离的点不作为集合点", Type = "number", DefaultValue = config.SyncPointMinDistance },
 
             // ===== 联机战斗配置 =====

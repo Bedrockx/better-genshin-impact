@@ -96,6 +96,25 @@ public class RoomManager
             if (!isHost && room.Whitelist.Count > 0 && !room.Whitelist.Contains(playerName))
                 return (false, "不在白名单中");
 
+            // === 重连判定：现有玩家集合中存在同名 / 同 UID 即视为重连（spec lock-room-after-start §3.1）===
+            // 重连场景必须绕过 IsStarted / ExpectedPlayerCount / MaxPlayers 三个限制，
+            // 走下方"替换 ConnectionId"分支放行（bugfix §2.4 / §3.2）。
+            var reconnectByName = !string.IsNullOrEmpty(playerName)
+                ? room.Players.FirstOrDefault(p => p.PlayerName == playerName)
+                : null;
+            var reconnectByUid = !string.IsNullOrEmpty(playerUid)
+                ? room.Players.FirstOrDefault(p => p.PlayerUid == playerUid)
+                : null;
+            var isReconnect = reconnectByName != null || reconnectByUid != null;
+
+            // === IsStarted 锁定（spec lock-room-after-start §2.1）：开锄后拒绝非重连新玩家 ===
+            if (!isReconnect && room.IsStarted)
+                return (false, "房间已开锄");
+
+            // === ExpectedPlayerCount 上限（spec lock-room-after-start §2.2）：人数已达房主声明的期望值时拒绝 ===
+            if (!isReconnect && room.Players.Count >= room.ExpectedPlayerCount)
+                return (false, $"房间已满（{room.ExpectedPlayerCount}人）");
+
             if (room.Players.Count >= MaxPlayers)
             {
                 // Allow replacement if same playerName already exists
@@ -330,19 +349,6 @@ public class RoomManager
         }
     }
 
-    /// <summary>设置万叶玩家索引，clamp 到 0~Players.Count</summary>
-    public int SetKazuhaPlayer(string roomCode, int index)
-    {
-        if (!_rooms.TryGetValue(roomCode, out var room))
-            return 0;
-
-        lock (room)
-        {
-            room.KazuhaPlayerIndex = Math.Clamp(index, 0, room.Players.Count);
-            return room.KazuhaPlayerIndex;
-        }
-    }
-
     /// <summary>更新房间白名单</summary>
     public void UpdateWhitelist(string roomCode, List<string> whitelist)
     {
@@ -363,7 +369,10 @@ public class RoomManager
         {
             lock (room)
             {
-                if (room.Players.Count < MaxPlayers)
+                // spec lock-room-after-start §3.2：物理上限 + 已开锄 + 人数已达期望值 三道过滤
+                if (!room.IsStarted
+                    && room.Players.Count < room.ExpectedPlayerCount
+                    && room.Players.Count < MaxPlayers)
                 {
                     result.Add(new RoomSummary
                     {

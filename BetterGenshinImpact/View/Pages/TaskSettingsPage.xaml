@@ -4983,7 +4983,7 @@
                                                  Value="{Binding Config.AutoHoeingConfig.SyncPointMinDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
 
-                                <!-- 万叶玩家序号 -->
+                                <!-- 启用万叶聚物同步（kazuha-player-auto-detection）-->
                                 <Grid Margin="0,0,0,8">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
@@ -4993,12 +4993,68 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <ui:TextBlock Grid.Row="0" Grid.Column="0" FontTypography="Body" Text="万叶玩家序号（0=不指定）" TextWrapping="Wrap" />
-                                    <ui:TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" 
-                                                 Text="指定哪位玩家使用万叶聚怪，0表示不指定" TextWrapping="Wrap" />
-                                    <ui:NumberBox Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="120" 
-                                                 Minimum="0" Maximum="4" SpinButtonPlacementMode="Inline"
-                                                 Value="{Binding Config.AutoHoeingConfig.KazuhaPlayerIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ui:TextBlock Grid.Row="0" Grid.Column="0" FontTypography="Body" Text="启用万叶聚物同步" TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                 Text="勾选后战后回点时由声明顺序首位含万叶的玩家自动放 E 聚物" TextWrapping="Wrap" />
+                                    <ui:ToggleSwitch Grid.Row="0" Grid.RowSpan="2" Grid.Column="1"
+                                                 IsChecked="{Binding Config.AutoHoeingConfig.EnableKazuhaSync, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+
+                                <!-- 万叶聚物完成后停留（秒） -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0" Grid.Column="0" FontTypography="Body" Text="万叶聚物完成后停留（秒）" TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                 Text="0-30，默认1，非万叶玩家收到任意终态后统一停留秒数（让吸过来的物品被己方拾取）" TextWrapping="Wrap" />
+                                    <ui:NumberBox Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="120"
+                                                 Minimum="0" Maximum="30" SpinButtonPlacementMode="Inline"
+                                                 IsEnabled="{Binding Config.AutoHoeingConfig.EnableKazuhaSync}"
+                                                 Value="{Binding Config.AutoHoeingConfig.KazuhaSyncWaitSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+
+                                <!-- 聚物同步总超时（秒） -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0" Grid.Column="0" FontTypography="Body" Text="聚物同步总超时（秒）" TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                 Text="5-120，默认20，所有玩家在战斗点等待万叶完成的最长时间" TextWrapping="Wrap" />
+                                    <ui:NumberBox Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="120"
+                                                 Minimum="5" Maximum="120" SpinButtonPlacementMode="Inline"
+                                                 IsEnabled="{Binding Config.AutoHoeingConfig.EnableKazuhaSync}"
+                                                 Value="{Binding Config.AutoHoeingConfig.KazuhaSyncTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+
+                                <!-- 万叶 E 技 CD 等待上限（秒） -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0" Grid.Column="0" FontTypography="Body" Text="万叶 E 技 CD 等待上限（秒）" TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                 Text="3-10，默认5，超时后直接尝试释放 E 技（由 OCR + 视觉双判决定成败）" TextWrapping="Wrap" />
+                                    <ui:NumberBox Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="120"
+                                                 Minimum="3" Maximum="10" SpinButtonPlacementMode="Inline"
+                                                 IsEnabled="{Binding Config.AutoHoeingConfig.EnableKazuhaSync}"
+                                                 Value="{Binding Config.AutoHoeingConfig.KazuhaWaitSkillCdSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
 
                                 <!-- 从第几条路线开始 -->
@@ -5017,28 +5073,6 @@
                                     <ui:NumberBox Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="120" 
                                                  Minimum="0" Maximum="999" SpinButtonPlacementMode="Inline"
                                                  Value="{Binding Config.AutoHoeingConfig.StartRouteIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
-
-                                <!-- 战斗后走回战斗点 -->
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <ui:TextBlock Grid.Row="0" Grid.Column="0" FontTypography="Body" Text="战斗后走回战斗点" TextWrapping="Wrap" />
-                                    <ui:TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" 
-                                                 Text="战斗完成后走回战斗点等待其他玩家" TextWrapping="Wrap" />
-                                    <ui:NumberBox Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="100" Margin="0,0,8,0" 
-                                                 Minimum="0" Maximum="60" SpinButtonPlacementMode="Inline"
-                                                 Value="{Binding Config.AutoHoeingConfig.ReturnToFightPointStaySeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                 IsEnabled="{Binding Config.AutoHoeingConfig.ReturnToFightPointAfterBattle}" />
-                                    <ui:ToggleSwitch Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
-                                                   IsChecked="{Binding Config.AutoHoeingConfig.ReturnToFightPointAfterBattle, Mode=TwoWay}" />
                                 </Grid>
                             </StackPanel>
                         </Expander>

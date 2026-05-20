@@ -1,0 +1,42 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时96秒，包含以下怪物：1只射手丘丘人、3只玄文兽。",
+    "enable_monster_loot_split": false,
+    "hash_res": "19218537",
+    "last_modified_time": 1779448604572,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "ZZZB009璃月沉玉谷隐山猊兽南",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 2208.06,
+      "y": 1245
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 2160.58,
+      "y": 1217.25
+    }
+  ]
+}

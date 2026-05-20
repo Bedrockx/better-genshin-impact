@@ -338,7 +338,10 @@ namespace BetterGenshinImpact.GameTask.AutoFight
         private  static volatile  bool _moveAroadLock = false;
         
         public static async Task<bool?> SeekAndFightAsync(ILogger logger, int detectDelayTime,int delayTime,CancellationToken ct,
-            bool isEndCheck = false,int rotaryFactor = 6,Avatar? avatar = null,int distance = 1000,int retryDis = 0,bool isQuickyEnd = false,bool isRotationSeek = false)
+            bool isEndCheck = false,int rotaryFactor = 6,Avatar? avatar = null,int distance = 1000,int retryDis = 0,bool isQuickyEnd = false,bool isRotationSeek = false,
+            bool kazuhaContinuousReturn = false,
+            int returnIntervalMs = 5000,
+            double returnDistanceThreshold = 6.0)
         {
             if (rotaryFactor == 1 || _moveAroadLock) return null;
             _moveAroadLock = true;
@@ -359,42 +362,101 @@ namespace BetterGenshinImpact.GameTask.AutoFight
 
                 int retryCount = isEndCheck ? 1 : 0;
 
-                Task.Run(() =>
+                // 默认路径：保持原 Task.Run + retryDis 快照 + Wait(2000) + Delay(5000) 行为完全等价
+                // 联机万叶玩家显式传 kazuhaContinuousReturn=true 时不进此分支，避免与 while 循环内的"持续回点"重复
+                if (!kazuhaContinuousReturn)
                 {
-                    if (Monitor.TryEnter(MoveLock))
+                    Task.Run(() =>
                     {
-                        try
+                        if (Monitor.TryEnter(MoveLock))
                         {
-                            if (retryDis > 6 && AutoFightTask.FightWaypoint is not null)
+                            try
                             {
-                                AutoFightTask.FightWaypoint.MoveMode = MoveModeEnum.Walk.Code;
-                                pathExecutor.MoveTo(AutoFightTask.FightWaypoint, false, null, null,
-                                    null,
-                                    retryDis, false).Wait(2000, ct);
-                                Task.Delay(5000, ct).Wait();
+                                if (retryDis > 6 && AutoFightTask.FightWaypoint is not null)
+                                {
+                                    AutoFightTask.FightWaypoint.MoveMode = MoveModeEnum.Walk.Code;
+                                    pathExecutor.MoveTo(AutoFightTask.FightWaypoint, false, null, null,
+                                        null,
+                                        retryDis, false).Wait(2000, ct);
+                                    Task.Delay(5000, ct).Wait();
+                                }
+                                else
+                                {
+                                    // Logger.LogWarning("检测到离开战斗点 {retryDis}，但没有战斗节点数据，无法回到战斗节点",retryDis);
+                                }
                             }
-                            else
+                            catch (Exception e)
                             {
-                                // Logger.LogWarning("检测到离开战斗点 {retryDis}，但没有战斗节点数据，无法回到战斗节点",retryDis);
+                                TaskControl.Logger.LogError(e, "战斗回到点移动异常");
+                                throw;
+                            }
+                            finally
+                            {
+                                Monitor.Exit(MoveLock);
                             }
                         }
-                        catch (Exception e)
-                        {
-                            TaskControl.Logger.LogError(e, "战斗回到点移动异常");
-                            throw;
-                        }
-                        finally
-                        {
-                            Monitor.Exit(MoveLock);
-                        }
-                    }
-                }, ct);
+                    }, ct);
+                }
+
+                // 联机万叶玩家"持续回点"用：上次回点完成时间，用于最小间隔节流
+                var lastReturnAt = DateTime.MinValue;
 
                 while ((retryCount < 25 + (int)(adjustedX / 5) + RetryCountReset)&& !ct.IsCancellationRequested)
                 {
                     if (AutoFightTask.FightEndTotoly)break;
                     
                     using var image = CaptureToRectArea();
+
+                    // EB2: 联机万叶玩家持续回点——主循环内复用每轮截图实时算距离 + await MoveTo + 最小间隔节流
+                    // 详见 .kiro/specs/multiplayer-kazuha-pre-cast-positioning/design.md §3.2
+                    if (kazuhaContinuousReturn && AutoFightTask.FightWaypoint is not null)
+                    {
+                        var elapsedSinceLastReturn = (DateTime.UtcNow - lastReturnAt).TotalMilliseconds;
+                        // 间隔节流早判：未到 returnIntervalMs 直接跳过截图位置识别（避免每轮 ~10-30ms 模板匹配开销）
+                        if (elapsedSinceLastReturn >= returnIntervalMs)
+                        {
+                            Point2f currentPos;
+                            try
+                            {
+                                currentPos = Navigation.GetPosition(image,
+                                    AutoFightTask.FightWaypoint.MapName,
+                                    AutoFightTask.FightWaypoint.MapMatchMethod);
+                            }
+                            catch (Exception ex)
+                            {
+                                TaskControl.Logger.LogDebug(ex, "[联机][聚物] 持续回点位置识别失败，本轮跳过");
+                                currentPos = new Point2f(0, 0);
+                            }
+
+                            if (currentPos is not { X: 0, Y: 0 })
+                            {
+                                var realtimeDistance = Navigation.GetDistance(AutoFightTask.FightWaypoint, currentPos);
+                                // 真实距离 + 间隔再判一次（守住 PBT-1 语义）
+                                if (AutoFightSeekDecisions.ShouldTriggerContinuousReturn(
+                                        realtimeDistance, returnDistanceThreshold,
+                                        elapsedSinceLastReturn, returnIntervalMs))
+                                {
+                                    if (Monitor.TryEnter(MoveLock))
+                                    {
+                                        try
+                                        {
+                                            AutoFightTask.FightWaypoint.MoveMode = MoveModeEnum.Walk.Code;
+                                            await pathExecutor.MoveTo(AutoFightTask.FightWaypoint,
+                                                isGetOut: false, task: null, nextWaypoint: null, nextDistance: null,
+                                                retryDis: 4, isPoint: false);
+                                            lastReturnAt = DateTime.UtcNow;
+                                        }
+                                        catch (OperationCanceledException) { throw; }
+                                        catch (Exception ex)
+                                        {
+                                            TaskControl.Logger.LogError(ex, "[联机][聚物] 战斗中持续回点异常");
+                                        }
+                                        finally { Monitor.Exit(MoveLock); }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     if (retryCount == 1)
                     {

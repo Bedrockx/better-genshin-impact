@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时51秒，包含以下怪物：1只深渊咏者·紫电。",
     "enable_monster_loot_split": false,
     "hash_res": "03787299",
-    "last_modified_time": 1768831053947,
+    "last_modified_time": 1779214700303,
     "map_match_method": "",
     "map_name": "Enkanomiya",
     "name": "ZC009【高危】稻妻渊下宫蛇心之地东",
@@ -44,8 +44,8 @@
       "id": 3,
       "move_mode": "run",
       "type": "path",
-      "x": 155.991943359375,
-      "y": -226.81640625
+      "x": 149.3873291015625,
+      "y": -227.545166015625
     }
   ]
 }

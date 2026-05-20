@@ -292,18 +292,6 @@ public partial class AutoHoeingConfig : ObservableObject
     private double _syncPointMinDistance = 30.0;
 
     /// <summary>
-    /// 战斗完成后是否走回战斗点集合
-    /// </summary>
-    [ObservableProperty]
-    private bool _returnToFightPointAfterBattle = false;
-
-    /// <summary>
-    /// 走回战斗点后停留时间（秒），等待其他玩家拾取
-    /// </summary>
-    [ObservableProperty]
-    private int _returnToFightPointStaySeconds = 5;
-
-    /// <summary>
     /// 联机模式战斗超时时间（秒），由房主设定并同步给所有成员，覆盖各自的自动战斗超时配置。默认 120
     /// </summary>
     [ObservableProperty]
@@ -340,10 +328,30 @@ public partial class AutoHoeingConfig : ObservableObject
     private int? _maxRouteLag = 2;
 
     /// <summary>
-    /// 万叶玩家序号（0=不指定，1-4=对应玩家序号）
+    /// 启用万叶聚物同步流程。默认 false，用户需显式打勾才启用，避免无万叶队伍走无效流程。
+    /// 替代旧的 KazuhaPlayerIndex 字段（kazuha-player-auto-detection：从"按索引指定"改为"运行时声明"）。
+    /// 启用判定：EnableKazuhaSync ∧ isConnected。
     /// </summary>
     [ObservableProperty]
-    private int _kazuhaPlayerIndex = 0;
+    private bool _enableKazuhaSync = false;
+
+    /// <summary>
+    /// 万叶聚物完成后非万叶玩家原地再停留的秒数（让吸过来的物品被己方拾取），范围 [0, 30]，默认 1
+    /// </summary>
+    [ObservableProperty]
+    private int _kazuhaSyncWaitSeconds = 1;
+
+    /// <summary>
+    /// 万叶聚物同步流程总超时秒数（在战斗点等待 + 聚物动作的总预算），范围 [5, 120]，默认 20
+    /// </summary>
+    [ObservableProperty]
+    private int _kazuhaSyncTimeoutSeconds = 20;
+
+    /// <summary>
+    /// 万叶玩家等待 E 技 CD 的最长上限秒数（超时直接尝试释放，由 OCR + 视觉双判决定成败），范围 [3, 10]，默认 5。需保证小于 KazuhaSyncTimeoutSeconds
+    /// </summary>
+    [ObservableProperty]
+    private int _kazuhaWaitSkillCdSeconds = 5;
 
     /// <summary>
     /// 房间白名单，逗号分隔的玩家名称

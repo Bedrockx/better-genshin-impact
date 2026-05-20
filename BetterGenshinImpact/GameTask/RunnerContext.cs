@@ -61,6 +61,13 @@ public class RunnerContext : Singleton<RunnerContext>
     /// </summary>
     private CombatScenes? _combatScenes;
 
+    /// <summary>
+    /// 队伍信息缓存是否已命中。
+    /// 用于 KazuhaCollectSyncCoordinator.BeginPreparationAsync 在走路途中安全地后台 prefetch：
+    /// 仅在缓存命中时调用 GetCombatScenes（不会走 ReturnMainUiTask 分支按 ESC 中断走位）。
+    /// </summary>
+    public bool HasCombatScenesCached => _combatScenes != null;
+
     public async Task<CombatScenes?> GetCombatScenes(CancellationToken ct,bool? forceRefresh = false)
     {
         if (_combatScenes == null || forceRefresh == true)

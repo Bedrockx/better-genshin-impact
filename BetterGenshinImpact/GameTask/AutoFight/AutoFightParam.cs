@@ -123,6 +123,18 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public int MedicineInterval { get; set; } = 1500;
     
     public int CheckInterval { get; set; } =  100;
+
+    /// <summary>
+    /// 联机锄地 + 万叶玩家专用：开启战斗中"持续回点"模式。
+    /// 设为 true 后 <see cref="AutoFightSeek.SeekAndFightAsync"/> 内部从
+    /// "retryDis 单次入参快照 + Task.Run + Wait(2000) + Delay(5000) 节流" 切换为
+    /// "主循环内每轮实时距离 + await MoveTo(isPoint: false) + 上次回点完成时间最小间隔节流"。
+    /// 默认 false 保持原行为完全等价；单机所有现存调用点不感知本次变更。
+    /// 字段不写入 AutoFightConfig 持久化层，亦不暴露 UI——仅在 AutoFightHandler
+    /// 判定"联机锄地 + 当前为万叶玩家"时显式 set true。
+    /// 详见 .kiro/specs/multiplayer-kazuha-pre-cast-positioning/design.md §3.1。
+    /// </summary>
+    public bool KazuhaContinuousReturn { get; set; } = false;
     
     public int RecoverMaxCount { get; set; } =  5;
     

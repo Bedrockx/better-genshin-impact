@@ -50,13 +50,23 @@ public class CoordinatorClient : IAsyncDisposable
     public event Action? OnDegraded;
     public event Action<string>? RoomClosed;
     public event Action? RouteVerificationAllDone;
-    public event Action<int>? KazuhaPlayerUpdated;
+    public event Action<string>? KazuhaPlayerUpdated;
     public event Action? AllWorldJoined;
     public event Action<bool>? HostReadyChanged;
     public event Action<List<string>>? HostRouteListReady;
     public event Action<string, int, bool>? PlayerAnomalyNotifyReceived; // playerUid, routeIndex, passedSyncPoint
     public event Action<string>? PlayerAnomalyRecoveredReceived; // playerUid
     public event Action<int>? StartRouteReceived; // targetRouteIndex
+
+    // === 万叶聚物同步事件 ===
+    /// <summary>万叶玩家发起聚物动作时触发，载荷为发起者 PlayerUid。</summary>
+    public event Action<string>? KazuhaCollectStarted;
+    /// <summary>万叶聚物动作完成时触发，载荷为发起者 PlayerUid 和成功标志。</summary>
+    public event Action<string, bool>? KazuhaCollectFinished;
+    /// <summary>万叶聚物因任意降级原因被跳过时触发，载荷为原因码（team_no_kazuha / switch_failed / e_skill_not_released / kazuha_offline / kazuha_disconnected / kazuha_anomaly / timeout）。</summary>
+    public event Action<string>? KazuhaCollectSkipped;
+    /// <summary>当前同步周期内所有玩家都到达战斗点时触发，载荷为 syncKey（routeId:segmentIndex）。</summary>
+    public event Action<string>? AllArrivedAtFightPoint;
 
     public List<PlayerInfo> CurrentPlayerList { get; set; } = new();
     public int CurrentRoomPlayerCount { get; set; }
@@ -124,8 +134,21 @@ public class CoordinatorClient : IAsyncDisposable
             _connection.On("RouteVerificationAllDone",
                 () => RouteVerificationAllDone?.Invoke());
 
-            _connection.On<int>("KazuhaPlayerUpdated",
-                index => KazuhaPlayerUpdated?.Invoke(index));
+            _connection.On<string>("KazuhaPlayerUpdated",
+                playerUid => KazuhaPlayerUpdated?.Invoke(playerUid));
+
+            // === 万叶聚物同步事件订阅 ===
+            _connection.On<string>("KazuhaCollectStarted",
+                playerUid => KazuhaCollectStarted?.Invoke(playerUid));
+
+            _connection.On<string, bool>("KazuhaCollectFinished",
+                (playerUid, success) => KazuhaCollectFinished?.Invoke(playerUid, success));
+
+            _connection.On<string>("KazuhaCollectSkipped",
+                reason => KazuhaCollectSkipped?.Invoke(reason));
+
+            _connection.On<string>("AllArrivedAtFightPoint",
+                syncKey => AllArrivedAtFightPoint?.Invoke(syncKey));
 
             _connection.On("AllWorldJoined",
                 () => AllWorldJoined?.Invoke());
@@ -532,19 +555,92 @@ public class CoordinatorClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// 设置万叶玩家序号
+    /// 客户端识别到本地联机队伍含万叶后，向服务端声明候选身份（kazuha-player-auto-detection）。
+    /// 服务端按 SignalR 调用到达顺序追加到 KazuhaCandidates；第一个声明者会被立即选为当前 Kazuha
+    /// 并触发 KazuhaPlayerUpdated(playerUid) 广播。
+    /// 失败静默忽略（捕获 + LogWarning），不阻塞主任务。
     /// </summary>
-    public async Task SetKazuhaPlayerAsync(int playerIndex)
+    public async Task DeclareKazuhaCapabilityAsync()
     {
         if (_connection == null || !IsConnected) return;
         try
         {
-            await _connection.InvokeAsync("SetKazuhaPlayer", playerIndex);
-            _logger.LogInformation("[联机] 设置万叶玩家序号: {Index}", playerIndex);
+            await _connection.InvokeAsync("DeclareKazuhaCapability");
+            _logger.LogInformation("[联机][聚物] 已声明万叶候选身份");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "SetKazuhaPlayerAsync 失败（静默忽略）");
+            _logger.LogWarning(ex, "[联机][聚物] DeclareKazuhaCapabilityAsync 失败（静默忽略）");
+        }
+    }
+
+    /// <summary>
+    /// 上报当前玩家已到达战斗点（万叶聚物同步流程的"到点"信号）。
+    /// syncKey 形如 "{routeId}:{segmentIndex}"，幂等，重复上报无副作用。
+    /// 失败静默忽略，不阻塞主任务。
+    /// </summary>
+    public async Task NotifyKazuhaArrivedAtFightPointAsync(string syncKey, CancellationToken ct = default)
+    {
+        if (_connection == null || !IsConnected) return;
+        try
+        {
+            await _connection.InvokeAsync("NotifyKazuhaArrivedAtFightPoint", syncKey, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[联机][聚物] NotifyKazuhaArrivedAtFightPointAsync 失败（静默忽略）");
+        }
+    }
+
+    /// <summary>
+    /// 万叶玩家广播"开始执行聚物动作"。
+    /// 服务端会向房间所有客户端转发 KazuhaCollectStarted 事件，附带 PlayerUid。
+    /// </summary>
+    public async Task NotifyKazuhaCollectStartedAsync()
+    {
+        if (_connection == null || !IsConnected) return;
+        try
+        {
+            await _connection.InvokeAsync("NotifyKazuhaCollectStarted");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[联机][聚物] NotifyKazuhaCollectStartedAsync 失败（静默忽略）");
+        }
+    }
+
+    /// <summary>
+    /// 万叶玩家广播"聚物动作已完成"，含成功标志。
+    /// 服务端会做 TerminalBroadcasted 守卫，同周期重复调用会被忽略（保证 Property 8）。
+    /// </summary>
+    public async Task NotifyKazuhaCollectFinishedAsync(bool success)
+    {
+        if (_connection == null || !IsConnected) return;
+        try
+        {
+            await _connection.InvokeAsync("NotifyKazuhaCollectFinished", success);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[联机][聚物] NotifyKazuhaCollectFinishedAsync 失败（静默忽略）");
+        }
+    }
+
+    /// <summary>
+    /// 万叶玩家或房主广播"聚物因任意原因被跳过"。
+    /// reason 为短码：team_no_kazuha / switch_failed / e_skill_not_released / kazuha_offline / kazuha_disconnected / kazuha_anomaly。
+    /// 服务端 TerminalBroadcasted 守卫保证一周期内 Skipped 与 Finished 至多一个被广播。
+    /// </summary>
+    public async Task NotifyKazuhaCollectSkippedAsync(string reason)
+    {
+        if (_connection == null || !IsConnected) return;
+        try
+        {
+            await _connection.InvokeAsync("NotifyKazuhaCollectSkipped", reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[联机][聚物] NotifyKazuhaCollectSkippedAsync 失败（静默忽略），原因={Reason}", reason);
         }
     }
 
@@ -598,6 +694,27 @@ public class CoordinatorClient : IAsyncDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "ReportHostReadyAsync 失败（静默忽略）");
+        }
+    }
+
+    /// <summary>
+    /// 房主调用此方法把房间标记为已开锄（spec lock-room-after-start §4.1）。
+    /// 服务端从此 JoinRoom 拒绝非重连新玩家、GetOnlineRooms 也不再返回此房间。
+    /// 旧服务端无此 Hub 方法 → 抛 HubException 被静默吞掉，不影响主任务（bugfix §3.9）。
+    /// </summary>
+    public async Task MarkRoomStartedAsync()
+    {
+        if (_connection == null || !IsConnected) return;
+        try
+        {
+            await _connection.InvokeAsync("MarkRoomStarted");
+            _logger.LogInformation("[联机] MarkRoomStartedAsync 完成（房间已锁定）");
+        }
+        catch (Exception ex)
+        {
+            // 旧服务端不支持此方法 → HubException("Method 'MarkRoomStarted' does not exist")
+            // 与 ReportHostReadyAsync / DeclareKazuhaCapabilityAsync 静默兜底模式一致
+            _logger.LogWarning(ex, "MarkRoomStartedAsync 失败（静默忽略，旧服务端兼容）");
         }
     }
 

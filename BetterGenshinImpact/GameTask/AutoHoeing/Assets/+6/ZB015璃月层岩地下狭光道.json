@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时101.96秒，包含以下怪物：1只黯色空壳·破阵、1只岩龙蜥。",
     "enable_monster_loot_split": false,
     "hash_res": "81632740",
-    "last_modified_time": 1779040279094,
+    "last_modified_time": 1779380931419,
     "map_match_method": "",
     "map_name": "TheChasm",
     "name": "ZB015璃月层岩地下狭光道",
@@ -71,22 +71,13 @@
       "id": 6,
       "move_mode": "fly",
       "type": "path",
-      "x": 772.125,
-      "y": 304.3120751908807
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 7,
-      "move_mode": "swim",
-      "type": "path",
-      "x": 759.4375,
-      "y": 293.84390930341965
+      "x": 761.75,
+      "y": 296.2494234733381
     },
     {
       "action": "stop_flying",
       "action_params": "",
-      "id": 8,
+      "id": 7,
       "move_mode": "fly",
       "type": "path",
       "x": 738.4375,
@@ -95,16 +86,16 @@
     {
       "action": "combat_script",
       "action_params": "keydown(s),dash,wait(0.3),keyup(s)",
-      "id": 9,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
-      "x": 731.5625,
-      "y": 308.18730276719475
+      "x": 731.0625,
+      "y": 308.99980276719475
     },
     {
       "action": "",
       "action_params": "",
-      "id": 10,
+      "id": 9,
       "move_mode": "dash",
       "type": "path",
       "x": 729.5,
@@ -113,7 +104,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 11,
+      "id": 10,
       "move_mode": "run",
       "type": "path",
       "x": 726.44384765625,
@@ -122,7 +113,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 12,
+      "id": 11,
       "move_mode": "dash",
       "type": "path",
       "x": 733.870849609375,

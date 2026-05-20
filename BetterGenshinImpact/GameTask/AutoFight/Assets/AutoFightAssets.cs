@@ -233,9 +233,9 @@ public class AutoFightAssets : BaseAssets<AutoFightAssets>
             Name = "KickBtn",
             RecognitionType = RecognitionTypes.TemplateMatch,
             TemplateImageMat = GameTaskManager.LoadAssetImage("AutoFight", "kick_btn.png", this.systemInfo),
-            RegionOfInterest = new Rect( (int)(1500 * AssetScale), (int)(160 * AssetScale), (int)(130 * AssetScale), (int)(700 * AssetScale)),
-            Threshold = 0.8,
-            DrawOnWindow = false
+            RegionOfInterest = new Rect(CaptureRect.Width/2, 0, CaptureRect.Width/2, CaptureRect.Height),
+            Threshold = 0.85,
+            DrawOnWindow = true
         }.InitTemplate();
 
         WandererIconRa = new RecognitionObject

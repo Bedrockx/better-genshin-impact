@@ -215,6 +215,24 @@ public class WorldStateMonitor : IAsyncDisposable
 
     private async Task CheckOnceAsync()
     {
+        // 暂停态优先级最高：用户按快捷键暂停（如调整角色装备）期间，IsInMultiGame=false 是预期行为，
+        // 不应被计入"被踢出联机世界"的 ConnectedNotInGame 阈值。同时清零相关计数与恢复窗口，
+        // 避免恢复后立即被旧累计触发协调停止。
+        if (BetterGenshinImpact.GameTask.RunnerContext.Instance.IsSuspend)
+        {
+            if (_connectedButNotInGame > 0 || _isInRecoveryWindow)
+            {
+                _logger.LogInformation("[WorldStateMonitor] 检测到任务暂停，重置异常计数与恢复窗口");
+                _connectedButNotInGame = 0;
+                _isInRecoveryWindow = false;
+            }
+            else
+            {
+                _logger.LogDebug("[WorldStateMonitor] 任务暂停中，跳过本轮检测");
+            }
+            return;
+        }
+
         // 0. 传送抑制超时自动解除（RC-01: 使用局部变量快照）
         var teleportSuppressed = _isTeleportSuppressed;
         var teleportStart = _teleportSuppressionStart;

@@ -1,0 +1,60 @@
+{
+  "info": {
+    "author": "汐",
+    "authors": [
+      {
+        "links": "https://github.com/jiegedabaobei",
+        "name": "汐"
+      }
+    ],
+    "bgi_version": "0.45.0",
+    "description": "  路线信息：该路线预计用时70.35秒，包含以下怪物：2只射手丘丘人、1只丘丘岩盔王。",
+    "enable_monster_loot_split": false,
+    "hash_res": "83034565",
+    "last_modified_time": 1779521837797,
+    "map_match_method": "",
+    "map_name": "Teyvat",
+    "name": "B060璃月沉玉谷灵濛山东北",
+    "tags": [],
+    "type": "collect",
+    "version": "1.0"
+  },
+  "positions": [
+    {
+      "action": "",
+      "action_params": "",
+      "id": 1,
+      "move_mode": "walk",
+      "type": "teleport",
+      "x": 1977.2700000000004,
+      "y": 2341.040000000001
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 2,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1953.1611328125,
+      "y": 2334.031005859375
+    },
+    {
+      "action": "combat_script",
+      "action_params": ";钟离 keypress(q);茜特菈莉 e;莱依拉 e;伊涅芙 e;哥伦比娅 e,attack(0.3),charge(2.2); ;",
+      "id": 3,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1899.67578125,
+      "y": 2330.02783203125
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 4,
+      "move_mode": "run",
+      "type": "path",
+      "x": 1913.48828125,
+      "y": 2310.720703125
+    }
+  ]
+}

@@ -31,6 +31,7 @@ using Vanara.PInvoke;
 using BetterGenshinImpact.GameTask.AutoPathing.Handler;
 using BetterGenshinImpact.GameTask.AutoPick.Assets;
 using BetterGenshinImpact.GameTask.AutoPathing.Model;
+using BetterGenshinImpact.GameTask.AutoPathing.Model.Enum;
 using System.Text.RegularExpressions;
 using BetterGenshinImpact.Core.Script.Dependence;
 using BetterGenshinImpact.GameTask.AutoPathing;
@@ -529,7 +530,7 @@ public class AutoFightTask : ISoloTask
         _taskParam.FinishDetectConfig.RetryDis = _taskParam.FinishDetectConfig.RetryDis > 150
             ? 150
             : (_taskParam.FinishDetectConfig.RetryDis < 7 ? 6 : _taskParam.FinishDetectConfig.RetryDis);
-        
+
         // 战斗操作
         var fightTask = Task.Run(async () =>
         {
@@ -559,6 +560,17 @@ public class AutoFightTask : ISoloTask
                 FightEndTotoly = false;
                 _totolyEndCount = 0;
                 _2ndEndFlag = false;
+
+                // multiplayer-kazuha-pre-cast-positioning EB2: 联机锄地 + 万叶玩家场景下，启动独立"持续回点"后台任务。
+                // 必须放在 FightEndTotoly = false 之后，否则会读到上一场战斗结束遗留的 stale true，循环立即退出。
+                // 与 fightTask 主循环并行运行，绑定同一 cts2.Token（战斗结束/取消时统一终止）。
+                // 注意：不能依赖 SeekAndFightAsync 内部的持续回点，因为 SeekAndFightAsync 仅在用户开启
+                // RotateFindEnemyEnabled 时才会被调用——大多数用户默认 false。本独立任务确保万叶玩家
+                // 战斗中持续回点功能在所有联机锄地场景下都能生效。
+                if (_taskParam.KazuhaContinuousReturn)
+                {
+                    _ = Task.Run(() => KazuhaContinuousReturnLoopAsync(cts2.Token), cts2.Token);
+                }
 
                 // 进入战斗后，不检查战斗结束的判断
                 if (_taskParam.FinishDetectConfig.EndModel && _taskParam.FinishDetectConfig.FightWaitNotEndTime > 0)
@@ -888,7 +900,10 @@ public class AutoFightTask : ISoloTask
                             try
                             {
                                 await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime, delayTime,
-                                    cts2.Token, true, _taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode);
+                                    cts2.Token, true, _taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
+                                    kazuhaContinuousReturn: _taskParam.KazuhaContinuousReturn,
+                                    returnIntervalMs: 1000,
+                                    returnDistanceThreshold: 1.0);
                             }
                             catch (Exception ex)
                             {
@@ -1614,7 +1629,10 @@ public class AutoFightTask : ISoloTask
                 {
                     Task.Run(async () =>
                     {
-                        result = await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime, delayTime, ct,false,_taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode); 
+                        result = await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime, delayTime, ct,false,_taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
+                            kazuhaContinuousReturn: _taskParam.KazuhaContinuousReturn,
+                            returnIntervalMs: 1000,
+                            returnDistanceThreshold: 1.0); 
                         AutoFightSeek.RotationCount = (result == null) ? 
                             AutoFightSeek.RotationCount + 1 :  0;
                     }, ct);  
@@ -1622,7 +1640,10 @@ public class AutoFightTask : ISoloTask
                 }
                 else
                 {
-                    result = await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime,  delayTime, ct,false,_taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.PaimonEndModel? _taskParam.FinishDetectConfig.PaimonEndModel:_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode); 
+                    result = await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime,  delayTime, ct,false,_taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.PaimonEndModel? _taskParam.FinishDetectConfig.PaimonEndModel:_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
+                        kazuhaContinuousReturn: _taskParam.KazuhaContinuousReturn,
+                        returnIntervalMs: 1000,
+                        returnDistanceThreshold: 1.0); 
                     AutoFightSeek.RotationCount = (result == null) ? 
                         AutoFightSeek.RotationCount + 1 :  0;
                 }
@@ -1698,6 +1719,7 @@ public class AutoFightTask : ISoloTask
                 if (reviveConfirmRa.IsExist())
                 {
                     TaskControl.Logger.LogInformation("派蒙模式：检测到复活弹窗，主动处理");
+                    await Delay(100, _ct);
                     reviveConfirmRa.Click(); // 点击确认（尝试复活）
                     await Delay(300, _ct);
 
@@ -1709,6 +1731,7 @@ public class AutoFightTask : ISoloTask
                         reviveExitRa.Click(); // 点击取消关闭弹窗
                         TaskControl.Logger.LogInformation("派蒙模式：复活药可能在CD，点击取消关闭弹窗");
                         await Delay(200, _ct);
+                        reviveExitRa.ClickTo(-150,0);
                     }
 
                     _totolyEndCount = 0;
@@ -2412,6 +2435,93 @@ public class AutoFightTask : ISoloTask
         // }
         var dict = _predictor.Detect(imageRegion);
         return dict.ContainsKey("health_bar") || dict.ContainsKey("enemy_identify");
+    }
+
+    /// <summary>
+    /// 联机锄地 + 万叶玩家专用："持续回点"独立后台循环。
+    /// 与 fightTask 主循环并行：每秒检查一次玩家位置到 FightWaypoint 的实时距离，
+    /// 距离 > 1.0 即调一次 await pathExecutor.MoveCloseTo（小碎步精确接近）拉回到战斗点；
+    /// 由 cts2.Token 统一控制取消（战斗结束 / FightEndTotoly / 外部取消时停止）。
+    ///
+    /// 仅在 _taskParam.KazuhaContinuousReturn == true 时被启动；
+    /// 单机 / 联机非万叶玩家场景该字段保持 false，本方法不会被调用。
+    /// 详见 .kiro/specs/multiplayer-kazuha-pre-cast-positioning/design.md §3.2
+    /// （原设计放在 SeekAndFightAsync 内部，但 SeekAndFightAsync 仅在 RotateFindEnemyEnabled
+    /// 启用时调用，对默认用户无效；故搬出独立后台 Task 保证全场景覆盖）。
+    /// </summary>
+    private async Task KazuhaContinuousReturnLoopAsync(CancellationToken token)
+    {
+        const int returnIntervalMs = 1000;
+        const double returnDistanceThreshold = 1.0;
+        var lastReturnAt = DateTime.MinValue;
+        var pathExecutor = new PathExecutor(token);
+
+        try
+        {
+            TaskControl.Logger.LogInformation("[联机][万叶] 持续回点后台任务已启动 (interval={Interval}ms, threshold={Threshold:F1})",
+                returnIntervalMs, returnDistanceThreshold);
+
+            while (!token.IsCancellationRequested && !FightEndTotoly)
+            {
+                try
+                {
+                    await Task.Delay(returnIntervalMs, token);
+                }
+                catch (OperationCanceledException) { return; }
+
+                if (FightEndTotoly || token.IsCancellationRequested) return;
+
+                var fightWaypoint = FightWaypoint;
+                if (fightWaypoint is null) continue;
+
+                var elapsedSinceLastReturn = (DateTime.UtcNow - lastReturnAt).TotalMilliseconds;
+                if (elapsedSinceLastReturn < returnIntervalMs) continue;
+
+                Point2f currentPos;
+                try
+                {
+                    using var image = CaptureToRectArea();
+                    currentPos = Navigation.GetPosition(image, fightWaypoint.MapName, fightWaypoint.MapMatchMethod);
+                }
+                catch (Exception ex)
+                {
+                    TaskControl.Logger.LogDebug(ex, "[联机][万叶] 持续回点位置识别失败，本轮跳过");
+                    continue;
+                }
+
+                if (currentPos is { X: 0, Y: 0 }) continue;
+
+                var realtimeDistance = Navigation.GetDistance(fightWaypoint, currentPos);
+                if (!AutoFightSeekDecisions.ShouldTriggerContinuousReturn(
+                        realtimeDistance, returnDistanceThreshold,
+                        elapsedSinceLastReturn, returnIntervalMs))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    fightWaypoint.MoveMode = MoveModeEnum.Walk.Code;
+                    TaskControl.Logger.LogInformation("[联机][万叶] 持续回点：距战斗点 {Dist:F1} > {Threshold:F1}，触发 MoveCloseTo",
+                        realtimeDistance, returnDistanceThreshold);
+                    // 持续回点用 MoveCloseTo（小碎步精确接近），不是 MoveTo（真寻路）。
+                    // 战斗中玩家与战斗点距离一般较小（被怪推开 1-5 单位），MoveCloseTo 25 步小碎步就够；
+                    // 用 MoveTo 真寻路反而可能因为有寻路逻辑导致绕远 / 翻越障碍。
+                    // 默认 closeDistance=2.0 / tailDelayMs=null / maxSteps=25 即可（原 MoveCloseTo 行为）。
+                    await pathExecutor.MoveCloseTo(fightWaypoint);
+                    lastReturnAt = DateTime.UtcNow;
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex)
+                {
+                    TaskControl.Logger.LogError(ex, "[联机][万叶] 持续回点 MoveCloseTo 异常，本轮跳过");
+                }
+            }
+        }
+        finally
+        {
+            TaskControl.Logger.LogDebug("[联机][万叶] 持续回点后台任务已退出");
+        }
     }
 
     // 无用

@@ -131,6 +131,7 @@ public class RouteExecutionEngine
                         executor.MultiplayerCoordinator = _coordinator;
                         executor.WorldStateMonitor = _worldStateMonitor;
                         PathExecutor.CurrentWorldStateMonitor = _worldStateMonitor;
+                        PathExecutor.CurrentMultiplayerCoordinator = _coordinator;
                         executor.PartyConfig.DisableAutoFetchDispatch = true;
                         Logger.LogInformation("[联机] 已注入 MultiplayerCoordinator 到 PathExecutor，路线: {Name}", route.FileName);
                     }

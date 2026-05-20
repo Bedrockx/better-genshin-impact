@@ -31,6 +31,11 @@ public class MultiplayerCoordinator : IAsyncDisposable
     public RouteSyncCoordinator? RouteSyncCoordinator { get; private set; }
     public AbnormalStatusManager? StateManager { get; private set; }
     public WaitPointStateManager? WaitPointStateManager { get; private set; }
+    /// <summary>
+    /// 万叶聚物同步协调器（multiplayer-kazuha-collect-sync）。
+    /// 由 PathExecutor 在战后回点 Delay 处通过 <see cref="KazuhaCollectSyncCoordinator.WaitAtFightPointAsync"/> 调用。
+    /// </summary>
+    public KazuhaCollectSyncCoordinator? KazuhaCollectSync { get; private set; }
 
     // === 基础状态 ===
     public bool IsHost { get; private set; }
@@ -66,10 +71,16 @@ public class MultiplayerCoordinator : IAsyncDisposable
         SyncBarrier barrier,
         SyncPointResolver resolver,
         int minPlayersToSync,
-        int syncTimeoutSeconds)
+        int syncTimeoutSeconds,
+        AutoHoeingConfig? config = null)
     {
         _client = client;
-        _config = TaskContext.Instance().Config.AutoHoeingConfig;
+        // 优先使用调用方传入的 config（持有 AutoHoeingTask 拷贝/覆盖后的实例），
+        // 否则 fallback 到全局（保持向后兼容）。
+        // 配置组（ScriptGroup）启动时 AutoHoeingTask 会在深拷贝上 ApplySettingsOverride，
+        // 此时全局未被覆盖，必须由调用方显式传入覆盖后的 _config，否则 KazuhaCollectSync 的
+        // EnableKazuhaSync 永远是全局值（多半为 false）→ PathExecutor 跳过聚物分支。
+        _config = config ?? TaskContext.Instance().Config.AutoHoeingConfig;
         _barrier = barrier;
         _resolver = resolver;
         _minPlayersToSync = minPlayersToSync;
@@ -80,6 +91,7 @@ public class MultiplayerCoordinator : IAsyncDisposable
         WaitPointStateManager = new WaitPointStateManager();
         RouteSyncCoordinator = new RouteSyncCoordinator(_client, this, _config);
         StateManager = new AbnormalStatusManager(this, WaitPointStateManager, _config);
+        KazuhaCollectSync = new KazuhaCollectSyncCoordinator(_client, _config, this);
 
         _logger.LogInformation("[联机] 子协调器初始化完成");
     }
@@ -385,8 +397,10 @@ public class MultiplayerCoordinator : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         WaitPointStateManager?.Dispose();
+        KazuhaCollectSync?.Dispose();
         RouteSyncCoordinator = null;
         StateManager = null;
         WaitPointStateManager = null;
+        KazuhaCollectSync = null;
     }
 }

@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时110.22秒，包含以下怪物：2只丘丘人、4只打手丘丘人、1只丘丘岩盔王。",
     "enable_monster_loot_split": false,
     "hash_res": "91179120",
-    "last_modified_time": 1779042200450,
+    "last_modified_time": 1779214851256,
     "map_match_method": "",
     "map_name": "Enkanomiya",
     "name": "ZC012稻妻渊下宫大日御舆北小岛",
@@ -71,8 +71,8 @@
       "id": 6,
       "move_mode": "dash",
       "type": "path",
-      "x": 282.626708984375,
-      "y": 609.4149169921875
+      "x": 281.5025634765625,
+      "y": 608.8125
     }
   ]
 }

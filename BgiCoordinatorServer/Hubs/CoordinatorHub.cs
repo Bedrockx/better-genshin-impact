@@ -297,21 +297,202 @@ public class CoordinatorHub : Hub
         UntrackGroup(roomCode);
     }
 
-    /// <summary>设置万叶玩家（仅房主）</summary>
-    public async Task SetKazuhaPlayer(int index = 0)
+    /// <summary>
+    /// （已废弃，保留空实现）旧客户端调用此方法时仅记 deprecated 警告，不影响协议兼容。
+    /// kazuha-player-auto-detection: 替换为运行时声明协议 DeclareKazuhaCapability，由各客户端各自识别本地联机队伍是否含万叶并主动声明。
+    /// </summary>
+    public Task SetKazuhaPlayer(int index = 0)
+    {
+        _logger.LogWarning("[SetKazuhaPlayer] 调用方使用了已废弃的 Hub 方法（kazuha-player-auto-detection 已替换为 DeclareKazuhaCapability），index={Index}", index);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 客户端声明本地联机队伍含万叶（kazuha-player-auto-detection）。
+    /// 幂等：同一 ConnectionId 重复调用直接 return（lock 内做 Any 检查）。
+    /// 选举：第一个声明者自动成为 KazuhaConnectionId，触发 KazuhaPlayerUpdated(playerUid) 广播。
+    /// 后续声明者仅入候选列表，断线时按列表顺序顶替。
+    /// </summary>
+    public async Task DeclareKazuhaCapability()
     {
         var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
         if (room == null || roomCode == null) return;
 
-        if (room.HostConnectionId != Context.ConnectionId)
+        bool shouldBroadcast = false;
+        string broadcastUid = "";
+        lock (room)
         {
-            _logger.LogWarning("[SetKazuhaPlayer] 连接 {ConnId} 不是房主，忽略", Context.ConnectionId);
-            return;
+            var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
+            if (player == null) return;
+
+            // 幂等检查：同一 ConnectionId 重复声明直接 return
+            if (room.KazuhaCandidates.Any(c => c.ConnectionId == Context.ConnectionId))
+            {
+                _logger.LogDebug("[DeclareKazuhaCapability] 重复声明，忽略 connId={ConnId}", Context.ConnectionId);
+                return;
+            }
+
+            room.KazuhaCandidates.Add(new KazuhaCandidate
+            {
+                ConnectionId = Context.ConnectionId,
+                PlayerUid = player.PlayerUid
+            });
+
+            // 第一个声明者自动成为当前 Kazuha
+            if (room.KazuhaCollect.KazuhaConnectionId == null)
+            {
+                room.KazuhaCollect.KazuhaConnectionId = Context.ConnectionId;
+                broadcastUid = player.PlayerUid;
+                shouldBroadcast = true;
+            }
         }
 
-        var clampedIndex = _roomManager.SetKazuhaPlayer(roomCode, index);
-        _logger.LogInformation("[SetKazuhaPlayer] 房间 {Code} 万叶玩家索引设为 {Index}", roomCode, clampedIndex);
-        await Clients.Group(roomCode).SendAsync("KazuhaPlayerUpdated", clampedIndex);
+        if (shouldBroadcast)
+        {
+            _logger.LogInformation("[DeclareKazuhaCapability] 房间 {Code} 选出第一位 Kazuha: {Uid}",
+                roomCode, broadcastUid);
+            await Clients.Group(roomCode).SendAsync("KazuhaPlayerUpdated", broadcastUid);
+        }
+    }
+
+    // ====== 万叶聚物同步（multiplayer-kazuha-collect-sync）======
+
+    /// <summary>
+    /// 上报当前玩家已到达战斗点（万叶聚物同步流程的"到点"信号）。
+    /// 当所有在线玩家都已上报时，广播 AllArrivedAtFightPoint(syncKey)。
+    /// 周期管理：若上一周期 TerminalBroadcasted=true，则首个新到点者触发周期 ID 递增 + 状态清空。
+    /// </summary>
+    public async Task NotifyKazuhaArrivedAtFightPoint(string syncKey)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return;
+
+        bool allArrived;
+        lock (room)
+        {
+            // 周期 ID 递增 / 状态复位（design §5）
+            if (room.KazuhaCollect.TerminalBroadcasted)
+            {
+                room.KazuhaCollect.CurrentCycleId++;
+                room.KazuhaCollect.ArrivedAtFightPoint.Clear();
+                room.KazuhaCollect.TerminalBroadcasted = false;
+                room.KazuhaCollect.TerminalKind = null;
+            }
+
+            room.KazuhaCollect.ArrivedAtFightPoint.Add(Context.ConnectionId);
+
+            // 计算"是否全员都已上报"
+            var onlinePlayers = room.Players
+                .Where(p => DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2))
+                .Select(p => p.ConnectionId)
+                .ToHashSet();
+            allArrived = onlinePlayers.Count > 0
+                && onlinePlayers.All(id => room.KazuhaCollect.ArrivedAtFightPoint.Contains(id));
+        }
+
+        if (allArrived)
+        {
+            _logger.LogInformation("[KazuhaCollect] 房间 {Code} 全员已到战斗点，广播 AllArrivedAtFightPoint syncKey={Key}", roomCode, syncKey);
+            await Clients.Group(roomCode).SendAsync("AllArrivedAtFightPoint", syncKey);
+        }
+    }
+
+    /// <summary>万叶玩家广播"开始执行聚物动作"。仅记录 + 广播，不做终态守卫。</summary>
+    public async Task NotifyKazuhaCollectStarted()
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return;
+
+        // 鉴权：必须是当前周期的万叶玩家
+        lock (room)
+        {
+            if (room.KazuhaCollect.KazuhaConnectionId != Context.ConnectionId)
+            {
+                _logger.LogWarning("[KazuhaCollect] NotifyKazuhaCollectStarted 鉴权失败：调用方 {ConnId} 不是万叶 {KazuhaId}",
+                    Context.ConnectionId, room.KazuhaCollect.KazuhaConnectionId);
+                return;
+            }
+        }
+
+        var playerUid = "";
+        lock (room)
+        {
+            playerUid = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId)?.PlayerUid ?? "";
+        }
+
+        _logger.LogInformation("[KazuhaCollect] 房间 {Code} 万叶 {Uid} 开始聚物", roomCode, playerUid);
+        await Clients.Group(roomCode).SendAsync("KazuhaCollectStarted", playerUid);
+    }
+
+    /// <summary>万叶玩家广播"聚物动作完成"。同周期 TerminalBroadcasted 守卫保证至多触发一次（Property 8）。</summary>
+    public async Task NotifyKazuhaCollectFinished(bool success)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return;
+
+        string playerUid;
+        bool shouldBroadcast;
+        lock (room)
+        {
+            if (room.KazuhaCollect.KazuhaConnectionId != Context.ConnectionId)
+            {
+                _logger.LogWarning("[KazuhaCollect] NotifyKazuhaCollectFinished 鉴权失败：调用方 {ConnId} 不是万叶 {KazuhaId}",
+                    Context.ConnectionId, room.KazuhaCollect.KazuhaConnectionId);
+                return;
+            }
+            if (room.KazuhaCollect.TerminalBroadcasted)
+            {
+                _logger.LogInformation("[KazuhaCollect] NotifyKazuhaCollectFinished 守卫命中（周期内已广播 {Kind}），忽略", room.KazuhaCollect.TerminalKind);
+                return;
+            }
+            room.KazuhaCollect.TerminalBroadcasted = true;
+            room.KazuhaCollect.TerminalKind = "Finished";
+            playerUid = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId)?.PlayerUid ?? "";
+            shouldBroadcast = true;
+        }
+
+        if (shouldBroadcast)
+        {
+            _logger.LogInformation("[KazuhaCollect] 房间 {Code} 万叶 {Uid} 聚物完成 success={Success}", roomCode, playerUid, success);
+            await Clients.Group(roomCode).SendAsync("KazuhaCollectFinished", playerUid, success);
+        }
+    }
+
+    /// <summary>
+    /// 万叶玩家或房主广播"聚物因某原因被跳过"。
+    /// 同周期 TerminalBroadcasted 守卫保证 Skipped 与 Finished 至多一个被广播，且 Skipped 后不会再 Finished（Property 8 / Bug Condition 6）。
+    /// </summary>
+    public async Task NotifyKazuhaCollectSkipped(string reason)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return;
+
+        bool shouldBroadcast;
+        lock (room)
+        {
+            // 鉴权：万叶玩家 或 房主 都可调用（design §降级决策表 - kazuha_offline 由房主触发）
+            var isKazuha = room.KazuhaCollect.KazuhaConnectionId == Context.ConnectionId;
+            var isHost = room.HostConnectionId == Context.ConnectionId;
+            if (!isKazuha && !isHost)
+            {
+                _logger.LogWarning("[KazuhaCollect] NotifyKazuhaCollectSkipped 鉴权失败：调用方 {ConnId} 既非万叶也非房主", Context.ConnectionId);
+                return;
+            }
+            if (room.KazuhaCollect.TerminalBroadcasted)
+            {
+                _logger.LogInformation("[KazuhaCollect] NotifyKazuhaCollectSkipped 守卫命中（周期内已广播 {Kind}），忽略", room.KazuhaCollect.TerminalKind);
+                return;
+            }
+            room.KazuhaCollect.TerminalBroadcasted = true;
+            room.KazuhaCollect.TerminalKind = "Skipped";
+            shouldBroadcast = true;
+        }
+
+        if (shouldBroadcast)
+        {
+            _logger.LogInformation("[KazuhaCollect] 房间 {Code} 聚物被跳过，原因={Reason}", roomCode, reason);
+            await Clients.Group(roomCode).SendAsync("KazuhaCollectSkipped", reason);
+        }
     }
 
     /// <summary>上报路线验证完成，全员完成时广播 RouteVerificationAllDone</summary>
@@ -396,6 +577,37 @@ public class CoordinatorHub : Hub
     {
         var (room, _) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
         return Task.FromResult(room?.HostReady ?? false);
+    }
+
+    /// <summary>
+    /// 房主调用此方法把房间标记为已开锄（spec lock-room-after-start §2）。
+    /// 服务端从此 JoinRoom 拒绝非重连新玩家、GetOnlineRooms 也不再返回此房间。
+    /// 鉴权：Context.ConnectionId 必须等于 room.HostConnectionId。
+    /// 幂等：重复调用直接 return（room.IsStarted 一旦 true 在房间销毁前不复位）。
+    /// 非房主调用：LogWarning + return，不抛异常、不修改状态。
+    /// </summary>
+    public Task MarkRoomStarted()
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null)
+        {
+            _logger.LogWarning("[MarkRoomStarted] 连接 {ConnId} 未在任何房间中，忽略", Context.ConnectionId);
+            return Task.CompletedTask;
+        }
+        if (room.HostConnectionId != Context.ConnectionId)
+        {
+            _logger.LogWarning("[MarkRoomStarted] 连接 {ConnId} 不是房主，忽略（房间 {Code}）",
+                Context.ConnectionId, roomCode);
+            return Task.CompletedTask;
+        }
+        if (room.IsStarted)
+        {
+            _logger.LogDebug("[MarkRoomStarted] 房间 {Code} 已经 IsStarted=true，幂等返回", roomCode);
+            return Task.CompletedTask;
+        }
+        room.IsStarted = true;
+        _logger.LogInformation("[MarkRoomStarted] 房间 {Code} 已锁定，IsStarted=true", roomCode);
+        return Task.CompletedTask;
     }
 
     /// <summary>房主上传最终路线列表，并广播通知成员</summary>
@@ -497,6 +709,54 @@ public class CoordinatorHub : Hub
                     syncId, code);
                 await Clients.Group(code).SendAsync("AllArrived", syncId);
                 _roomManager.ClearArrivalSet(code, syncId);
+            }
+
+            // 万叶聚物同步：候选切换 + 兜底（kazuha-player-auto-detection requirements 5.5 / Property 10）
+            // 任意玩家断线都从候选列表移除（不论是否当前 Kazuha）
+            bool shouldBroadcastSwitch = false;
+            bool shouldBroadcastKazuhaSkipped = false;
+            string switchedToUid = "";
+            lock (updatedRoom)
+            {
+                updatedRoom.KazuhaCandidates.RemoveAll(c => c.ConnectionId == Context.ConnectionId);
+
+                if (updatedRoom.KazuhaCollect.KazuhaConnectionId == Context.ConnectionId)
+                {
+                    // 当前 Kazuha 断线 → 选下一个仍在线的候选
+                    var onlineCandidate = updatedRoom.KazuhaCandidates.FirstOrDefault(c =>
+                        updatedRoom.Players.Any(p => p.ConnectionId == c.ConnectionId
+                            && DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2)));
+
+                    if (onlineCandidate != null)
+                    {
+                        updatedRoom.KazuhaCollect.KazuhaConnectionId = onlineCandidate.ConnectionId;
+                        switchedToUid = onlineCandidate.PlayerUid;
+                        shouldBroadcastSwitch = true;
+                    }
+                    else
+                    {
+                        // 候选耗尽 → 走原 kazuha_disconnected 兜底
+                        updatedRoom.KazuhaCollect.KazuhaConnectionId = null;
+                        if (updatedRoom.KazuhaCollect.ArrivedAtFightPoint.Count > 0
+                            && !updatedRoom.KazuhaCollect.TerminalBroadcasted)
+                        {
+                            updatedRoom.KazuhaCollect.TerminalBroadcasted = true;
+                            updatedRoom.KazuhaCollect.TerminalKind = "Skipped";
+                            shouldBroadcastKazuhaSkipped = true;
+                        }
+                    }
+                }
+            }
+            if (shouldBroadcastSwitch)
+            {
+                _logger.LogInformation("[OnDisconnectedAsync] 万叶玩家断线，切换到下一候选 {Uid}，房间={RoomCode}",
+                    switchedToUid, code);
+                await Clients.Group(code).SendAsync("KazuhaPlayerUpdated", switchedToUid);
+            }
+            if (shouldBroadcastKazuhaSkipped)
+            {
+                _logger.LogWarning("[OnDisconnectedAsync] 万叶玩家断线且候选耗尽，广播 KazuhaCollectSkipped(kazuha_disconnected)，房间={RoomCode}", code);
+                await Clients.Group(code).SendAsync("KazuhaCollectSkipped", "kazuha_disconnected");
             }
         }
 
@@ -685,12 +945,23 @@ public class CoordinatorHub : Hub
             {
                 player.IsAbnormal = false;
                 player.WaitPointId = null;
+                // multiplayer-sync-skip-by-progress §3.9 / OQ-1：
+                // 同步重置进度字段，避免上一轮残留 CurrentProgress 污染新一轮第一个同步点的豁免判定
+                player.TargetProgress = -1;
+                player.CurrentProgress = -1;
             }
             
             // 清理联机锄地异常同步状态（multiplayer-abnormal-sync-server 需求 REQ-6.1）
             room.AbnormalPlayerInfos.Clear();
-            
-            _logger.LogInformation("[ResetForNewWorldRound] 房间{RoomCode}进入第{Round}轮，等待点、异常状态已重置", roomCode, newRound);
+
+            // 清理万叶聚物候选 + 状态（kazuha-player-auto-detection: 多世界轮换重置）
+            room.KazuhaCandidates.Clear();
+            room.KazuhaCollect.KazuhaConnectionId = null;
+            room.KazuhaCollect.ArrivedAtFightPoint.Clear();
+            room.KazuhaCollect.TerminalBroadcasted = false;
+            room.KazuhaCollect.TerminalKind = null;
+
+            _logger.LogInformation("[ResetForNewWorldRound] 房间{RoomCode}进入第{Round}轮，等待点、异常状态、万叶候选已重置", roomCode, newRound);
         }
         
         return Task.CompletedTask;
@@ -1091,6 +1362,58 @@ public class CoordinatorHub : Hub
     }
 
     /// <summary>
+    /// 客户端在跳路线后立即广播自己的新进度（multiplayer-sync-skip-by-progress §2.4）。
+    /// 服务端更新对应玩家的 CurrentProgress = routeIndex * 1_000_000，
+    /// 并触发对房间所有 ArrivalSets 的全量重评估（与 MemberStatusChanged / WaitForAllPlayers 同一机制）。
+    ///
+    /// 鉴权（OQ-2 方案 A）：用 Context.ConnectionId 定位本连接对应的玩家，
+    ///   校验 player.PlayerUid == playerUid（playerUid 非空时）。不一致直接 LogWarning + return。
+    /// 兼容性：旧客户端不调用此方法即可，新增 Hub 方法不破坏旧协议。
+    /// </summary>
+    public async Task ReportMemberProgress(string playerUid, int routeIndex)
+    {
+        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
+        if (room == null || roomCode == null) return;
+
+        long newProgress = (long)routeIndex * 1_000_000L;
+
+        List<(string syncId, long progress)> satisfiedSyncs;
+        lock (room)
+        {
+            var player = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
+            if (player == null)
+            {
+                _logger.LogWarning("[ReportMemberProgress] 连接 {ConnId} 不在任何房间玩家列表中，忽略", Context.ConnectionId);
+                return;
+            }
+
+            // 鉴权：禁止以他人身份上报
+            if (!string.IsNullOrEmpty(playerUid) && player.PlayerUid != playerUid)
+            {
+                _logger.LogWarning("[ReportMemberProgress] 鉴权失败：调用方 PlayerUid={ActualUid} 与上报 PlayerUid={ReportedUid} 不一致，忽略",
+                    player.PlayerUid, playerUid);
+                return;
+            }
+
+            var oldProgress = player.CurrentProgress;
+            player.CurrentProgress = newProgress;
+            _logger.LogInformation("[ReportMemberProgress] 玩家={Uid}, 路线={Index}, CurrentProgress: {Old} → {New}",
+                player.PlayerUid, routeIndex, oldProgress, newProgress);
+
+            // 全量重评估：进度更新后历史同步点可能因豁免而满足放行
+            satisfiedSyncs = CollectSatisfiedSyncsLocked(room);
+        }
+
+        foreach (var (sid, sp) in satisfiedSyncs)
+        {
+            _logger.LogInformation("[ReportMemberProgress] 进度更新后重评估：同步点 {SyncId} 满足条件，广播 AllArrived（房间={RoomCode}, 进度={Progress}）",
+                sid, roomCode, sp);
+            await Clients.Group(roomCode).SendAsync("AllArrived", sid);
+            _roomManager.ClearArrivalSet(roomCode, sid);
+        }
+    }
+
+    /// <summary>
     /// 记录路线跳过
     /// </summary>
     public Task RouteSkipped(string playerUid, int routeIndex)
@@ -1139,6 +1462,14 @@ public class CoordinatorHub : Hub
     ///   对每个异常玩家 P：
     ///     P.TargetProgress == syncProgress → P 正要去 X → 等他
     ///     P.TargetProgress != syncProgress → P 跳过了 X 或不会到 X → 不等他
+    ///   对每个正常玩家 P（multiplayer-sync-skip-by-progress §2.1）：
+    ///     P.CurrentProgress > syncProgress → P 已穿过此同步点 → 不等他
+    ///     否则 → 等他
+    ///
+    /// 进度更新后回头重评估（multiplayer-sync-skip-by-progress §2.3）：
+    ///   syncProgress >= 0 时 caller.CurrentProgress 被刷新，房间内其他历史 ArrivalSets
+    ///   可能因 caller 被新豁免逻辑剔除而满足放行条件，需用 CollectSatisfiedSyncsLocked
+    ///   全量评估后批量广播 AllArrived。
     /// </summary>
     public async Task WaitForAllPlayers(string syncId, long syncProgress = -1)
     {
@@ -1164,31 +1495,29 @@ public class CoordinatorHub : Hub
         // 记录当前连接已到达
         _roomManager.RecordArrival(roomCode, syncId, Context.ConnectionId, 0);
 
-        // 判定：检查需要等待的玩家是否都已到达
-        bool shouldBroadcast;
-        bool isAbnormalRecovered = false;
+        // 全量重评估：当前 syncId 与所有历史 ArrivalSets 一并判定
+        List<(string syncId, long progress)> satisfiedSyncs;
         lock (room)
         {
-            var arrivals = room.ArrivalSets.TryGetValue(syncId, out var set) ? set : new HashSet<string>();
-            shouldBroadcast = ShouldBroadcastAllArrived(room, syncId, arrivals, syncProgress);
-
-            // 检查是否是异常玩家在汇合点恢复（异常玩家到达且条件满足，说明汇合了）
-            var caller = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId);
-            if (shouldBroadcast && caller != null && caller.IsAbnormal && syncProgress >= 0
-                && caller.TargetProgress > 0 && caller.TargetProgress <= syncProgress)
-            {
-                isAbnormalRecovered = true;
-            }
+            satisfiedSyncs = CollectSatisfiedSyncsLocked(room);
         }
 
-        if (shouldBroadcast)
-        {
-            _logger.LogInformation("[WaitForAllPlayers] 所需玩家已到达，广播 AllArrived: 房间={RoomCode}, 同步点={SyncId}", roomCode, syncId);
-            await Clients.Group(roomCode).SendAsync("AllArrived", syncId);
-            _roomManager.ClearArrivalSet(roomCode, syncId);
+        bool willBroadcastHere = satisfiedSyncs.Any(t => t.syncId == syncId);
 
+        // 在 lock 外逐个广播 + 清 ArrivalSet
+        foreach (var (sid, sp) in satisfiedSyncs)
+        {
+            _logger.LogInformation("[WaitForAllPlayers] 满足放行条件，广播 AllArrived: 房间={RoomCode}, 同步点={SyncId}, 进度={Progress}",
+                roomCode, sid, sp);
+            await Clients.Group(roomCode).SendAsync("AllArrived", sid);
+            _roomManager.ClearArrivalSet(roomCode, sid);
+        }
+
+        // 保留：caller 是异常玩家、刚汇合到 syncProgress 的"恢复"清理（与现状一致）
+        // 仅在当前 syncId 触发广播时执行（与改动前条件一致）
+        if (willBroadcastHere)
+        {
             // 汇合后清理异常状态：所有 TargetProgress ≤ syncProgress 的异常玩家恢复正常
-            // （他们已经到达汇合点或更前面）
             lock (room)
             {
                 foreach (var p in room.Players)
@@ -1217,6 +1546,37 @@ public class CoordinatorHub : Hub
             }
         }
         // 非阻塞：不满足条件时直接返回，客户端通过 AllArrived 事件等待
+    }
+
+    /// <summary>
+    /// 在 lock(room) 内枚举 room.ArrivalSets，收集所有满足 ShouldBroadcastAllArrived=true 的 (syncId, syncProgress) 对。
+    /// syncProgress 推断规则（与 MemberStatusChanged 现有推断保持一致）：
+    ///   syncId == "route_sync_done" → -1（全局同步点，按"等所有"处理）
+    ///   其他 → 已到达玩家中 CurrentProgress 的最大值（>=-1）
+    /// 调用方负责在 lock 外执行 SendAsync + ClearArrivalSet（避免 await 持锁）。
+    /// </summary>
+    private List<(string syncId, long progress)> CollectSatisfiedSyncsLocked(Room room)
+    {
+        var result = new List<(string, long)>();
+        foreach (var kvp in room.ArrivalSets)
+        {
+            var sid = kvp.Key;
+            var arrivals = kvp.Value;
+            long sp = -1;
+            if (sid != "route_sync_done")
+            {
+                sp = room.Players
+                    .Where(p => arrivals.Contains(p.ConnectionId))
+                    .Select(p => p.CurrentProgress)
+                    .DefaultIfEmpty(-1)
+                    .Max();
+            }
+            if (ShouldBroadcastAllArrived(room, sid, arrivals, sp))
+            {
+                result.Add((sid, sp));
+            }
+        }
+        return result;
     }
 
     /// <summary>
@@ -1252,15 +1612,25 @@ public class CoordinatorHub : Hub
         }
 
         // 计算需要等待的玩家
+        // 异常玩家分支：保持原逻辑（syncProgress<0 必须等；TargetProgress==syncProgress 必须等；否则豁免）
+        // 正常玩家分支（multiplayer-sync-skip-by-progress §2.1 / §2.2）：
+        //   syncProgress<0       → 必须等（兼容旧客户端 / route_sync_done）
+        //   CurrentProgress > SP → 已穿过此同步点，豁免不阻塞广播
+        //   否则                 → 在此同步点或更早，必须等
         var requiredPlayers = onlinePlayers.Where(p =>
         {
-            if (!p.IsAbnormal) return true;
+            if (p.IsAbnormal)
+            {
+                if (syncProgress < 0) return true;
+                return p.TargetProgress == syncProgress;
+            }
             if (syncProgress < 0) return true;
-            return p.TargetProgress == syncProgress;
+            if (p.CurrentProgress > syncProgress) return false;
+            return true;
         }).ToList();
 
         _logger.LogInformation("[ShouldBroadcast] 需要等待的玩家: {List}",
-            string.Join(",", requiredPlayers.Select(p => $"{p.PlayerUid}(Abn={p.IsAbnormal},T={p.TargetProgress})")));
+            string.Join(",", requiredPlayers.Select(p => $"{p.PlayerUid}(Abn={p.IsAbnormal},T={p.TargetProgress},C={p.CurrentProgress})")));
 
         if (requiredPlayers.Count == 0)
         {
@@ -1284,11 +1654,17 @@ public class CoordinatorHub : Hub
 
         if (onlinePlayers.Count == 0) return false;
 
+        // 与实例 overload 对称（multiplayer-sync-skip-by-progress §2.1 / §2.2）
         var requiredPlayers = onlinePlayers.Where(p =>
         {
-            if (!p.IsAbnormal) return true;
+            if (p.IsAbnormal)
+            {
+                if (syncProgress < 0) return true;
+                return p.TargetProgress == syncProgress;
+            }
             if (syncProgress < 0) return true;
-            return p.TargetProgress == syncProgress;
+            if (p.CurrentProgress > syncProgress) return false;
+            return true;
         }).ToList();
 
         if (requiredPlayers.Count == 0) return false;

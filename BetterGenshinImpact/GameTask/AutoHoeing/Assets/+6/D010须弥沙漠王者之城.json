@@ -10,7 +10,7 @@
     "description": "  路线信息：该路线预计用时101.1秒，包含以下怪物：1只丘丘岩盔王。",
     "enable_monster_loot_split": false,
     "hash_res": "41676778",
-    "last_modified_time": 1778767397492,
+    "last_modified_time": 1779211402385,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "D010须弥沙漠王者之城",
@@ -34,8 +34,8 @@
       "id": 2,
       "move_mode": "dash",
       "type": "path",
-      "x": 4432.259765625,
-      "y": -768.72265625
+      "x": 4431.98046875,
+      "y": -766.5029296875
     },
     {
       "action": "",
@@ -43,8 +43,8 @@
       "id": 3,
       "move_mode": "dash",
       "type": "path",
-      "x": 4458.091796875,
-      "y": -809.435546875
+      "x": 4469.7744140625,
+      "y": -821.4443359375
     },
     {
       "action": "",
@@ -52,17 +52,26 @@
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": 4480.7470703125,
-      "y": -834.7421875
+      "x": 4508.8125,
+      "y": -860.5699369990816
+    },
+    {
+      "action": "combat_script",
+      "action_params": "attack(0.3)",
+      "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 4519.66015625,
+      "y": -846.310546875
     },
     {
       "action": "fight",
       "action_params": "",
-      "id": 5,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
-      "x": 4518.404296875,
-      "y": -844.1630859375
+      "x": 4506.62890625,
+      "y": -855.7822265625
     }
   ]
 }

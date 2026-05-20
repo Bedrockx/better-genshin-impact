@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时113秒，包含以下怪物：1只丘丘人、1只打手丘丘人、1只丘丘雷兜王、1只深海龙蜥·原种_600。",
     "enable_monster_loot_split": false,
     "hash_res": "61562744",
-    "last_modified_time": 1778776114863,
+    "last_modified_time": 1779382488027,
     "map_match_method": "",
     "map_name": "Enkanomiya",
     "name": "ZC024稻妻渊下宫狭间之街西北",
@@ -44,8 +44,8 @@
       "id": 3,
       "move_mode": "dash",
       "type": "path",
-      "x": 671.3749881497513,
-      "y": 658.5630911605749
+      "x": 674.9791259765625,
+      "y": 663.422607421875
     },
     {
       "action": "stop_flying",
@@ -53,8 +53,8 @@
       "id": 4,
       "move_mode": "fly",
       "type": "path",
-      "x": 686.9046630859375,
-      "y": 657.15673828125
+      "x": 735.59375,
+      "y": 645.5934313931605
     },
     {
       "action": "",
@@ -62,8 +62,8 @@
       "id": 5,
       "move_mode": "dash",
       "type": "path",
-      "x": 741.5596923828125,
-      "y": 632.30419921875
+      "x": 760.3934326171875,
+      "y": 636.2022705078125
     },
     {
       "action": "combat_script",
@@ -71,12 +71,12 @@
       "id": 6,
       "move_mode": "dash",
       "type": "path",
-      "x": 766.555908203125,
-      "y": 617.6632080078125
+      "x": 772.8348388671875,
+      "y": 621.9598388671875
     },
     {
       "action": "combat_script",
-      "action_params": "attack(0.1)",
+      "action_params": "attack(0.3)",
       "id": 7,
       "move_mode": "dash",
       "type": "path",
@@ -85,12 +85,12 @@
     },
     {
       "action": "combat_script",
-      "action_params": "attack(0.1)",
+      "action_params": "attack(0.3)",
       "id": 8,
-      "move_mode": "dash",
+      "move_mode": "jump",
       "type": "path",
-      "x": 775.9912109375,
-      "y": 652.8477783203125
+      "x": 773.9375,
+      "y": 651.8752275763138
     },
     {
       "action": "fight",
@@ -98,8 +98,8 @@
       "id": 9,
       "move_mode": "dash",
       "type": "path",
-      "x": 778.1483154296875,
-      "y": 635.0220947265625
+      "x": 771.7183837890625,
+      "y": 631.18603515625
     }
   ]
 }

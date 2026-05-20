@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时70.28秒，包含以下怪物：2只射手丘丘人、2只火箭丘丘人、1只丘丘岩盔王。",
     "enable_monster_loot_split": false,
     "hash_res": "67300983",
-    "last_modified_time": 1777395635317,
+    "last_modified_time": 1779365964928,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "D031须弥沙漠饱饮之丘东",
@@ -48,22 +48,13 @@
       "y": -1821.4287109375
     },
     {
-      "action": "",
+      "action": "fight",
       "action_params": "",
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": 4927.8994140625,
-      "y": -1865.833984375
-    },
-    {
-      "action": "fight",
-      "action_params": "",
-      "id": 5,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 4912.8564453125,
-      "y": -1848.98828125
+      "x": 4930.6796875,
+      "y": -1864.7353515625
     }
   ]
 }
