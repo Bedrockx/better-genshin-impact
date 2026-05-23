@@ -153,4 +153,12 @@ public class KazuhaCollectRoomState
     /// 用于 OnDisconnectedAsync 检测万叶离线时的自动 Skipped 广播。
     /// </summary>
     public string? KazuhaConnectionId { get; set; }
+
+    /// <summary>
+    /// 当前周期的 syncKey（由首个 NotifyKazuhaArrivedAtFightPoint 调用方传入）。
+    /// 在 KazuhaCollectStarted / KazuhaCollectFinished / KazuhaCollectSkipped 三个广播中携带，
+    /// 让落后客户端进入 WaitAsNonKazuhaAsync 时能精确判断"上次终态广播是不是当前 syncKey"，
+    /// 避免错过事件后空等 KazuhaSyncTimeoutSeconds 超时（multiplayer-kazuha-pre-cast-positioning Q3）。
+    /// </summary>
+    public string? CurrentSyncKey { get; set; }
 }

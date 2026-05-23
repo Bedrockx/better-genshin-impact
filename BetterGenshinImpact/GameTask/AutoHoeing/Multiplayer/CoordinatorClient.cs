@@ -59,12 +59,12 @@ public class CoordinatorClient : IAsyncDisposable
     public event Action<int>? StartRouteReceived; // targetRouteIndex
 
     // === 万叶聚物同步事件 ===
-    /// <summary>万叶玩家发起聚物动作时触发，载荷为发起者 PlayerUid。</summary>
-    public event Action<string>? KazuhaCollectStarted;
-    /// <summary>万叶聚物动作完成时触发，载荷为发起者 PlayerUid 和成功标志。</summary>
-    public event Action<string, bool>? KazuhaCollectFinished;
-    /// <summary>万叶聚物因任意降级原因被跳过时触发，载荷为原因码（team_no_kazuha / switch_failed / e_skill_not_released / kazuha_offline / kazuha_disconnected / kazuha_anomaly / timeout）。</summary>
-    public event Action<string>? KazuhaCollectSkipped;
+    /// <summary>万叶玩家发起聚物动作时触发，载荷为发起者 PlayerUid + 当前周期 syncKey。</summary>
+    public event Action<string, string>? KazuhaCollectStarted;
+    /// <summary>万叶聚物动作完成时触发，载荷为发起者 PlayerUid + 成功标志 + 当前周期 syncKey。</summary>
+    public event Action<string, bool, string>? KazuhaCollectFinished;
+    /// <summary>万叶聚物因任意降级原因被跳过时触发，载荷为原因码（team_no_kazuha / switch_failed / e_skill_not_released / kazuha_offline / kazuha_disconnected / kazuha_anomaly / timeout）+ 当前周期 syncKey。</summary>
+    public event Action<string, string>? KazuhaCollectSkipped;
     /// <summary>当前同步周期内所有玩家都到达战斗点时触发，载荷为 syncKey（routeId:segmentIndex）。</summary>
     public event Action<string>? AllArrivedAtFightPoint;
 
@@ -138,14 +138,14 @@ public class CoordinatorClient : IAsyncDisposable
                 playerUid => KazuhaPlayerUpdated?.Invoke(playerUid));
 
             // === 万叶聚物同步事件订阅 ===
-            _connection.On<string>("KazuhaCollectStarted",
-                playerUid => KazuhaCollectStarted?.Invoke(playerUid));
+            _connection.On<string, string>("KazuhaCollectStarted",
+                (playerUid, syncKey) => KazuhaCollectStarted?.Invoke(playerUid, syncKey));
 
-            _connection.On<string, bool>("KazuhaCollectFinished",
-                (playerUid, success) => KazuhaCollectFinished?.Invoke(playerUid, success));
+            _connection.On<string, bool, string>("KazuhaCollectFinished",
+                (playerUid, success, syncKey) => KazuhaCollectFinished?.Invoke(playerUid, success, syncKey));
 
-            _connection.On<string>("KazuhaCollectSkipped",
-                reason => KazuhaCollectSkipped?.Invoke(reason));
+            _connection.On<string, string>("KazuhaCollectSkipped",
+                (reason, syncKey) => KazuhaCollectSkipped?.Invoke(reason, syncKey));
 
             _connection.On<string>("AllArrivedAtFightPoint",
                 syncKey => AllArrivedAtFightPoint?.Invoke(syncKey));
