@@ -534,6 +534,15 @@ public class AutoFightTask : ISoloTask
         // 战斗操作
         var fightTask = Task.Run(async () =>
         {
+            // 重置静态战斗状态：必须在任何后台子任务（FindExp / TakeMedicineAsync / KazuhaContinuousReturnLoopAsync）
+            // 启动之前完成，否则子任务在启动同步段就会读到上一场战斗遗留的 stale 标志（特别是 FightEndTotoly=true），
+            // 导致 while 循环条件立即为 true 而退出（联机锄地连续战斗下尤其明显——日志只剩
+            // "自动吃药：检测间隔..." 一行，主检测循环根本没进入）。
+            FightStatusFlag = true;
+            FightEndTotoly = false;
+            _totolyEndCount = 0;
+            _2ndEndFlag = false;
+
             #region 基于战斗检测经验值开关万叶拾取功能同步任务
             
             if (_taskParam.ExpKazuhaPickup) FindExp(cts2.Token);
@@ -556,11 +565,6 @@ public class AutoFightTask : ISoloTask
             
             try
             {
-                FightStatusFlag = true;
-                FightEndTotoly = false;
-                _totolyEndCount = 0;
-                _2ndEndFlag = false;
-
                 // multiplayer-kazuha-pre-cast-positioning EB2: 联机锄地 + 万叶玩家场景下，启动独立"持续回点"后台任务。
                 // 必须放在 FightEndTotoly = false 之后，否则会读到上一场战斗结束遗留的 stale true，循环立即退出。
                 // 与 fightTask 主循环并行运行，绑定同一 cts2.Token（战斗结束/取消时统一终止）。
