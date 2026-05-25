@@ -45,6 +45,8 @@
     <Compile Include="GameTaskTests\AutoFightTests\CheckFightFinishDoubleCheckTests.cs" />
     <!-- multiplayer-kazuha-pre-cast-positioning: re-include PBT-1 测试文件 -->
     <Compile Include="GameTaskTests\AutoFightTests\AutoFightSeekDecisionsTests.cs" />
+    <!-- fight-return-to-point-revamp: re-include 通用版回点决策 PBT 测试文件 -->
+    <Compile Include="GameTaskTests\AutoFightTests\ReturnToFightPointDecisionsTests.cs" />
     <!-- 排除有编译错误的测试文件 -->
     <Compile Remove="GameTaskTests\UseRedeemCodeTests\RedeemCodeExpiredCodesBugConditionTest.cs" />
     <Compile Remove="GameTaskTests\AutoHoeingTests\CoordinatorClientWaitPointTests.cs" />

@@ -74,6 +74,26 @@ public class AutoFightTask : ISoloTask
 
     // 战斗点位
     public static WaypointForTrack? FightWaypoint  {get; set;} = null;
+
+    /// <summary>
+    /// 最近一次"看到敌人"的时间戳。
+    /// 由 AutoFightSeek.SeekAndFightAsync 在 4 处 return false 之前同步赋值；
+    /// 由 GeneralReturnToFightPointLoopAsync 时间触发判据读取；
+    /// 万叶专属循环 KazuhaContinuousReturnLoopAsync 不感知此字段（§3.13 强约束）。
+    ///
+    /// 战斗开始（fightTask 静态状态重置块）SHALL 重置为 DateTime.UtcNow，
+    /// 避免跨战斗轮次读到 stale 值。
+    ///
+    /// 线程安全：DateTime 不能直接 volatile，通过 long ticks + Volatile.Read/Write 实现。
+    /// 详见 .kiro/specs/fight-return-to-point-revamp/design.md §2.3
+    /// </summary>
+    private static long _lastEnemySeenAtTicks = DateTime.UtcNow.Ticks;
+
+    public static DateTime LastEnemySeenAt
+    {
+        get => new DateTime(System.Threading.Volatile.Read(ref _lastEnemySeenAtTicks), DateTimeKind.Utc);
+        set => System.Threading.Volatile.Write(ref _lastEnemySeenAtTicks, value.Ticks);
+    }
     
     private static readonly object PickLock = new object(); 
     
@@ -525,16 +545,11 @@ public class AutoFightTask : ISoloTask
         
         //旋转次数
         var rotationLimit = _taskParam.RotaryFactor == 1 ? 500 : _taskParam.FinishDetectConfig.RotationMode && _taskParam.FinishDetectConfig.RotateFindEnemyEnabled ? 50 : 6;
-        
-        //_taskParam.FinishDetectConfig.RetryDis大于150，设置为150，小于7，设置为6，否则取其值
-        _taskParam.FinishDetectConfig.RetryDis = _taskParam.FinishDetectConfig.RetryDis > 150
-            ? 150
-            : (_taskParam.FinishDetectConfig.RetryDis < 7 ? 6 : _taskParam.FinishDetectConfig.RetryDis);
 
         // 战斗操作
         var fightTask = Task.Run(async () =>
         {
-            // 重置静态战斗状态：必须在任何后台子任务（FindExp / TakeMedicineAsync / KazuhaContinuousReturnLoopAsync）
+            // 重置静态战斗状态：必须在任何后台子任务（FindExp / TakeMedicineAsync / KazuhaContinuousReturnLoopAsync / GeneralReturnToFightPointLoopAsync）
             // 启动之前完成，否则子任务在启动同步段就会读到上一场战斗遗留的 stale 标志（特别是 FightEndTotoly=true），
             // 导致 while 循环条件立即为 true 而退出（联机锄地连续战斗下尤其明显——日志只剩
             // "自动吃药：检测间隔..." 一行，主检测循环根本没进入）。
@@ -542,6 +557,7 @@ public class AutoFightTask : ISoloTask
             FightEndTotoly = false;
             _totolyEndCount = 0;
             _2ndEndFlag = false;
+            LastEnemySeenAt = DateTime.UtcNow;
 
             #region 基于战斗检测经验值开关万叶拾取功能同步任务
             
@@ -573,8 +589,41 @@ public class AutoFightTask : ISoloTask
                 // 战斗中持续回点功能在所有联机锄地场景下都能生效。
                 if (_taskParam.KazuhaContinuousReturn)
                 {
+                    // 万叶专属循环（最高优先级，§3.11 一行不动）
                     _ = Task.Run(() => KazuhaContinuousReturnLoopAsync(cts2.Token), cts2.Token);
                 }
+                else if (_taskParam.FinishDetectConfig.ReturnToFightPointEnabled)
+                {
+                    // 通用版循环：距离触发 + 时间触发并存
+                    var rotateFindEnemyEnabled = _taskParam.FinishDetectConfig.RotateFindEnemyEnabled;
+                    var timeTriggerEnabled = _taskParam.FinishDetectConfig.ReturnToFightPointTimeTriggerEnabled;
+                    var intervalMs = _taskParam.FinishDetectConfig.ReturnToFightPointIntervalMs;
+                    var triggerDistance = _taskParam.FinishDetectConfig.ReturnToFightPointTriggerDistance;
+                    var stopDistance = _taskParam.FinishDetectConfig.ReturnToFightPointStopDistance;
+                    var timeTriggerSeconds = _taskParam.FinishDetectConfig.ReturnToFightPointTimeTriggerSeconds;
+
+                    if (timeTriggerEnabled && !rotateFindEnemyEnabled)
+                    {
+                        TaskControl.Logger.LogWarning(
+                            "[AutoFight][回点] 时间触发启用但旋转寻敌未启用，时间触发分支跳过；距离触发不受影响");
+                    }
+
+                    if (AutoFightSeekDecisions.IsReturnToFightPointConfigValid(
+                            intervalMs, triggerDistance, stopDistance,
+                            timeTriggerEnabled, rotateFindEnemyEnabled, timeTriggerSeconds))
+                    {
+                        _ = Task.Run(() => GeneralReturnToFightPointLoopAsync(
+                            cts2.Token, intervalMs, triggerDistance, stopDistance,
+                            timeTriggerEnabled, timeTriggerSeconds, rotateFindEnemyEnabled), cts2.Token);
+                    }
+                    else
+                    {
+                        TaskControl.Logger.LogWarning(
+                            "[AutoFight][回点] 配置非法（trigger={Trigger:F1}, stop={Stop:F1}, interval={Interval}ms, timeSec={TimeSec}），本次任务不启用通用版回点循环",
+                            triggerDistance, stopDistance, intervalMs, timeTriggerSeconds);
+                    }
+                }
+                // else 单机/联机非万叶 + 总开关 false 默认不启动任何回点循环（§3.1 单机零行为变化）
 
                 // 进入战斗后，不检查战斗结束的判断
                 if (_taskParam.FinishDetectConfig.EndModel && _taskParam.FinishDetectConfig.FightWaitNotEndTime > 0)
@@ -904,7 +953,7 @@ public class AutoFightTask : ISoloTask
                             try
                             {
                                 await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime, delayTime,
-                                    cts2.Token, true, _taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
+                                    cts2.Token, true, _taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
                                     kazuhaContinuousReturn: _taskParam.KazuhaContinuousReturn,
                                     returnIntervalMs: 1000,
                                     returnDistanceThreshold: 1.0);
@@ -1633,7 +1682,7 @@ public class AutoFightTask : ISoloTask
                 {
                     Task.Run(async () =>
                     {
-                        result = await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime, delayTime, ct,false,_taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
+                        result = await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime, delayTime, ct,false,_taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
                             kazuhaContinuousReturn: _taskParam.KazuhaContinuousReturn,
                             returnIntervalMs: 1000,
                             returnDistanceThreshold: 1.0); 
@@ -1644,7 +1693,7 @@ public class AutoFightTask : ISoloTask
                 }
                 else
                 {
-                    result = await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime,  delayTime, ct,false,_taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.RetryDis,_taskParam.FinishDetectConfig.PaimonEndModel? _taskParam.FinishDetectConfig.PaimonEndModel:_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
+                    result = await AutoFightSeek.SeekAndFightAsync(TaskControl.Logger, detectDelayTime,  delayTime, ct,false,_taskParam.RotaryFactor,avatar,_taskParam.FinishDetectConfig.GoDistance,_taskParam.FinishDetectConfig.PaimonEndModel? _taskParam.FinishDetectConfig.PaimonEndModel:_taskParam.FinishDetectConfig.EndModel,_taskParam.FinishDetectConfig.RotationMode,
                         kazuhaContinuousReturn: _taskParam.KazuhaContinuousReturn,
                         returnIntervalMs: 1000,
                         returnDistanceThreshold: 1.0); 
@@ -2525,6 +2574,192 @@ public class AutoFightTask : ISoloTask
         finally
         {
             TaskControl.Logger.LogDebug("[联机][万叶] 持续回点后台任务已退出");
+        }
+    }
+
+    /// <summary>
+    /// 通用版"战斗中回点"独立后台循环。
+    /// 与 fightTask 主循环并行，由 cts2.Token 统一控制取消（战斗结束 / FightEndTotoly / 外部取消时停止）。
+    ///
+    /// 仅在以下三态分支启用：
+    ///   - _taskParam.KazuhaContinuousReturn == false（万叶专属循环优先）
+    ///   - _taskParam.FinishDetectConfig.ReturnToFightPointEnabled == true
+    ///   - AutoFightSeekDecisions.IsReturnToFightPointConfigValid(...) == true
+    ///
+    /// 每轮先后判定两个触发器（任一满足即触发同一份 MoveTo）：
+    ///   1. 距离触发：realtimeDistance > triggerDistance
+    ///   2. 时间触发：UtcNow - LastEnemySeenAt > timeTriggerSeconds（需 timeTriggerEnabled && rotateFindEnemyEnabled）
+    ///
+    /// 详见 .kiro/specs/fight-return-to-point-revamp/design.md §2.4
+    /// </summary>
+    private async Task GeneralReturnToFightPointLoopAsync(
+        CancellationToken token,
+        int intervalMs,
+        double triggerDistance,
+        double stopDistance,
+        bool timeTriggerEnabled,
+        int timeTriggerSeconds,
+        bool rotateFindEnemyEnabled)
+    {
+        const int distanceTolerance = 2;  // 触发 / 停止判定连续命中次数容差，过滤位置识别瞬时误差
+        var lastReturnAt = DateTime.MinValue;
+        int triggerHitCount = 0;  // 连续 distance > triggerDistance 命中次数
+
+        try
+        {
+            TaskControl.Logger.LogInformation(
+                "[AutoFight][回点] 通用版后台任务已启动 (interval={Interval}ms, trigger={Trigger:F1}, stop={Stop:F1}, timeTrigger={TimeEnabled} {TimeSec}s)",
+                intervalMs, triggerDistance, stopDistance,
+                timeTriggerEnabled && rotateFindEnemyEnabled, timeTriggerSeconds);
+
+            while (!token.IsCancellationRequested && !FightEndTotoly)
+            {
+                try
+                {
+                    await Task.Delay(intervalMs, token);
+                }
+                catch (OperationCanceledException) { return; }
+
+                if (FightEndTotoly || token.IsCancellationRequested) return;
+
+                var fightWaypoint = FightWaypoint;
+                if (fightWaypoint is null) continue;
+
+                var elapsedSinceLastReturnMs = (DateTime.UtcNow - lastReturnAt).TotalMilliseconds;
+
+                // 派蒙可见性校验：战斗激烈时派蒙图标可能被遮挡 → GetPosition 不可靠 → 跳过本轮。
+                // 不污染 triggerHitCount（连续计数仅在能可靠测量距离时才累加）。
+                using var screen = CaptureToRectArea();
+                if (!Bv.IsInMainUi(screen))
+                {
+                    TaskControl.Logger.LogDebug("[AutoFight][回点] 派蒙不可见（战斗界面遮挡），本轮跳过测距");
+                    continue;
+                }
+
+                OpenCvSharp.Point2f currentPos;
+                try
+                {
+                    currentPos = Navigation.GetPosition(screen, fightWaypoint.MapName, fightWaypoint.MapMatchMethod);
+                }
+                catch (Exception ex)
+                {
+                    TaskControl.Logger.LogDebug(ex, "[AutoFight][回点] 位置识别失败，本轮跳过");
+                    continue;
+                }
+
+                if (currentPos is { X: 0, Y: 0 }) continue;
+
+                var realtimeDistance = Navigation.GetDistance(fightWaypoint, currentPos);
+
+                // 距离触发容差：连续 distanceTolerance 次 distance > triggerDistance 才算真正触发；
+                // 一旦命中失败立即清零（断序即重置），避免间歇抖动累计成误触发
+                bool distanceTriggered = false;
+                if (AutoFightSeekDecisions.ShouldTriggerGeneralDistanceReturn(
+                        realtimeDistance, triggerDistance, elapsedSinceLastReturnMs, intervalMs))
+                {
+                    triggerHitCount++;
+                    if (triggerHitCount >= distanceTolerance)
+                    {
+                        distanceTriggered = true;
+                    }
+                    else
+                    {
+                        TaskControl.Logger.LogDebug("[AutoFight][回点] 距离 {Dist:F1} > {Trigger:F1} 命中 {Hit}/{Tol}，等待二次确认",
+                            realtimeDistance, triggerDistance, triggerHitCount, distanceTolerance);
+                    }
+                }
+                else
+                {
+                    triggerHitCount = 0;
+                }
+
+                // 再判时间触发（仅在距离触发未命中时判定，节流共享）
+                bool timeTriggered = false;
+                double elapsedSinceEnemySec = 0;
+                if (!distanceTriggered)
+                {
+                    elapsedSinceEnemySec = (DateTime.UtcNow - LastEnemySeenAt).TotalSeconds;
+                    timeTriggered = AutoFightSeekDecisions.ShouldTriggerTimeReturn(
+                        elapsedSinceEnemySec, timeTriggerSeconds, elapsedSinceLastReturnMs, intervalMs,
+                        timeTriggerEnabled, rotateFindEnemyEnabled);
+                }
+
+                if (!distanceTriggered && !timeTriggered) continue;
+
+                // 触发后重置容差计数器
+                triggerHitCount = 0;
+
+                try
+                {
+                    fightWaypoint.MoveMode = MoveModeEnum.Walk.Code;
+                    if (distanceTriggered)
+                    {
+                        TaskControl.Logger.LogInformation(
+                            "[AutoFight][回点] 距战斗点 {Dist:F1} > {Trigger:F1}，触发 MoveTo (stop: {Stop:F1})",
+                            realtimeDistance, triggerDistance, stopDistance);
+                    }
+                    else
+                    {
+                        TaskControl.Logger.LogInformation(
+                            "[AutoFight][回点] 时间触发：{ElapsedSec:F1}s 未发现敌人 > {TimeSec}s，触发 MoveTo (stop: {Stop:F1})",
+                            elapsedSinceEnemySec, timeTriggerSeconds, stopDistance);
+                    }
+
+                    // 通用版用 MoveTo（PATH 模式真寻路 + closeDistance 精确停止）
+                    // §Q1=B 决议：MoveTo 签名末尾新增 closeDistance: stopDistance 实参
+                    // isGetOut: false 关闭"卡死脱困"分支（PathExecutor.cs §2776 处的脱困触发器）：
+                    // 战斗中走回战斗点不应被脱困逻辑接管，避免与战斗主循环抢镜头/抢移动
+                    //
+                    // 战斗结束（FightEndTotoly=true）时立即打断进行中的 MoveTo：
+                    //   - cts2.Token 在 fightTask finally 之后才会被取消，期间 MoveTo 仍在按 W 键往前
+                    //   - PathExecutor ct 是构造时一次性传入的，必须每轮新建 + 接 linked CTS 才能中途取消
+                    //   - 后台轮询监测 FightEndTotoly，一旦战斗结束立即取消 linked CTS，PathExecutor 内部循环退出
+                    //   - finally 释放 W 键，避免战斗结束后角色继续往战斗点抖动
+                    using var moveCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    using var endWatcher = new CancellationTokenSource();
+                    var watcherTask = Task.Run(async () =>
+                    {
+                        while (!endWatcher.Token.IsCancellationRequested)
+                        {
+                            if (FightEndTotoly)
+                            {
+                                try { moveCts.Cancel(); } catch { /* already disposed */ }
+                                return;
+                            }
+                            try { await Task.Delay(100, endWatcher.Token); } catch { return; }
+                        }
+                    }, endWatcher.Token);
+
+                    try
+                    {
+                        // 每轮新建 PathExecutor，传入 linked CTS Token 以便 FightEndTotoly 时立即打断
+                        var movePathExecutor = new PathExecutor(moveCts.Token);
+                        await movePathExecutor.MoveTo(fightWaypoint,
+                            isGetOut: false, task: null, nextWaypoint: null, nextDistance: null,
+                            retryDis: 4, isPoint: false, closeDistance: stopDistance);
+                    }
+                    finally
+                    {
+                        endWatcher.Cancel();
+                        try { await watcherTask; } catch { /* ignore */ }
+                        // 兜底释放 W 键，避免战斗结束 / 取消时角色继续前进
+                        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+                    }
+
+                    // §Q7 T5：两个触发器后置都同步重置 lastReturnAt + LastEnemySeenAt
+                    lastReturnAt = DateTime.UtcNow;
+                    LastEnemySeenAt = DateTime.UtcNow;
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex)
+                {
+                    TaskControl.Logger.LogError(ex, "[AutoFight][回点] MoveTo 异常，本轮跳过");
+                }
+            }
+        }
+        finally
+        {
+            TaskControl.Logger.LogDebug("[AutoFight][回点] 通用版回点后台任务已退出");
         }
     }
 

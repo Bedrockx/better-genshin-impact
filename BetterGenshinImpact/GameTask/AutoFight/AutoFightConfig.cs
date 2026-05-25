@@ -128,11 +128,44 @@ public partial class AutoFightConfig : ObservableObject
         private bool _endModel = true;
         
         //快速检查方式的延时，默认为0.15秒
-        [ObservableProperty] 
+        [ObservableProperty]
         private double _fastCheckDelay = 0.1;
         
+        // 战斗中回点（通用版）配置 — 距离触发组
         [ObservableProperty]
-        private int _retryDis = 0;
+        private bool _returnToFightPointEnabled = false;
+
+        [ObservableProperty]
+        private int _returnToFightPointIntervalMs = 1000;
+
+        [ObservableProperty]
+        private double _returnToFightPointTriggerDistance = 15;
+
+        [ObservableProperty]
+        private double _returnToFightPointStopDistance = 10;
+
+        // 战斗中回点（通用版）配置 — 时间触发组（需 RotateFindEnemyEnabled = true）
+        [ObservableProperty]
+        private bool _returnToFightPointTimeTriggerEnabled = false;
+
+        [ObservableProperty]
+        private int _returnToFightPointTimeTriggerSeconds = 5;
+
+        /// <summary>
+        /// UI DataTrigger 用：距离配置是否合法（仅校验范围 0~150 与触发距离 &gt; 0；不再强制顺序）。
+        /// 参与 setter 自动变更通知（OnReturnToFightPointTriggerDistanceChanged / OnReturnToFightPointStopDistanceChanged）。
+        /// </summary>
+        public bool IsReturnToFightPointDistanceLegal =>
+            _returnToFightPointStopDistance >= 0
+            && _returnToFightPointStopDistance <= 150
+            && _returnToFightPointTriggerDistance > 0
+            && _returnToFightPointTriggerDistance <= 150;
+
+        partial void OnReturnToFightPointTriggerDistanceChanged(double value)
+            => OnPropertyChanged(nameof(IsReturnToFightPointDistanceLegal));
+
+        partial void OnReturnToFightPointStopDistanceChanged(double value)
+            => OnPropertyChanged(nameof(IsReturnToFightPointDistanceLegal));
 
         //开战前等待时间，默认为3秒，确保引战
         [ObservableProperty] 

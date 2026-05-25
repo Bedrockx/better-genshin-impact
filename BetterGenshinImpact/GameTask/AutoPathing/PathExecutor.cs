@@ -1839,7 +1839,7 @@ public class PathExecutor
 
     public DateTime moveToStartTime;
 
-    public async Task MoveTo(WaypointForTrack waypoint,bool isGetOut = true, PathingTask? task = null, Waypoint? nextWaypoint = null,double? nextDistance = null,int retryDis = 4, bool isPoint = true)
+    public async Task MoveTo(WaypointForTrack waypoint,bool isGetOut = true, PathingTask? task = null, Waypoint? nextWaypoint = null,double? nextDistance = null,int retryDis = 4, bool isPoint = true, double? closeDistance = null)
     {
         // Logger.LogWarning("999");
         // 切人
@@ -2644,7 +2644,8 @@ public class PathExecutor
                 }
             }
             
-            if (distance < (!isPoint ? (retryDis > 6 ? 15 : 4): (hurryOnLogo? 4 : 6)))
+            var stopThresholdNonPoint = closeDistance.HasValue ? closeDistance.Value : (retryDis > 6 ? 15 : 4);
+            if (distance < (!isPoint ? stopThresholdNonPoint : (hurryOnLogo? 4 : 6)))
             {
                 if (hurryOnIn)
                 {

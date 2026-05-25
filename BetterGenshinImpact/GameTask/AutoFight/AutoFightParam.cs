@@ -22,7 +22,12 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     
         public double FastCheckDelay { get; set; } = 0.1;
 
-        public int RetryDis { get; set; } = 0;
+        public bool ReturnToFightPointEnabled { get; set; } = false;
+        public int ReturnToFightPointIntervalMs { get; set; } = 1000;
+        public double ReturnToFightPointTriggerDistance { get; set; } = 15;
+        public double ReturnToFightPointStopDistance { get; set; } = 10;
+        public bool ReturnToFightPointTimeTriggerEnabled { get; set; } = false;
+        public int ReturnToFightPointTimeTriggerSeconds { get; set; } = 5;
         
         public int FightWaitNotEndTime { get; set; } = 0;
         
@@ -52,7 +57,12 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         FinishDetectConfig.RotationMode = autoFightConfig.FinishDetectConfig.RotationMode;
         FinishDetectConfig.EndModel = autoFightConfig.FinishDetectConfig.EndModel;
         FinishDetectConfig.FastCheckDelay = autoFightConfig.FinishDetectConfig.FastCheckDelay;
-        FinishDetectConfig.RetryDis = autoFightConfig.FinishDetectConfig.RetryDis;
+        FinishDetectConfig.ReturnToFightPointEnabled = autoFightConfig.FinishDetectConfig.ReturnToFightPointEnabled;
+        FinishDetectConfig.ReturnToFightPointIntervalMs = autoFightConfig.FinishDetectConfig.ReturnToFightPointIntervalMs;
+        FinishDetectConfig.ReturnToFightPointTriggerDistance = autoFightConfig.FinishDetectConfig.ReturnToFightPointTriggerDistance;
+        FinishDetectConfig.ReturnToFightPointStopDistance = autoFightConfig.FinishDetectConfig.ReturnToFightPointStopDistance;
+        FinishDetectConfig.ReturnToFightPointTimeTriggerEnabled = autoFightConfig.FinishDetectConfig.ReturnToFightPointTimeTriggerEnabled;
+        FinishDetectConfig.ReturnToFightPointTimeTriggerSeconds = autoFightConfig.FinishDetectConfig.ReturnToFightPointTimeTriggerSeconds;
         FinishDetectConfig.FightWaitNotEndTime = autoFightConfig.FinishDetectConfig.FightWaitNotEndTime;
         FinishDetectConfig.PaimonEndModel = autoFightConfig.FinishDetectConfig.PaimonEndModel;
         FinishDetectConfig.DoubleEndEnbled = autoFightConfig.FinishDetectConfig.DoubleEndEnbled;
@@ -197,7 +207,12 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         FinishDetectConfig.GoDistance = autoFightConfig.FinishDetectConfig.GoDistance;
         FinishDetectConfig.EndModel = autoFightConfig.FinishDetectConfig.EndModel;
         FinishDetectConfig.FastCheckDelay = autoFightConfig.FinishDetectConfig.FastCheckDelay;
-        FinishDetectConfig.RetryDis = autoFightConfig.FinishDetectConfig.RetryDis;
+        FinishDetectConfig.ReturnToFightPointEnabled = autoFightConfig.FinishDetectConfig.ReturnToFightPointEnabled;
+        FinishDetectConfig.ReturnToFightPointIntervalMs = autoFightConfig.FinishDetectConfig.ReturnToFightPointIntervalMs;
+        FinishDetectConfig.ReturnToFightPointTriggerDistance = autoFightConfig.FinishDetectConfig.ReturnToFightPointTriggerDistance;
+        FinishDetectConfig.ReturnToFightPointStopDistance = autoFightConfig.FinishDetectConfig.ReturnToFightPointStopDistance;
+        FinishDetectConfig.ReturnToFightPointTimeTriggerEnabled = autoFightConfig.FinishDetectConfig.ReturnToFightPointTimeTriggerEnabled;
+        FinishDetectConfig.ReturnToFightPointTimeTriggerSeconds = autoFightConfig.FinishDetectConfig.ReturnToFightPointTimeTriggerSeconds;
         FinishDetectConfig.FightWaitNotEndTime = autoFightConfig.FinishDetectConfig.FightWaitNotEndTime;
         FinishDetectConfig.PaimonEndModel = autoFightConfig.FinishDetectConfig.PaimonEndModel;
         FinishDetectConfig.DoubleEndEnbled = autoFightConfig.FinishDetectConfig.DoubleEndEnbled;

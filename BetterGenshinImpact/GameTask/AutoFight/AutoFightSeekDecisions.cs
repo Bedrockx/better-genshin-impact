@@ -19,4 +19,68 @@ public static class AutoFightSeekDecisions
         return realtimeDistance > returnDistanceThreshold
                && elapsedMsSinceLastReturn >= returnIntervalMs;
     }
+
+    /// <summary>
+    /// 通用版回点配置合法性校验。仅当所有判据满足时返回 true。
+    /// PBT 友好：无外部依赖，纯函数。
+    /// 距离触发部分始终校验；时间触发部分仅当 timeTriggerEnabled && rotateFindEnemyEnabled 才校验。
+    /// 详见 .kiro/specs/fight-return-to-point-revamp/design.md §2.2.1
+    /// </summary>
+    public static bool IsReturnToFightPointConfigValid(
+        int intervalMs,
+        double triggerDistance,
+        double stopDistance,
+        bool timeTriggerEnabled,
+        bool rotateFindEnemyEnabled,
+        int timeTriggerSeconds)
+    {
+        // 距离触发部分（始终校验）
+        if (intervalMs <= 0) return false;
+        if (!(triggerDistance > 0) || !(triggerDistance <= 150)) return false;
+        if (!(stopDistance >= 0) || !(stopDistance <= 150)) return false;
+        // 注意：不强制 stopDistance < triggerDistance；
+        // 用户可设 trigger=8 / stop=15 的"宽松回点"语义：玩家 ≥ 8 触发但只需走回到 < 15 即停。
+
+        // 时间触发部分（仅当两开关同时开启才校验）
+        if (timeTriggerEnabled && rotateFindEnemyEnabled)
+        {
+            if (timeTriggerSeconds <= 0 || timeTriggerSeconds > 600) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// 通用版回点距离触发判据：当前距离 > 触发距离 ∧ 上次回点已过节流间隔。
+    /// 详见 .kiro/specs/fight-return-to-point-revamp/design.md §2.2.2
+    /// </summary>
+    public static bool ShouldTriggerGeneralDistanceReturn(
+        double realtimeDistance,
+        double triggerDistance,
+        double elapsedSinceLastReturnMs,
+        int intervalMs)
+    {
+        if (!(triggerDistance > 0) || intervalMs <= 0) return false;
+        return realtimeDistance > triggerDistance
+               && elapsedSinceLastReturnMs >= intervalMs;
+    }
+
+    /// <summary>
+    /// 通用版回点时间触发判据：连续 timeTriggerSeconds 秒未发现敌人 ∧ 上次回点已过节流间隔。
+    /// 严格大于（&gt;）避免边界抖动；与 §Q7 T4 决议对齐。
+    /// 必须 timeTriggerEnabled && rotateFindEnemyEnabled 同时为 true 才生效。
+    /// 详见 .kiro/specs/fight-return-to-point-revamp/design.md §2.2.3
+    /// </summary>
+    public static bool ShouldTriggerTimeReturn(
+        double elapsedSinceEnemySec,
+        int timeTriggerSeconds,
+        double elapsedSinceLastReturnMs,
+        int intervalMs,
+        bool timeTriggerEnabled,
+        bool rotateFindEnemyEnabled)
+    {
+        if (!timeTriggerEnabled || !rotateFindEnemyEnabled) return false;
+        if (timeTriggerSeconds <= 0 || intervalMs <= 0) return false;
+        return elapsedSinceEnemySec > timeTriggerSeconds
+               && elapsedSinceLastReturnMs >= intervalMs;
+    }
 }

@@ -338,7 +338,7 @@ namespace BetterGenshinImpact.GameTask.AutoFight
         private  static volatile  bool _moveAroadLock = false;
         
         public static async Task<bool?> SeekAndFightAsync(ILogger logger, int detectDelayTime,int delayTime,CancellationToken ct,
-            bool isEndCheck = false,int rotaryFactor = 6,Avatar? avatar = null,int distance = 1000,int retryDis = 0,bool isQuickyEnd = false,bool isRotationSeek = false,
+            bool isEndCheck = false,int rotaryFactor = 6,Avatar? avatar = null,int distance = 1000,bool isQuickyEnd = false,bool isRotationSeek = false,
             bool kazuhaContinuousReturn = false,
             int returnIntervalMs = 5000,
             double returnDistanceThreshold = 6.0)
@@ -361,42 +361,6 @@ namespace BetterGenshinImpact.GameTask.AutoFight
                 // Logger.LogInformation("开始寻找敌人 {Text} ...",adjustedX);
 
                 int retryCount = isEndCheck ? 1 : 0;
-
-                // 默认路径：保持原 Task.Run + retryDis 快照 + Wait(2000) + Delay(5000) 行为完全等价
-                // 联机万叶玩家显式传 kazuhaContinuousReturn=true 时不进此分支，避免与 while 循环内的"持续回点"重复
-                if (!kazuhaContinuousReturn)
-                {
-                    Task.Run(() =>
-                    {
-                        if (Monitor.TryEnter(MoveLock))
-                        {
-                            try
-                            {
-                                if (retryDis > 6 && AutoFightTask.FightWaypoint is not null)
-                                {
-                                    AutoFightTask.FightWaypoint.MoveMode = MoveModeEnum.Walk.Code;
-                                    pathExecutor.MoveTo(AutoFightTask.FightWaypoint, false, null, null,
-                                        null,
-                                        retryDis, false).Wait(2000, ct);
-                                    Task.Delay(5000, ct).Wait();
-                                }
-                                else
-                                {
-                                    // Logger.LogWarning("检测到离开战斗点 {retryDis}，但没有战斗节点数据，无法回到战斗节点",retryDis);
-                                }
-                            }
-                            catch (Exception e)
-                            {
-                                TaskControl.Logger.LogError(e, "战斗回到点移动异常");
-                                throw;
-                            }
-                            finally
-                            {
-                                Monitor.Exit(MoveLock);
-                            }
-                        }
-                    }, ct);
-                }
 
                 // 联机万叶玩家"持续回点"用：上次回点完成时间，用于最小间隔节流
                 var lastReturnAt = DateTime.MinValue;
@@ -520,6 +484,7 @@ namespace BetterGenshinImpact.GameTask.AutoFight
                                         MoveForwardTask.MoveForwardAsync(bloodLower, bloodLower, logger, ct,
                                             distance);
                                     }, ct);
+                                AutoFightTask.LastEnemySeenAt = DateTime.UtcNow;
                                 return false;
                             }
 
@@ -535,6 +500,7 @@ namespace BetterGenshinImpact.GameTask.AutoFight
                                     Task.Delay(100, ct).Wait();
                                 }
 
+                                AutoFightTask.LastEnemySeenAt = DateTime.UtcNow;
                                 return false;
                             }
 
@@ -655,12 +621,14 @@ namespace BetterGenshinImpact.GameTask.AutoFight
                                         MoveForwardTask.MoveForwardAsync(bloodLower, bloodLower, logger, ct,
                                             distance);
                                     }, ct);
+                                AutoFightTask.LastEnemySeenAt = DateTime.UtcNow;
                                 return false;
                             }
 
                             if (height2 > 6 && height2 < 25)
                             {
                                 // logger.LogInformation("画面内有找到敌人，继续战斗...");
+                                AutoFightTask.LastEnemySeenAt = DateTime.UtcNow;
                                 return false;
                             }
 

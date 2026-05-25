@@ -1533,34 +1533,189 @@
                                     
                                 </Grid>
                                 
-                                <Grid Margin="16">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <ui:TextBlock Grid.Row="0"
-                                                  Grid.Column="0"
-                                                  FontTypography="Body"
-                                                  Text="战斗过程回到战斗开始节点"
-                                                  TextWrapping="Wrap" />
-                                    <ui:TextBlock Grid.Row="1"
-                                                  Grid.Column="0"
-                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="在此范围内不执行回到战斗点，可设范围0~150，设置小于7即为不开启该功能。"
-                                                  TextWrapping="Wrap" />
-                                    <ui:TextBox Grid.Row="0"
-                                                Grid.RowSpan="2"
-                                                Grid.Column="1"
-                                                MinWidth="80"
-                                                MaxHeight="50"
-                                                VerticalContentAlignment="Center"
-                                                HorizontalContentAlignment="Center"
-                                                Text="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.RetryDis}" />
-                                </Grid>
+                                <ui:CardExpander Margin="16,0,16,12"
+                                                 ContentPadding="0"
+                                                 IsExpanded="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.ReturnToFightPointEnabled, Mode=OneWay}">
+                                    <ui:CardExpander.Header>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <ui:TextBlock Grid.Row="0"
+                                                          Grid.Column="0"
+                                                          FontTypography="Body"
+                                                          Text="战斗过程回到战斗开始节点"
+                                                          TextWrapping="Wrap" />
+                                            <ui:TextBlock Grid.Row="1"
+                                                          Grid.Column="0"
+                                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                          Text="玩家偏离战斗点超过触发距离时自动 PATH 模式走回开战点；距离触发与旋转寻敌解耦。"
+                                                          TextWrapping="Wrap" />
+                                            <ui:ToggleSwitch Grid.Row="0"
+                                                             Grid.RowSpan="2"
+                                                             Grid.Column="1"
+                                                             Margin="0,0,16,0"
+                                                             IsChecked="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.ReturnToFightPointEnabled, Mode=TwoWay}" />
+                                        </Grid>
+                                    </ui:CardExpander.Header>
+                                    <StackPanel>
+                                        <Grid Margin="16">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="80" />
+                                                <ColumnDefinition Width="80" />
+                                                <ColumnDefinition Width="80" />
+                                            </Grid.ColumnDefinitions>
+                                            <ui:TextBlock Grid.Row="0"
+                                                          Grid.Column="0"
+                                                          FontTypography="Body"
+                                                          Text="检测间隔 / 触发距离 / 停止距离"
+                                                          TextWrapping="Wrap" />
+                                            <ui:TextBlock Grid.Row="1"
+                                                          Grid.Column="0"
+                                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                          Text="玩家偏离战斗点 ≥「触发距离」即往回走，走回到「停止距离」以内即停步。两者顺序不限：触发 ≤ 停止 时为「灵活回点」，到达停止距离即可松手；触发 &gt; 停止 时为「滞回精确」，必须走回到内圈才停。两值范围 0~150。"
+                                                          TextWrapping="Wrap" />
+
+                                            <ui:TextBlock Grid.Row="0"
+                                                          Grid.Column="1"
+                                                          FontSize="11"
+                                                          HorizontalAlignment="Center"
+                                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                          Text="间隔(ms)" />
+                                            <ui:TextBlock Grid.Row="0"
+                                                          Grid.Column="2"
+                                                          FontSize="11"
+                                                          HorizontalAlignment="Center"
+                                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                          Text="触发距离" />
+                                            <ui:TextBlock Grid.Row="0"
+                                                          Grid.Column="3"
+                                                          FontSize="11"
+                                                          HorizontalAlignment="Center"
+                                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                          Text="停止距离" />
+
+                                            <ui:TextBox Grid.Row="1"
+                                                        Grid.Column="1"
+                                                        MinWidth="60"
+                                                        MaxHeight="40"
+                                                        Margin="4,0,4,0"
+                                                        VerticalContentAlignment="Center"
+                                                        HorizontalContentAlignment="Center"
+                                                        Text="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.ReturnToFightPointIntervalMs}" />
+                                            <ui:TextBox Grid.Row="1"
+                                                        Grid.Column="2"
+                                                        MinWidth="60"
+                                                        MaxHeight="40"
+                                                        Margin="4,0,4,0"
+                                                        VerticalContentAlignment="Center"
+                                                        HorizontalContentAlignment="Center"
+                                                        Text="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.ReturnToFightPointTriggerDistance}" />
+                                            <ui:TextBox Grid.Row="1"
+                                                        Grid.Column="3"
+                                                        MinWidth="60"
+                                                        MaxHeight="40"
+                                                        Margin="4,0,4,0"
+                                                        VerticalContentAlignment="Center"
+                                                        HorizontalContentAlignment="Center"
+                                                        Text="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.ReturnToFightPointStopDistance}" />
+
+                                            <ui:TextBlock Grid.Row="2"
+                                                          Grid.Column="0"
+                                                          Grid.ColumnSpan="4"
+                                                          Margin="0,8,0,0"
+                                                          FontSize="11"
+                                                          Foreground="#FFD33333"
+                                                          Text="⚠ 配置非法：触发距离与停止距离须在 0~150 范围内（触发距离 &gt; 0），否则本次任务不启用通用版回点循环。"
+                                                          TextWrapping="Wrap">
+                                                <ui:TextBlock.Style>
+                                                    <Style TargetType="ui:TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.IsReturnToFightPointDistanceLegal}" Value="False">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ui:TextBlock.Style>
+                                            </ui:TextBlock>
+                                        </Grid>
+
+                                        <ui:CardExpander Margin="16,0,16,12"
+                                                         ContentPadding="0"
+                                                         IsEnabled="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.RotateFindEnemyEnabled}"
+                                                         IsExpanded="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.ReturnToFightPointTimeTriggerEnabled, Mode=OneWay}">
+                                            <ui:CardExpander.Header>
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <ui:TextBlock Grid.Row="0"
+                                                                  Grid.Column="0"
+                                                                  FontTypography="Body"
+                                                                  Text="战斗中按时间间隔回点（需开启旋转寻敌）"
+                                                                  TextWrapping="Wrap" />
+                                                    <ui:TextBlock Grid.Row="1"
+                                                                  Grid.Column="0"
+                                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                                  Text="连续若干秒未发现敌人即触发回点；旋转寻敌未启用时本组失效。秒数建议 1~60 默认 5。"
+                                                                  TextWrapping="Wrap" />
+                                                    <ui:ToggleSwitch Grid.Row="0"
+                                                                     Grid.RowSpan="2"
+                                                                     Grid.Column="1"
+                                                                     Margin="0,0,16,0"
+                                                                     IsChecked="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.ReturnToFightPointTimeTriggerEnabled, Mode=TwoWay}" />
+                                                </Grid>
+                                            </ui:CardExpander.Header>
+                                            <StackPanel>
+                                                <Grid Margin="16">
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <ui:TextBlock Grid.Row="0"
+                                                                  Grid.Column="0"
+                                                                  FontTypography="Body"
+                                                                  Text="时间间隔（秒）"
+                                                                  TextWrapping="Wrap" />
+                                                    <ui:TextBlock Grid.Row="1"
+                                                                  Grid.Column="0"
+                                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                                  Text="建议 1~60，默认 5，上限 600。"
+                                                                  TextWrapping="Wrap" />
+                                                    <ui:TextBox Grid.Row="0"
+                                                                Grid.RowSpan="2"
+                                                                Grid.Column="1"
+                                                                MinWidth="80"
+                                                                MaxHeight="40"
+                                                                VerticalContentAlignment="Center"
+                                                                HorizontalContentAlignment="Center"
+                                                                Text="{Binding PathingConfig.AutoFightConfig.FinishDetectConfig.ReturnToFightPointTimeTriggerSeconds}" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </ui:CardExpander>
+                                    </StackPanel>
+                                </ui:CardExpander>
                                 
                                 <Grid Margin="16">
                                     <Grid.RowDefinitions>
