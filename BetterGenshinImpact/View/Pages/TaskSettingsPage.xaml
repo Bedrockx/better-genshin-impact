@@ -3996,6 +3996,46 @@
                                      Margin="0,0,36,0"
                                      IsChecked="{Binding Config.AutoRedeemCodeConfig.ClipboardListenerEnabled, Mode=TwoWay}" />
                 </Grid>
+
+                <!-- 一条龙启动时自动检查兑换码（镜像自 FeedWindow） -->
+                <Grid Margin="16,0,16,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Row="0"
+                                  Grid.Column="0"
+                                  FontTypography="Body"
+                                  Text="每天首次启动一条龙时，自动检查执行最新兑换码"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBlock Grid.Row="1"
+                                  Grid.Column="0"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="用于在一条龙启动时进行兑换码刷新"
+                                  TextWrapping="Wrap" />
+                    <ui:ToggleSwitch Grid.Row="0"
+                                     Grid.RowSpan="2"
+                                     Grid.Column="1"
+                                     Margin="0,0,36,0"
+                                     IsChecked="{Binding Config.AutoRedeemCodeConfig.AutoRedeemCodeCheckEnabled, Mode=TwoWay}" />
+                </Grid>
+
+                <!-- 重置检查状态按钮（镜像自 FeedWindow.BtnResetCheckStatus） -->
+                <Grid Margin="0,8,16,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:Button Grid.Column="1"
+                               Appearance="Secondary"
+                               Content="重置检查状态"
+                               Command="{Binding ResetRedeemCodeCheckStatusCommand}"
+                               ToolTip="重置后下次一条龙将重新检查兑换码" />
+                </Grid>
             </StackPanel>
         </ui:CardExpander>
 

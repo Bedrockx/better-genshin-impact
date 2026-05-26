@@ -1402,6 +1402,18 @@ public partial class TaskSettingsPageViewModel : ViewModel
             SwitchAutoRedeemCodeEnabled = false;
         }
     }
+
+    /// <summary>
+    /// 重置兑换码每日检查状态（镜像自 FeedWindowViewModel.ResetCheckStatus）。
+    /// 行为：清空 AutoRedeemCodeConfig.LastRedeemCodeCheckDates 字典，下次一条龙启动会重新触发检查。
+    /// 与 FeedWindowViewModel.ResetCheckStatus 完全等价但不抽公共方法（避免跨 VM 耦合）。
+    /// </summary>
+    [RelayCommand]
+    private void ResetRedeemCodeCheckStatus()
+    {
+        TaskContext.Instance().Config.AutoRedeemCodeConfig.LastRedeemCodeCheckDates.Clear();
+        Toast.Success("已重置检查状态，下次一条龙将重新检查兑换码");
+    }
 }
 
 /// <summary>
