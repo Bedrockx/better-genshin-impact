@@ -129,10 +129,17 @@ public class CoordinatorClient : IAsyncDisposable
 
     public CoordinatorClient()
     {
-        // 默认实现：透传到 _connection.InvokeAsync(method, args, ct)
-        // 注：_connection 在 ConnectAsync 之前为 null；本默认实现仅在 IsConnected==true 时被
-        // NotifyKazuhaCollectStartedAsync 调用（其内部已守 if (_connection == null || !IsConnected) return）。
-        _invokeHubAsync = (method, args) => _connection!.InvokeAsync(method, args, CancellationToken.None);
+        // 默认实现：把 args (object?[]) 透传到 SignalR Client 的多参入口 InvokeCoreAsync。
+        //
+        // 关键：不能用 _connection.InvokeAsync(method, args, ct) —— HubConnection 的扩展方法没有
+        // (string, object?[], CancellationToken) 这个重载；最近的匹配是 (string, object? arg1, ct)，
+        // 重载解析会把整个数组当作"单个 object 参数"发到服务端，导致服务端方法签名不匹配 → 静默无响应
+        // → 非万叶 peer 收不到 KazuhaCollectStarted 广播。
+        //
+        // InvokeCoreAsync(string methodName, Type returnType, object?[] args, ct) 是真正的多参入口，
+        // 等价于 InvokeAsync(method, a1, a2, a3, ct) 的内部展开。
+        _invokeHubAsync = (method, args) =>
+            _connection!.InvokeCoreAsync(method, typeof(object), args, CancellationToken.None);
     }
 
     public async Task<bool> ConnectAsync(string serverUrl, CancellationToken ct)
