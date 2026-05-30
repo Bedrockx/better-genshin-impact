@@ -326,7 +326,15 @@ public class TpTask
                 await MoveMapTo(x, y, mapName, minZoomLevel,country);
                 if (_tpConfig.MapMoveStepDivisor)
                 {
-                    await Delay(80+_tpConfig.StepIntervalMilliseconds*10, ct); // 等待地图移动完成
+                    int timeoutMs = 80 + _tpConfig.StepIntervalMilliseconds * 10;
+                    if (_tpConfig.FastDragRecognitionEnabled)
+                    {
+                        await WaitMapStableOrTimeoutAsync(timeoutMs); // fast-drag-recognition-acceleration spec
+                    }
+                    else
+                    {
+                        await Delay(timeoutMs, ct); // 等待地图移动完成（旧行为）
+                    }
                 }
                 else
                 {
@@ -356,8 +364,17 @@ public class TpTask
             await MoveMapTo(x, y, mapName,2,country, retryTimes);
             if (_tpConfig.MapMoveStepDivisor)
             {
-                // TaskControl.Logger.LogWarning("地图重试{retryTimes}",retryTimes>0? 500 : 200);
-                await Delay(retryTimes>0? 600 : 200, ct); // 等待地图移动完成
+                int timeoutMs = retryTimes > 0 ? 600 : 200;
+                if (_tpConfig.FastDragRecognitionEnabled)
+                {
+                    // 加速：等像素稳定（远比连续两次模板匹配 GetBigMapRect 快），稳定后再单次 GetBigMapRect
+                    // fast-drag-recognition-acceleration spec / design.md §4.2（feedback adjustment）
+                    await WaitMapStableOrTimeoutAsync(timeoutMs);
+                }
+                else
+                {
+                    await Delay(timeoutMs, ct); // 等待地图移动完成（旧行为）
+                }
             }
             else
             {
@@ -374,8 +391,23 @@ public class TpTask
         CaptureToRectArea().ClickTo((int)clickX, (int)clickY);
 
         // 7. 触发一次快速传送功能
-        await Delay(500, ct);
-        await ClickTpPoint(CaptureToRectArea());
+        if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
+        {
+            // 加速 + 容错：popup 探测立即点 + IsLoadingScreen 终判 + 失败重点最多 3 次
+            // 已进入传送加载页 → 直接返回，跳过 ClickTpPoint（避免重复点击）
+            // 未进入 → 走 ClickTpPoint 兜底（旧行为）
+            // fast-drag-recognition-acceleration spec / final click pre-stop optimization v2
+            bool entered = await FastClickTeleportButtonAsync();
+            if (!entered)
+            {
+                await ClickTpPoint(CaptureToRectArea());
+            }
+        }
+        else
+        {
+            await Delay(500, ct);
+            await ClickTpPoint(CaptureToRectArea());
+        }
 
         // 8. 等待传送完成
         await WaitForTeleportCompletion(50, 1200, requireLoadingScreen, fastSyncId);
@@ -601,29 +633,63 @@ public class TpTask
     {
         // M 打开地图识别当前位置，中心点为当前位置
         var ra1 = CaptureToRectArea();
-        if (!Bv.IsInBigMapUi(ra1))
+        if (Bv.IsInBigMapUi(ra1))
         {
-            Simulation.SendInput.SimulateAction(GIActions.OpenMap);
-            await Delay(1000, ct);
-            for (int i = 0; i < 3; i++)
+            return true;
+        }
+
+        Simulation.SendInput.SimulateAction(GIActions.OpenMap);
+
+        // 加速识别模式：轮询等大地图 UI 出现，兜底 2500ms（≈旧逻辑 1000+500*3 上限）
+        // fast-drag-recognition-acceleration spec / step 1 boot delay optimization
+        if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
+        {
+            return await WaitForBigMapUiOrTimeoutAsync(timeoutMs: 2500);
+        }
+
+        // 旧行为：固定 1000ms 后再 3 次 500ms 重试
+        await Delay(1000, ct);
+        for (int i = 0; i < 3; i++)
+        {
+            ra1 = CaptureToRectArea();
+            if (!Bv.IsInBigMapUi(ra1))
             {
-                ra1 = CaptureToRectArea();
-                if (!Bv.IsInBigMapUi(ra1))
-                {
-                    await Delay(500, ct);
-                }
-                else
+                await Delay(500, ct);
+            }
+            else
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 加速识别模式：按 M 后轮询等大地图 UI 出现。30ms 一帧，命中即返回 true，超时返回 false。
+    /// 高配机器地图打开动画通常 100-300ms，节省 700-900ms。
+    /// fast-drag-recognition-acceleration spec / step 1 boot delay optimization
+    /// </summary>
+    private async Task<bool> WaitForBigMapUiOrTimeoutAsync(int timeoutMs, int pollMs = 30)
+    {
+        long deadline = Environment.TickCount + timeoutMs;
+        while (Environment.TickCount < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var ra = CaptureToRectArea();
+                if (Bv.IsInBigMapUi(ra))
                 {
                     return true;
                 }
             }
-
-            return false;
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.LogDebug("[快速识别] IsInBigMapUi 探测异常: {Msg}", ex.Message);
+            }
+            await Delay(pollMs, ct);
         }
-        else
-        {
-            return true;
-        }
+        return false;
     }
 
 
@@ -1066,6 +1132,118 @@ public class TpTask
         if (!_tpConfig.MapMoveStepDivisor)Simulation.SendInput.Mouse.LeftButtonUp();
     }
 
+    /// <summary>
+    /// 快速拖动模式下：等大地图视区像素稳定再返回，超时兜底。
+    /// 通过对 (500,500) / (600,500) 两点 BGR 像素连续采样，连续 stableHits 次相等视为稳定。
+    /// 仅在 MapMoveStepDivisor=true && FastDragRecognitionEnabled=true 时由调用方决定是否使用。
+    /// fast-drag-recognition-acceleration spec / design.md §3.1
+    /// </summary>
+    /// <param name="timeoutMs">兜底超时（与原固定 Delay 等值），超时即返回</param>
+    /// <param name="pollMs">每次轮询间隔，默认 30ms（约一帧）</param>
+    /// <param name="stableHits">连续多少次采样像素一致视为稳定，默认 2</param>
+    private async Task WaitMapStableOrTimeoutAsync(int timeoutMs, int pollMs = 30, int stableHits = 2)
+    {
+        long deadline = Environment.TickCount + timeoutMs;
+        Vec3b? prev1 = null, prev2 = null;
+        int hits = 0;
+        while (Environment.TickCount < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var ra = CaptureToRectArea();
+                var p1 = ra.SrcMat.At<Vec3b>(500, 500);
+                var p2 = ra.SrcMat.At<Vec3b>(600, 500);
+                if (prev1.HasValue && p1 == prev1.Value && p2 == prev2!.Value)
+                {
+                    if (++hits >= stableHits)
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    hits = 0;
+                }
+                prev1 = p1;
+                prev2 = p2;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // 截图异常（暂停态/帧不可用）→ 不抛，下一轮重试，外层暂停信号会接管
+                Logger.LogDebug("[快速识别] 像素采样异常: {Msg}", ex.Message);
+                hits = 0;
+            }
+            await Delay(pollMs, ct);
+        }
+    }
+
+    /// <summary>
+    /// 快速识别模式下：地图点击后等"传送"按钮 popup + 点按钮 + 用 IsLoadingScreen 确认进入传送加载。
+    /// 替代 Delay(500) + ClickTpPoint：
+    /// 1. 高配机按钮 popup 50-150ms 就出现，立即点
+    /// 2. 容错点击：点完按钮持续探测 IsLoadingScreen；未进入加载页则在窗口内重点（最多 3 次）
+    /// 3. 仍未进 → 抛异常让上层走原 ClickTpPoint 兜底（保证不丢传送）
+    /// 返回 true 表示已确认进入传送加载（IsLoadingScreen 命中），false 表示需要走兜底。
+    /// fast-drag-recognition-acceleration spec / final click pre-stop optimization v2
+    /// </summary>
+    private async Task<bool> FastClickTeleportButtonAsync(int popupTimeoutMs = 500, int loadingTimeoutMs = 2500, int pollMs = 30)
+    {
+        long popupDeadline = Environment.TickCount + popupTimeoutMs;
+        // 阶段 1：等按钮 popup 出现
+        while (Environment.TickCount < popupDeadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var ra = CaptureToRectArea();
+                using var found = ra.Find(_assets.TeleportButtonRo);
+                if (found.IsExist())
+                {
+                    found.Click();
+                    goto AfterClick;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.LogDebug("[快速识别] 探测传送按钮异常: {Msg}", ex.Message);
+            }
+            await Delay(pollMs, ct);
+        }
+        return false; // 阶段 1 超时：上层走 ClickTpPoint 兜底
+
+    AfterClick:
+        // 阶段 2：容错重点 + IsLoadingScreen 确认。点击可能因动画 popup 中"按钮可见但不可点"而无效。
+        long loadingDeadline = Environment.TickCount + loadingTimeoutMs;
+        int reclickCount = 0;
+        while (Environment.TickCount < loadingDeadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var ra = CaptureToRectArea();
+                if (TeleportLoadingDetector.IsLoadingScreen(ra.SrcMat))
+                {
+                    return true;
+                }
+                // 未进入加载页：尝试在窗口内重点按钮（最多 3 次）
+                using var found = ra.Find(_assets.TeleportButtonRo);
+                if (found.IsExist() && reclickCount < 3)
+                {
+                    found.Click();
+                    reclickCount++;
+                    Logger.LogDebug("[快速识别] 阶段 2 容错重点传送按钮（第 {N} 次）", reclickCount);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.LogDebug("[快速识别] 阶段 2 异常: {Msg}", ex.Message);
+            }
+            await Delay(pollMs, ct);
+        }
+        return false; // 阶段 2 超时：回退到 ClickTpPoint 兜底
+    }
+
     private int[] GenerateSteps(int delta, int steps)
     {
         double[] factors = new double[steps];
@@ -1346,7 +1524,16 @@ public class TpTask
             TaskControl.Logger.LogInformation("切换到区域：{Country}", areaName);
         }
 
-        await Delay(500, ct);
+        // 加速识别模式：等地图视区像素稳定即继续，兜底 500ms（与旧 Delay 等值）
+        // fast-drag-recognition-acceleration spec / SwitchArea tail wait optimization
+        if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
+        {
+            await WaitMapStableOrTimeoutAsync(timeoutMs: 500);
+        }
+        else
+        {
+            await Delay(500, ct);
+        }
     }
 
     public async Task Tp(string name)

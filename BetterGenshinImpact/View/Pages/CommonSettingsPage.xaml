@@ -945,6 +945,33 @@
                                 Text="{Binding Config.TpConfig.MapZoomDistanceForce, Mode=TwoWay, ValidatesOnNotifyDataErrors=True}" />
                 </Grid>
                 
+                <Grid Margin="16"
+                      Visibility="{Binding Config.TpConfig.MapMoveStepDivisor, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Row="0"
+                                  Grid.Column="0"
+                                  FontTypography="Body"
+                                  Text="加速识别（快速拖动模式下）"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBlock Grid.Row="1"
+                                  Grid.Column="0"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="开启后用高频截图轮询替代固定延时（地图打开/拖动稳定/切换地区/传送按钮均加速），更吃 CPU 与截图性能。如果运行中出现传送异常、点击失败或卡顿，请关闭此项回退到固定延时。仅快速拖动模式生效。"
+                                  TextWrapping="Wrap" />
+                    <ui:ToggleSwitch Grid.Row="0"
+                                     Grid.RowSpan="2"
+                                     Grid.Column="1"
+                                     Margin="0,0,36,0"
+                                     IsChecked="{Binding Config.TpConfig.FastDragRecognitionEnabled, Mode=TwoWay}" />
+                </Grid>
+                
             </StackPanel>
         </ui:CardExpander>
 

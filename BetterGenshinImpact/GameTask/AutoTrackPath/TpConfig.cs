@@ -134,6 +134,9 @@ public partial class TpConfig : ObservableValidator
     [ObservableProperty]
     private bool _mapMoveStepDivisor = false; // 快速拖动
 
+    [ObservableProperty]
+    private bool _fastDragRecognitionEnabled = false; // 快速拖动模式下：自适应等地图稳定再识别（fast-drag-recognition-acceleration spec）
+
     partial void OnMaxMouseMoveChanged(int value)
     {
         if (value is < 100 or > 2000)
