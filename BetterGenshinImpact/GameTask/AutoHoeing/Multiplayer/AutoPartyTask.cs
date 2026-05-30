@@ -999,19 +999,9 @@ public class AutoPartyTask
             // 点击"离开队伍/回到自己世界"按钮（1080P 坐标 1600,1020）
             _logger.LogInformation("[自动组队] 点击离开队伍按钮 (1600,1020)");
             GameCaptureRegion.GameRegion1080PPosClick(1600, 1020);
-            await Delay(1000, ct);
 
-            // 可能有确认弹窗，点击确认（房主需要点两次：退回 + 确定）
-            using (var ra = CaptureToRectArea())
-            {
-                if (ra.Find(ConfirmBtnRo).IsExist())
-                {
-                    ClickConfirmButton();
-                    await Delay(300, ct);
-                    ClickConfirmButton();
-                    await Delay(500, ct);
-                }
-            }
+            // 处理"退回世界确认"弹窗（房主双确认 / 成员单确认），轮询 250ms × ~8s 总预算
+            await ClickLeaveWorldConfirmPopupsAsync(ct);
 
             // 等待加载完成（最多 10 秒），见到派蒙即为回到自己世界候选
             _logger.LogInformation("[自动组队] 等待回到自己的世界...");
@@ -1037,6 +1027,79 @@ public class AutoPartyTask
 
         _logger.LogError("[自动组队] 5 次尝试后仍未回到自己的世界");
         return false;
+    }
+
+    /// <summary>
+    /// 在点击 F2 上的"离开队伍"按钮 (1600,1020) 之后，处理可能出现的"退回世界确认"弹窗。
+    /// 实现方式：250ms 节拍轮询 ConfirmBtnRo，分三阶段：
+    ///   1) 第一段轮询（最多 5s）：找到第一弹窗 → 点击
+    ///   2) 等弹窗消失（最多 1.5s）：等到 Find miss 才进入下一段（避免误点同一弹窗两次）
+    ///   3) 第二段轮询（最多 5s）：找到第二弹窗 → 点击；超时未出现视为成员单确认场景，静默退出
+    /// 整段总预算 ~8s。任何阶段超总预算后立即退出，不阻塞外层 5 轮重试。
+    /// </summary>
+    private async Task ClickLeaveWorldConfirmPopupsAsync(CancellationToken ct)
+    {
+        var phase = LeaveWorldConfirmPopupPhase.FirstPolling;
+        var phaseStart = Environment.TickCount;
+        var totalStart = Environment.TickCount;
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var elapsedInPhase = Environment.TickCount - phaseStart;
+            var totalElapsed = Environment.TickCount - totalStart;
+
+            bool popupVisible;
+            using (var ra = CaptureToRectArea())
+            {
+                popupVisible = ra.Find(ConfirmBtnRo).IsExist();
+            }
+
+            var decision = LeaveWorldConfirmPopupDecisions.Decide(phase, elapsedInPhase, totalElapsed, popupVisible);
+
+            switch (decision)
+            {
+                case LeaveWorldConfirmPopupTickDecision.ClickFirstConfirm:
+                    _logger.LogInformation("[自动组队] 第一弹窗出现，点击确认（首次）");
+                    ClickConfirmButton();
+                    phase = LeaveWorldConfirmPopupPhase.WaitingForFirstGone;
+                    phaseStart = Environment.TickCount;
+                    break;
+
+                case LeaveWorldConfirmPopupTickDecision.WaitFirstPopupGone:
+                    // 继续等
+                    break;
+
+                case LeaveWorldConfirmPopupTickDecision.EnterSecondPolling:
+                    phase = LeaveWorldConfirmPopupPhase.SecondPolling;
+                    phaseStart = Environment.TickCount;
+                    break;
+
+                case LeaveWorldConfirmPopupTickDecision.ClickSecondConfirm:
+                    _logger.LogInformation("[自动组队] 第二弹窗出现，点击确认（二次）");
+                    ClickConfirmButton();
+                    return;
+
+                case LeaveWorldConfirmPopupTickDecision.Idle:
+                    // 当前 tick 无事可做
+                    break;
+
+                case LeaveWorldConfirmPopupTickDecision.SecondPollingTimeoutNoFault:
+                    _logger.LogDebug("[自动组队] 第二弹窗未出现（成员单确认场景），结束确认段");
+                    return;
+
+                case LeaveWorldConfirmPopupTickDecision.SegmentTimeout:
+                    _logger.LogWarning("[自动组队] 确认弹窗段超时 ({TotalMs}ms)，交回主循环由复核判据决定后续",
+                        totalElapsed);
+                    return;
+
+                case LeaveWorldConfirmPopupTickDecision.BothConfirmsClicked:
+                    return;
+            }
+
+            await Delay(LeaveWorldConfirmPopupDecisions.TickIntervalMs, ct);
+        }
     }
 
     /// <summary>模糊匹配：两个字符串的相同字符比例 >= threshold</summary>
