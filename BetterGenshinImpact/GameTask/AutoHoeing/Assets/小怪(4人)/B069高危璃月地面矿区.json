@@ -15,7 +15,7 @@
     "description": "  路线信息：该路线预计用时97秒，包含以下怪物：2只盗宝团·斥候、3只盗宝团·火之药剂师、1只盗宝团·水之药剂师、1只盗宝团·雷之药剂师、2只盗宝团·海上男儿、1只盗宝团·拳术家、3只盗宝团·粉碎者、3只炽热骗骗花。",
     "enable_monster_loot_split": false,
     "hash_res": "91331392",
-    "last_modified_time": 1779737191871,
+    "last_modified_time": 1780080575553,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "B069高危璃月地面矿区",
@@ -48,40 +48,22 @@
       "id": 3,
       "move_mode": "dash",
       "type": "path",
-      "x": 1653.0576,
-      "y": -586.8608
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 4,
-      "move_mode": "dash",
-      "type": "path",
       "x": 1651.8779,
       "y": -601.1079
     },
     {
       "action": "fight",
       "action_params": "",
+      "id": 4,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 1676.002,
+      "y": -619.3184
+    },
+    {
+      "action": "",
+      "action_params": "",
       "id": 5,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 1676.002,
-      "y": -619.3184
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 6,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 1676.002,
-      "y": -619.3184
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 7,
       "move_mode": "dash",
       "type": "path",
       "x": 1655.6826,
@@ -90,7 +72,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 8,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": 1640.4004,
@@ -99,7 +81,7 @@
     {
       "action": "combat_script",
       "action_params": "keypress(F),wait(0.05),keypress(F),dash",
-      "id": 9,
+      "id": 7,
       "move_mode": "swim",
       "type": "target",
       "x": 1639.87,
@@ -108,7 +90,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 10,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
       "x": 1638.87,
@@ -117,16 +99,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 11,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 1638.87,
-      "y": -679.74
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 12,
+      "id": 9,
       "move_mode": "dash",
       "type": "path",
       "x": 1637.4961,
@@ -135,7 +108,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 13,
+      "id": 10,
       "move_mode": "dash",
       "type": "path",
       "x": 1613.2354,

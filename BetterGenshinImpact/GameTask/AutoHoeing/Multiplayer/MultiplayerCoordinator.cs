@@ -49,6 +49,23 @@ public class MultiplayerCoordinator : IAsyncDisposable
     /// </summary>
     public string PlayerUid => _client.PlayerUid;
 
+    /// <summary>
+    /// 暴露持有的 AutoHoeingConfig 副本（AutoHoeingTask 在配置组场景下经
+    /// JsonSerializer 深拷贝 + line 236-239 FastSync 字段强制重置 + line 243
+    /// ApplySettingsOverride() 三步处理后产出的实例）。
+    ///
+    /// 供 PathExecutor 读取 FastSync 三字段（FastSyncPointEnabled /
+    /// FastSyncPathingDistance / FastSyncTeleportLoadingDelayMs）时使用，
+    /// 替代 TaskContext.Instance().Config.AutoHoeingConfig（全局未被配置组覆盖）。
+    ///
+    /// 与 KazuhaCollectSyncCoordinator._config 暴露给 PathExecutor 的模式同构
+    /// （详见 .kiro/specs/pathexecutor-fastsync-config-readsource-fix）。
+    ///
+    /// 本 getter 返回引用，C# 层面调用方可写，但调用纪律保证只读使用
+    /// （与 KazuhaCollectSync 现有持有副本不做防护的模式对齐，OQ-5=a 决议）。
+    /// </summary>
+    public AutoHoeingConfig EffectiveConfig => _config;
+
     // === 连续超时控制（需求 5）===
     private int _consecutiveSyncTimeoutCount;
     private int _consecutiveSkipCount;
@@ -71,6 +88,17 @@ public class MultiplayerCoordinator : IAsyncDisposable
 
     // === 待处理等待点 ===
     private PendingWaitPoint? _pendingWaitPoint;
+
+    // === 抢报已记录集合（fastsync-redesign-parameter-passing spec 修复）===
+    /// <summary>
+    /// 已经通过 FastReportAsync（fire-and-forget）上报过到达的 syncId 集合。
+    /// 后续严格路径 WaitForAllPlayers 进入前查此集合：命中 → 直接返回（不阻塞）；
+    /// 未命中 → 走原有"订阅 + 上报 + 等 AllArrived"流程。
+    ///
+    /// 服务端 RecordArrival 是 idempotent，但已经广播过 AllArrived 后 ArrivalSet 会清空，
+    /// 严格路径再上报会陷入永久等待——本集合用于让抢报方自己跳过严格等待。
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _fastReportedSyncIds = new();
 
     // === 事件 ===
     public event Action<string>? OnDegraded;
@@ -325,6 +353,15 @@ public class MultiplayerCoordinator : IAsyncDisposable
 
     public async Task WaitForAllPlayers(string syncId, CancellationToken ct, long syncProgress = -1)
     {
+        // 抢报已经成功的 syncId：自己已经上报过，服务端可能也已经广播过 AllArrived 把 ArrivalSet 清掉了，
+        // 再走一次严格 WaitForAllPlayersAsync 会订阅一个永远不会触发的事件 → 死等到超时。
+        // 直接 short-circuit 返回让调用方继续走（fastsync-redesign-parameter-passing spec 修复）。
+        if (_fastReportedSyncIds.ContainsKey(syncId))
+        {
+            _logger.LogInformation("[联机][FastSync] WaitForAllPlayers short-circuit（本玩家已抢报过）: {SyncId}", syncId);
+            return;
+        }
+
         try
         {
             await _client.WaitForAllPlayersAsync(syncId, ct, syncProgress);
@@ -336,29 +373,29 @@ public class MultiplayerCoordinator : IAsyncDisposable
     }
 
     /// <summary>
-    /// 快速同步点抢报路径专用：直接调用 _client.WaitForAllPlayersAsync（subscribe-before-action wrapper）。
-    /// 与 WaitForAllPlayers 的区别：
-    /// - WaitForAllPlayers 内部包含异常 LogWarning 等业务逻辑
-    /// - FastReportArrivalAsync 仅做"上报到达 + 等待 AllArrived 广播"两件事，且对 OperationCanceledException 静默
-    /// 抢报与严格路径并行时，严格路径仍走 WaitForAllPlayers，抢报仅负责通过 OR 门第一时间触发服务端
-    /// RecordArrival，让队伍其余玩家提前解封。
-    ///
-    /// 详见 .kiro/specs/multiplayer-fast-sync-host-controlled/design.md §3.8a
-    /// Validates: requirements FR7 / FR15 / FR17 / UB4
+    /// 抢报专用 fire-and-forget：仅向服务端记录到达，不阻塞调用方
+    /// （fastsync-redesign-parameter-passing spec）。
+    /// 命中后将 syncId 加入 _fastReportedSyncIds，让后续严格 WaitForAllPlayers 路径
+    /// short-circuit 直接返回，避免服务端 ArrivalSet 清空后再订阅事件死等。
     /// </summary>
-    internal async Task FastReportArrivalAsync(string syncId, CancellationToken ct, long syncProgress)
+    public async Task FastReportAsync(string syncId, long syncProgress = -1)
     {
-        if (!IsConnected) return;
         try
         {
-            await _client.WaitForAllPlayersAsync(syncId, ct, syncProgress);
+            await _client.FireAndForgetArrivalAsync(syncId, syncProgress);
+            _fastReportedSyncIds.TryAdd(syncId, 0);
         }
-        catch (OperationCanceledException) { /* 正常取消，silent return */ }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[联机][FastSync] 抢报上报异常退出 syncId={SyncId}", syncId);
+            _logger.LogWarning(ex, "[联机] 抢报失败（已忽略）: {SyncId}", syncId);
         }
     }
+
+    /// <summary>
+    /// 查询某 syncId 是否已经通过 FastReportAsync 抢报过。
+    /// 调用方（PathExecutor）用此判断在段内寻找"下一个还没抢报的 syncPoint"作为提前距离判定目标。
+    /// </summary>
+    public bool IsFastReported(string syncId) => _fastReportedSyncIds.ContainsKey(syncId);
 
     // === 上报状态 ===
 

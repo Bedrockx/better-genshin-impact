@@ -15,7 +15,7 @@
     "description": "  路线信息：该路线预计用时271秒，包含以下怪物：14只水史莱姆、3只大型水史莱姆、3只风史莱姆、1只大型风史莱姆、3只冰史莱姆、1只大型冰史莱姆、1只水深渊法师、1只冰深渊法师、1只盗宝团·斥候、1只盗宝团·冰之药剂师、1只盗宝团·神射手、3只水萤。",
     "enable_monster_loot_split": false,
     "hash_res": "23418141",
-    "last_modified_time": 1779820102296,
+    "last_modified_time": 1780080487643,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "B063璃月港东北",
@@ -57,22 +57,13 @@
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": -97.5312,
-      "y": -97.4399
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 5,
-      "move_mode": "dash",
-      "type": "path",
       "x": -88.2031,
       "y": -76.8525
     },
     {
       "action": "stop_flying",
       "action_params": "1000",
-      "id": 6,
+      "id": 5,
       "move_mode": "fly",
       "type": "path",
       "x": -81.7012,
@@ -81,7 +72,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 7,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": -80.5391,
@@ -90,7 +81,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 8,
+      "id": 7,
       "move_mode": "jump",
       "type": "path",
       "x": -90.9107,
@@ -99,7 +90,7 @@
     {
       "action": "combat_script",
       "action_params": "e",
-      "id": 9,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
       "x": -115.7129,
@@ -108,7 +99,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 10,
+      "id": 9,
       "move_mode": "dash",
       "type": "path",
       "x": -137.875,
@@ -117,7 +108,7 @@
     {
       "action": "combat_script",
       "action_params": "e",
-      "id": 11,
+      "id": 10,
       "move_mode": "dash",
       "type": "path",
       "x": -170.125,
@@ -126,7 +117,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 12,
+      "id": 11,
       "move_mode": "dash",
       "type": "path",
       "x": -182.5586,
@@ -135,7 +126,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 13,
+      "id": 12,
       "move_mode": "dash",
       "type": "path",
       "x": -173.6836,
@@ -144,7 +135,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 14,
+      "id": 13,
       "move_mode": "dash",
       "type": "path",
       "x": -195.2598,
@@ -153,7 +144,7 @@
     {
       "action": "combat_script",
       "action_params": "e",
-      "id": 15,
+      "id": 14,
       "move_mode": "dash",
       "type": "path",
       "x": -226.998,
@@ -162,7 +153,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 16,
+      "id": 15,
       "move_mode": "dash",
       "type": "path",
       "x": -242.4395,
@@ -171,7 +162,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 17,
+      "id": 16,
       "move_mode": "dash",
       "type": "path",
       "x": -237.96,
@@ -180,7 +171,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 18,
+      "id": 17,
       "move_mode": "dash",
       "type": "path",
       "x": -263.4238,
@@ -189,7 +180,7 @@
     {
       "action": "combat_script",
       "action_params": "attack(0.3);菈乌玛 e(hold);e",
-      "id": 19,
+      "id": 18,
       "move_mode": "dash",
       "type": "path",
       "x": -215.9941,
@@ -198,7 +189,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 20,
+      "id": 19,
       "move_mode": "dash",
       "type": "path",
       "x": -227.375,
@@ -206,6 +197,15 @@
     },
     {
       "action": "fight",
+      "action_params": "",
+      "id": 20,
+      "move_mode": "dash",
+      "type": "path",
+      "x": -183.1426,
+      "y": -166.2812
+    },
+    {
+      "action": "",
       "action_params": "",
       "id": 21,
       "move_mode": "dash",
@@ -217,15 +217,6 @@
       "action": "",
       "action_params": "",
       "id": 22,
-      "move_mode": "dash",
-      "type": "path",
-      "x": -183.1426,
-      "y": -166.2812
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 23,
       "move_mode": "jump",
       "type": "path",
       "x": -182.8555,
@@ -234,7 +225,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 24,
+      "id": 23,
       "move_mode": "dash",
       "type": "path",
       "x": -173.0723,

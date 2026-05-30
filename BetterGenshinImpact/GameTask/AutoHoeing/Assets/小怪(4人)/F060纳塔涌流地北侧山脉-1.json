@@ -18,7 +18,7 @@
     "description": "  路线信息：该路线预计用时56秒，包含以下怪物：1只疾讯勇士·引索客、1只疾讯勇士·荡风斥候、1只匿叶龙武士·流火鸣空、1只匿叶龙。",
     "enable_monster_loot_split": false,
     "hash_res": "91860300",
-    "last_modified_time": 1779905742882,
+    "last_modified_time": 1780081232099,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "F060纳塔涌流地北侧山脉-1",
@@ -60,8 +60,8 @@
       "id": 4,
       "move_mode": "walk",
       "type": "path",
-      "x": 8994.8076,
-      "y": -2320.6689
+      "x": 8994.3438,
+      "y": -2319.6543
     },
     {
       "action": "",

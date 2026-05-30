@@ -18,7 +18,7 @@
     "description": "  路线信息：该路线预计用时36秒，包含以下怪物：1只暝视龙武士·寒涌持者、2只暝视龙。",
     "enable_monster_loot_split": false,
     "hash_res": "46732993",
-    "last_modified_time": 1768311854452,
+    "last_modified_time": 1780081124229,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "F034纳塔镜璧山神像-2",
@@ -42,8 +42,8 @@
       "id": 2,
       "move_mode": "dash",
       "type": "path",
-      "x": 9461.388671875,
-      "y": -1947.333984375
+      "x": 9461.3887,
+      "y": -1947.334
     },
     {
       "action": "",
@@ -60,15 +60,6 @@
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": 9379.8,
-      "y": -1970.64
-    },
-    {
-      "action": "combat_script",
-      "action_params": "wait(1)",
-      "id": 5,
-      "move_mode": "walk",
-      "type": "orientation",
       "x": 9379.8,
       "y": -1970.64
     }

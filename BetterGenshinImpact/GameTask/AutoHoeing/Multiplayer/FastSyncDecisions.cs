@@ -16,50 +16,32 @@ namespace BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer;
 internal static class FastSyncDecisions
 {
     /// <summary>
-    /// 判定"路径同步点抢报看门狗"是否应该启动。
+    /// 判定路径同步点抢报是否应该触发（fastsync-redesign-parameter-passing spec / OQ-7=a）。
     ///
-    /// 真值表（Validates: requirements FR6 / FR23 / FR24）：
-    ///   isMultiplayer=false  → false（单机零回归）
-    ///   isConnected=false    → false（断线时不启动）
-    ///   syncIdNonNull=false  → false（waypoint 不在 _syncPointMap 中）
-    ///   FastSyncPointEnabled=false → false（主开关短路）
-    ///   全部 true            → true
+    /// 6 个守门条件全 AND，任一不满足返回 false：
+    ///   alreadyReported=true  → false（一次性 bool 短路，避免重复抢报）
+    ///   isMultiplayer=false   → false（单机零回归）
+    ///   isConnected=false     → false（断线时不抢报）
+    ///   fastSyncId=null       → false（waypoint 不在 _wpIdxToSyncIdCache）
+    ///   distance NaN/Inf/&lt;0 → false（Navigation 失败兜底）
+    ///   distance ≤ pathingDistanceThreshold → true（命中抢报）
+    ///
+    /// 取代旧的 ShouldArmPathingWatcher + ShouldFastReport 两层决策（已删）；
+    /// 调用方在 MoveTo / MoveCloseTo 已有的 while 循环里直接 inline。
     /// </summary>
-    public static bool ShouldArmPathingWatcher(
-        AutoHoeingConfig? config,
+    public static bool ShouldFastReportInPathing(
+        double distance,
+        double pathingDistanceThreshold,
+        string? fastSyncId,
         bool isMultiplayer,
         bool isConnected,
-        bool syncIdNonNull)
+        bool alreadyReported)
     {
-        if (config == null) return false;
-        if (!isMultiplayer) return false;
-        if (!isConnected) return false;
-        if (!syncIdNonNull) return false;
-        return config.FastSyncPointEnabled;
-    }
-
-    /// <summary>
-    /// 判定"当前距离 + 阈值 + gate 状态"是否应该触发抢报。
-    ///
-    /// 边界条件：
-    /// - gateAlreadyArmed=true → false（OR 门已被另一路径抢，不重复发）
-    /// - distance=NaN          → false（Navigation 失败兜底，不抢报）
-    /// - distance=±Infinity    → false（防御性）
-    /// - distance&lt;0          → false（防御性）
-    /// - 0 ≤ distance ≤ threshold AND !gateAlreadyArmed → true
-    ///
-    /// Validates: requirements FR7 / FR15 / FR18
-    /// </summary>
-    public static bool ShouldFastReport(
-        double distance,
-        double threshold,
-        bool gateAlreadyArmed)
-    {
-        if (gateAlreadyArmed) return false;
-        if (double.IsNaN(distance)) return false;
-        if (double.IsInfinity(distance)) return false;
-        if (distance < 0) return false;
-        return distance <= threshold;
+        if (alreadyReported) return false;
+        if (!isMultiplayer || !isConnected) return false;
+        if (fastSyncId == null) return false;
+        if (double.IsNaN(distance) || double.IsInfinity(distance) || distance < 0) return false;
+        return distance <= pathingDistanceThreshold;
     }
 
     /// <summary>

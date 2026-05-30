@@ -40,7 +40,7 @@
     },
     {
       "action": "combat_script",
-      "action_params": ";茜特菈莉 e;莱依拉 e;伊涅芙 e;哥伦比娅 attack(0.3),charge(1.1); ;",
+      "action_params": ";茜特菈莉 e;莱依拉 e;伊涅芙 e;尼可 e;哥伦比娅 attack(0.3),charge(1.1); ;",
       "id": 3,
       "move_mode": "dash",
       "type": "path",

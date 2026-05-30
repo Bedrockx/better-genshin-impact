@@ -956,8 +956,10 @@ public class AutoHoeingTask : ISoloTask
                             _logger.LogInformation("[联机] 多世界模式：已保存第一任房主配置");
                         }
 
-                        _logger.LogInformation("[联机] 已同步房主配置：超时={Timeout}s，最低人数={Min}，最小距离={Dist}",
-                            hostConfig.SyncTimeoutSeconds, hostConfig.MinPlayersToSync, hostConfig.SyncPointMinDistance);
+                        _logger.LogInformation(
+                            "[联机] 已同步房主配置：超时={Timeout}s，最低人数={Min}，最小距离={Dist}，快速同步点抢报启用={FastEn}，路径距离阈值={FastDist:F1}米，传送延迟={FastDelay}ms",
+                            hostConfig.SyncTimeoutSeconds, hostConfig.MinPlayersToSync, hostConfig.SyncPointMinDistance,
+                            _config.FastSyncPointEnabled, _config.FastSyncPathingDistance, _config.FastSyncTeleportLoadingDelayMs);
                     }
                     else
                     {
@@ -1701,6 +1703,11 @@ public class AutoHoeingTask : ISoloTask
 
                     // 联机模式：设置战斗超时覆盖值（不修改原始配置）
                     PathingConditionConfig.MultiplayerFightTimeoutOverride = hostConfig.FightTimeoutSeconds;
+
+                    _logger.LogInformation(
+                        "[多世界] 第 {Round} 轮成员已同步房主配置：超时={Timeout}s，最低人数={Min}，最小距离={Dist}，快速同步点抢报启用={FastEn}，路径距离阈值={FastDist:F1}米，传送延迟={FastDelay}ms",
+                        round + 1, hostConfig.SyncTimeoutSeconds, hostConfig.MinPlayersToSync, hostConfig.SyncPointMinDistance,
+                        _config.FastSyncPointEnabled, _config.FastSyncPathingDistance, _config.FastSyncTeleportLoadingDelayMs);
                 }
                 else
                 {

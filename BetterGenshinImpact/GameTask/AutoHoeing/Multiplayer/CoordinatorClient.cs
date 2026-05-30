@@ -1063,6 +1063,28 @@ public class CoordinatorClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// 抢报专用：仅向服务端 SendAsync("WaitForAllPlayers", ...)，**不订阅 AllArrived 不等待**，
+    /// 立即返回让调用方继续走（fastsync-redesign-parameter-passing spec）。
+    ///
+    /// 服务端 Hub.WaitForAllPlayers 会执行 RecordArrival + 全量评估 + 必要时广播 AllArrived 给
+    /// 已经在等的对方——抢报方自己不阻塞，由后续的严格 WaitForAllPlayers 路径再次上报
+    /// 走完整等待逻辑（idempotent）。
+    /// </summary>
+    public async Task FireAndForgetArrivalAsync(string syncId, long syncProgress = -1)
+    {
+        if (_connection == null || !IsConnected) return;
+        try
+        {
+            await _connection.SendAsync("WaitForAllPlayers", syncId, syncProgress);
+            _logger.LogDebug("[联机] 抢报到达（fire-and-forget）: {SyncId}, 进度={Progress}", syncId, syncProgress);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[联机] 抢报到达失败（已忽略）: {SyncId}", syncId);
+        }
+    }
+
+    /// <summary>
     /// 等待所有玩家到达指定同步点
     /// syncProgress：当前同步点的全局进度值（用于服务端判定异常玩家是否会经过此点）
     /// </summary>

@@ -10,7 +10,7 @@
     "description": "  路线信息：该路线预计用时56秒，包含以下怪物：1只打手丘丘人、1只爆弹丘丘人、3只水萤。",
     "enable_monster_loot_split": false,
     "hash_res": "20271831",
-    "last_modified_time": 1779859174255,
+    "last_modified_time": 1780080200089,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "B016璃月碧水原华池岩岫东北",
@@ -70,8 +70,8 @@
       "id": 6,
       "move_mode": "dash",
       "type": "path",
-      "x": 1243.6895,
-      "y": 1391.3691
+      "x": 1245.7168,
+      "y": 1391.4907
     },
     {
       "action": "fight",
@@ -79,8 +79,8 @@
       "id": 7,
       "move_mode": "dash",
       "type": "path",
-      "x": 1241.5538,
-      "y": 1397.0948
+      "x": 1242.2324,
+      "y": 1397.7764
     }
   ]
 }

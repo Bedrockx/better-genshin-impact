@@ -14,7 +14,7 @@
     "description": "  路线信息：该路线预计用时42秒，包含以下怪物：3只冰萤。",
     "enable_monster_loot_split": false,
     "hash_res": "05340204",
-    "last_modified_time": 1779823197146,
+    "last_modified_time": 1780080062477,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "A007蒙德龙脊雪山寒天之钉下方",
@@ -58,8 +58,8 @@
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": -921.28,
-      "y": 996.07
+      "x": -922.1797,
+      "y": 997.57
     },
     {
       "action": "fight",
@@ -67,8 +67,8 @@
       "id": 5,
       "move_mode": "dash",
       "type": "path",
-      "x": -926.1562,
-      "y": 1002.6787
+      "x": -925.6172,
+      "y": 1001.9533
     }
   ]
 }

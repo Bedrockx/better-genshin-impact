@@ -18,7 +18,7 @@
     "description": "  路线信息：该路线预计用时62秒，包含以下怪物：1只幼嵴锋龙、1只嵴锋龙、3只幼匿叶龙、1只匿叶龙。",
     "enable_monster_loot_split": false,
     "hash_res": "59986991",
-    "last_modified_time": 1779828404412,
+    "last_modified_time": 1780080875654,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "F001纳塔万火之瓯竞技场-1",
@@ -42,8 +42,8 @@
       "id": 2,
       "move_mode": "dash",
       "type": "path",
-      "x": 9069.783203125,
-      "y": -1982.734375
+      "x": 9069.7832,
+      "y": -1982.7344
     },
     {
       "action": "stop_flying",
@@ -51,17 +51,17 @@
       "id": 3,
       "move_mode": "fly",
       "type": "path",
-      "x": 9058.53125,
-      "y": -1998.5314320610523
+      "x": 9058.5313,
+      "y": -1998.5314
     },
     {
-      "action": "combat_script",
-      "action_params": "attack(0.3)",
+      "action": "",
+      "action_params": "",
       "id": 4,
       "move_mode": "dash",
       "type": "path",
       "x": 9051,
-      "y": -2033.779296875
+      "y": -2033.7793
     },
     {
       "action": "fight",
@@ -70,7 +70,7 @@
       "move_mode": "dash",
       "type": "path",
       "x": 9015,
-      "y": -2049.7199999999993
+      "y": -2049.72
     }
   ]
 }

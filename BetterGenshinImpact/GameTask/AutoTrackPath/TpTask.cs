@@ -86,7 +86,10 @@ public class TpTask
     /// 详见 .kiro/specs/multiplayer-fast-sync-host-controlled/design.md §3.7。
     /// Validates: requirements FR11 / FR12 / FR13
     /// </summary>
-    internal static event Action<long>? OnLoadingScreenDetected;
+    // OnLoadingScreenDetected 事件已删除（fastsync-redesign-parameter-passing spec OQ-2）：
+    // 改为通过 Tp/TpOnce/WaitForTeleportCompletion/WaitForLoadingScreenAsync 调用栈
+    // 透传 string? fastSyncId 参数，IsLoadingScreen 命中时直接调
+    // PathExecutor.CurrentMultiplayerCoordinator.WaitForAllPlayers 抢报。
 
     public TpTask(CancellationToken ct)
     {
@@ -266,7 +269,7 @@ public class TpTask
     /// <param name="mapName">独立地图名称</param>
     /// <param name="force">强制以当前的tpX,tpY坐标进行自动传送</param>
     /// <param name="retryTimes">重试次数</param>
-    private async Task<(double, double)> TpOnce(double tpX, double tpY, string mapName = "Teyvat", bool force = false, int retryTimes = 0, bool requireLoadingScreen = false)
+    private async Task<(double, double)> TpOnce(double tpX, double tpY, string mapName = "Teyvat", bool force = false, int retryTimes = 0, bool requireLoadingScreen = false, string? fastSyncId = null)
     {
         // 1. 确认在地图界面
         await OpenBigMapUi(1);
@@ -375,7 +378,7 @@ public class TpTask
         await ClickTpPoint(CaptureToRectArea());
 
         // 8. 等待传送完成
-        await WaitForTeleportCompletion(50, 1200, requireLoadingScreen);
+        await WaitForTeleportCompletion(50, 1200, requireLoadingScreen, fastSyncId);
         return (x, y);
     }
 
@@ -389,7 +392,7 @@ public class TpTask
     ///     避免“开大地图被打死→复苏到神像→派蒙可见→误判传送成功”）。详见
     ///     .kiro/specs/multiplayer-tp-success-via-loading-screen/。
     /// </param>
-    private async Task WaitForTeleportCompletion(int maxAttempts, int delayMs, bool requireLoadingScreen = false)
+    private async Task WaitForTeleportCompletion(int maxAttempts, int delayMs, bool requireLoadingScreen = false, string? fastSyncId = null)
     {
         // 仅联机锄地路径设置抑制标志位，单机调用方默认 false 跳过整段守卫
         bool suppressClickSet = false;
@@ -404,7 +407,7 @@ public class TpTask
             // === 阶段 1（仅当联机调用方传入 requireLoadingScreen=true）===
             if (requireLoadingScreen)
             {
-                bool seen = await WaitForLoadingScreenAsync(timeoutMs: 6000, intervalMs: 200);
+                bool seen = await WaitForLoadingScreenAsync(timeoutMs: 6000, intervalMs: 200, fastSyncId: fastSyncId);
                 if (!seen)
                 {
                     TaskControl.Logger.LogWarning("[联机] 未观察到传送过渡页，疑似传送被打断（点击传送后角色可能已倒地/被打断）");
@@ -461,9 +464,14 @@ public class TpTask
     /// 早退 return true，让阶段 2 接管。原因：墙钟 deadline 在暂停期间继续累积，
     /// 不早退会导致解除暂停后立即超时误抛异常。详见
     /// .kiro/specs/multiplayer-tp-loading-screen-suspend-skip/。
+    ///
+    /// fastSyncId（fastsync-redesign-parameter-passing spec）：联机模式下传递抢报 syncId，
+    /// IsLoadingScreen 命中后直接调 PathExecutor.CurrentMultiplayerCoordinator.WaitForAllPlayers
+    /// 抢报。null 时该路径完全短路（单机调用方零感知）。
     /// </summary>
-    private async Task<bool> WaitForLoadingScreenAsync(int timeoutMs, int intervalMs)
+    private async Task<bool> WaitForLoadingScreenAsync(int timeoutMs, int intervalMs, string? fastSyncId = null)
     {
+        bool fastReported = false;
         long deadline = Environment.TickCount + timeoutMs;
         while (Environment.TickCount < deadline)
         {
@@ -490,10 +498,28 @@ public class TpTask
 
             if (TeleportLoadingDetector.IsLoadingScreen(capture.SrcMat))
             {
-                // 触发抢报（multiplayer-fast-sync-host-controlled spec FR11 / FR12）：
-                // PathExecutor 已在 HandleTeleportWaypoint 之前 += handler，未注册时
-                // OnLoadingScreenDetected 为 null（C# null-conditional Invoke 是 no-op），单机调用方零回归。
-                OnLoadingScreenDetected?.Invoke(Environment.TickCount);
+                // 传送同步点抢报（fastsync-redesign-parameter-passing spec）：
+                // 内联在 IsLoadingScreen 命中处。fastSyncId == null（单机/未启用）时整段短路。
+                if (!fastReported && fastSyncId != null)
+                {
+                    var __coordinator = BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentMultiplayerCoordinator;
+                    if (__coordinator != null && __coordinator.IsConnected)
+                    {
+                        fastReported = true;
+                        try
+                        {
+                            // fire-and-forget：抢报后立即继续传送主流程，不等 AllArrived
+                            await __coordinator.FastReportAsync(fastSyncId, syncProgress: -1);
+                            TaskControl.Logger.LogInformation("[联机][FastSync] TpTask 抢报命中 syncId={SyncId}", fastSyncId);
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (System.Exception ex)
+                        {
+                            // 抢报失败不阻塞传送主流程：严格路径会在 PathExecutor 外层补上报
+                            TaskControl.Logger.LogWarning(ex, "[联机][FastSync] TpTask 抢报异常，已忽略 syncId={SyncId}", fastSyncId);
+                        }
+                    }
+                }
                 return true;
             }
             await Delay(intervalMs, ct);
@@ -601,13 +627,13 @@ public class TpTask
     }
 
 
-    public async Task<(double, double)> Tp(double tpX, double tpY, string mapName = "Teyvat", bool force = false, bool requireLoadingScreen = false)
+    public async Task<(double, double)> Tp(double tpX, double tpY, string mapName = "Teyvat", bool force = false, bool requireLoadingScreen = false, string? fastSyncId = null)
     {
         for (var i = 0; i < 3; i++)
         {
             try
             {
-                return await TpOnce(tpX, tpY, mapName, force, i, requireLoadingScreen);
+                return await TpOnce(tpX, tpY, mapName, force, i, requireLoadingScreen, fastSyncId);
             }
             catch (TpPointNotActivate e)
             {

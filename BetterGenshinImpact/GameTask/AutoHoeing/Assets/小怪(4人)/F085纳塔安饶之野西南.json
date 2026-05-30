@@ -15,7 +15,7 @@
     "description": "  路线信息：该路线预计用时208秒，包含以下怪物：2只横蛮勇士·冲撞手、1只横蛮勇士·抓扑人、1只突角龙武士·追缉灵光、、3只匿叶龙。",
     "enable_monster_loot_split": false,
     "hash_res": "44832489",
-    "last_modified_time": 1779861012160,
+    "last_modified_time": 1780081604110,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "F085纳塔安饶之野西南",
@@ -52,18 +52,9 @@
       "y": -3048.38
     },
     {
-      "action": "",
-      "action_params": "",
-      "id": 4,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 10832.67,
-      "y": -3048.38
-    },
-    {
       "action": "stop_flying",
       "action_params": "1000",
-      "id": 5,
+      "id": 4,
       "move_mode": "fly",
       "type": "path",
       "x": 10877.65,
@@ -72,7 +63,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 6,
+      "id": 5,
       "move_mode": "dash",
       "type": "path",
       "x": 10884.69,

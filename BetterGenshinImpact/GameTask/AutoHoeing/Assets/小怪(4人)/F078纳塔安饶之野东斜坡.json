@@ -15,7 +15,7 @@
     "description": "  路线信息：该路线预计用时154秒，包含以下怪物：10只幼突角龙、6只突角龙。",
     "enable_monster_loot_split": false,
     "hash_res": "81193698",
-    "last_modified_time": 1779600865048,
+    "last_modified_time": 1780081591535,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "F078纳塔安饶之野东斜坡",
@@ -40,7 +40,7 @@
       "move_mode": "dash",
       "type": "path",
       "x": 9807.99,
-      "y": -2863.3500000000004
+      "y": -2863.35
     },
     {
       "action": "",
@@ -49,7 +49,7 @@
       "move_mode": "dash",
       "type": "path",
       "x": 9807.99,
-      "y": -2863.3500000000004
+      "y": -2863.35
     },
     {
       "action": "",
@@ -58,7 +58,7 @@
       "move_mode": "dash",
       "type": "path",
       "x": 9847.93,
-      "y": -2867.959999999999
+      "y": -2867.96
     },
     {
       "action": "combat_script",
@@ -85,7 +85,7 @@
       "move_mode": "dash",
       "type": "path",
       "x": 9878.53,
-      "y": -2926.2700000000004
+      "y": -2926.27
     },
     {
       "action": "fight",
@@ -94,7 +94,7 @@
       "move_mode": "dash",
       "type": "path",
       "x": 9906.75,
-      "y": -2915.875796790857
+      "y": -2915.8758
     },
     {
       "action": "force_tp",
@@ -106,31 +106,40 @@
       "y": -2847.99
     },
     {
-      "action": "fight",
+      "action": "",
       "action_params": "",
       "id": 10,
       "move_mode": "dash",
       "type": "path",
-      "x": 9774.39,
-      "y": -2805
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 11,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 9756.73,
-      "y": -2822.9799999999996
+      "x": 9777.4131,
+      "y": -2809.043
     },
     {
       "action": "fight",
       "action_params": "",
+      "id": 11,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 9767.9746,
+      "y": -2811.0146
+    },
+    {
+      "action": "",
+      "action_params": "",
       "id": 12,
       "move_mode": "dash",
       "type": "path",
+      "x": 9752.9248,
+      "y": -2796.5215
+    },
+    {
+      "action": "fight",
+      "action_params": "",
+      "id": 13,
+      "move_mode": "dash",
+      "type": "path",
       "x": 9720.91,
-      "y": -2757.369999999999
+      "y": -2757.37
     }
   ]
 }

@@ -15,7 +15,7 @@
     "description": "  路线信息：该路线预计用时60秒，包含以下怪物：4只雷萤。",
     "enable_monster_loot_split": false,
     "hash_res": "56979139",
-    "last_modified_time": 1779691273549,
+    "last_modified_time": 1780080589144,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "C017稻妻公义飞萤",
@@ -70,18 +70,9 @@
       "y": -3879.99
     },
     {
-      "action": "",
-      "action_params": "",
-      "id": 6,
-      "move_mode": "dash",
-      "type": "path",
-      "x": -3237.4,
-      "y": -3879.99
-    },
-    {
       "action": "fight",
       "action_params": "",
-      "id": 7,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": -3250.04,

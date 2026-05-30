@@ -15,7 +15,7 @@
     "description": "  路线信息：该路线预计用时87秒，包含以下怪物：4只火史莱姆、6只水史莱姆、2只大型水史莱姆、1只盗宝团·神射手。",
     "enable_monster_loot_split": false,
     "hash_res": "06968243",
-    "last_modified_time": 1779737227700,
+    "last_modified_time": 1780080607070,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "E019枫丹垂柳东南-4",
@@ -64,15 +64,6 @@
       "action": "",
       "action_params": "",
       "id": 5,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 3029.4316,
-      "y": 3849.7832
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 6,
       "move_mode": "jump",
       "type": "path",
       "x": 3033.6221,
@@ -81,7 +72,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 7,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": 3081.2207,
@@ -90,8 +81,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 8,
-      "locked": false,
+      "id": 7,
       "move_mode": "dash",
       "type": "path",
       "x": 3116.8564,
@@ -100,7 +90,7 @@
     {
       "action": "combat_script",
       "action_params": "attack(0.3);菈乌玛 e(hold);e",
-      "id": 9,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
       "x": 3116.8564,

@@ -18,7 +18,7 @@
     "description": "  路线信息：该路线预计用时130秒，包含以下怪物：2只疾讯勇士·引索客、1只疾讯勇士·荡风斥候、1只疾讯勇士·重刃讯使、2只流刃勇士·游击人、1只流刃勇士·锯脂者、1只流刃勇士·掷叉猎手、2只鳍游龙、3只幼匿叶龙、3只匿叶龙。",
     "enable_monster_loot_split": false,
     "hash_res": "78140454",
-    "last_modified_time": 1779857074167,
+    "last_modified_time": 1780081642371,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "F088纳塔涌流地秘境南侧",
@@ -60,22 +60,13 @@
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": 8997.73,
-      "y": -2410.99
-    },
-    {
-      "action": "",
-      "action_params": "",
-      "id": 5,
-      "move_mode": "dash",
-      "type": "path",
       "x": 8980.69,
       "y": -2466.37
     },
     {
       "action": "combat_script",
       "action_params": "attack(0.3)",
-      "id": 6,
+      "id": 5,
       "move_mode": "dash",
       "type": "path",
       "x": 8998.49,
@@ -84,7 +75,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 7,
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": 9023.35,
@@ -93,8 +84,8 @@
     {
       "action": "",
       "action_params": "",
-      "id": 8,
-      "move_mode": "walk",
+      "id": 7,
+      "move_mode": "dash",
       "type": "path",
       "x": 9027.47,
       "y": -2528.65
@@ -102,7 +93,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 9,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
       "x": 8981.85,
@@ -111,7 +102,7 @@
     {
       "action": "combat_script",
       "action_params": "attack(0.3)",
-      "id": 10,
+      "id": 9,
       "move_mode": "dash",
       "type": "path",
       "x": 8871.5488,
@@ -120,7 +111,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 11,
+      "id": 10,
       "move_mode": "dash",
       "type": "path",
       "x": 8871.5488,

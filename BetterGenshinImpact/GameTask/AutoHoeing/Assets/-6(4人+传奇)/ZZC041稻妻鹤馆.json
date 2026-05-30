@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时133.03秒，包含以下怪物：1只嗜岩·兽境幼兽、1只嗜雷·兽境幼兽、1只嗜岩·兽境猎犬、1只嗜雷·兽境猎犬。",
     "enable_monster_loot_split": false,
     "hash_res": "30823863",
-    "last_modified_time": 1779687761545,
+    "last_modified_time": 1780074253258,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "ZZC041稻妻鹤馆",
@@ -30,13 +30,13 @@
       "y": -6697.75
     },
     {
-      "action": "combat_script",
-      "action_params": "keypress(x);芙宁娜 e;玛薇卡 e;爱可菲 e;伊涅芙 e;",
+      "action": "",
+      "action_params": "",
       "id": 2,
       "move_mode": "dash",
       "type": "path",
-      "x": -2649,
-      "y": -6747.25
+      "x": -2674.9785,
+      "y": -6742.7666
     },
     {
       "action": "",
@@ -44,8 +44,8 @@
       "id": 3,
       "move_mode": "dash",
       "type": "path",
-      "x": -2719.75,
-      "y": -6754.75
+      "x": -2717.8594,
+      "y": -6754.8877
     },
     {
       "action": "",
@@ -53,8 +53,8 @@
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": -2743.25,
-      "y": -6746.25
+      "x": -2745.0215,
+      "y": -6740.7402
     },
     {
       "action": "fight",
@@ -62,8 +62,8 @@
       "id": 5,
       "move_mode": "dash",
       "type": "path",
-      "x": -2731.12,
-      "y": -6740.13
+      "x": -2734.5762,
+      "y": -6743.5273
     }
   ]
 }

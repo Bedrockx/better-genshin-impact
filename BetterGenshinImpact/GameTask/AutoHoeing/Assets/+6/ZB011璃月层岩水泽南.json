@@ -9,9 +9,9 @@
     ],
     "bgi_version": "0.45.0",
     "description": "  路线信息：该路线预计用时114秒，包含以下怪物：1只黯色空壳·破阵、1只遗迹重机。",
-    "hash_res": "38513255",
     "enable_monster_loot_split": false,
-    "last_modified_time": 1763188656551,
+    "hash_res": "38513255",
+    "last_modified_time": 1780076314352,
     "map_match_method": "",
     "map_name": "TheChasm",
     "name": "ZB011璃月层岩水泽南",
@@ -35,8 +35,8 @@
       "id": 2,
       "move_mode": "fly",
       "type": "path",
-      "x": 721.296142578125,
-      "y": 678.4124755859375
+      "x": 721.2961,
+      "y": 678.4125
     },
     {
       "action": "",
@@ -54,7 +54,7 @@
       "move_mode": "dash",
       "type": "path",
       "x": 734.79,
-      "y": 638.3899999999999
+      "y": 638.39
     },
     {
       "action": "",
@@ -62,8 +62,8 @@
       "id": 5,
       "move_mode": "dash",
       "type": "path",
-      "x": 737.50146484375,
-      "y": 618.51806640625
+      "x": 737.5015,
+      "y": 618.5181
     },
     {
       "action": "fight",
@@ -71,8 +71,8 @@
       "id": 6,
       "move_mode": "dash",
       "type": "path",
-      "x": 753.9200000000001,
-      "y": 603.8899999999999
+      "x": 753.92,
+      "y": 603.89
     },
     {
       "action": "",
@@ -89,62 +89,53 @@
       "id": 8,
       "move_mode": "dash",
       "type": "path",
-      "x": 653.5,
-      "y": 716.62
+      "x": 647.5,
+      "y": 718.3122
     },
     {
       "action": "",
       "action_params": "",
       "id": 9,
-      "move_mode": "walk",
+      "move_mode": "run",
       "type": "path",
-      "x": 647.24,
-      "y": 716.47
+      "x": 602.625,
+      "y": 710.0001
     },
     {
       "action": "",
       "action_params": "",
       "id": 10,
-      "move_mode": "dash",
+      "move_mode": "fly",
       "type": "path",
-      "x": 605.05,
-      "y": 713.39
+      "x": 586.125,
+      "y": 710.1249
     },
     {
       "action": "",
       "action_params": "",
       "id": 11,
-      "move_mode": "fly",
+      "move_mode": "walk",
       "type": "path",
-      "x": 587.41,
-      "y": 709.56
+      "x": 585.625,
+      "y": 708.9375
     },
     {
       "action": "",
       "action_params": "",
       "id": 12,
-      "move_mode": "walk",
-      "type": "target",
-      "x": 586.56,
-      "y": 709.03
-    },
-    {
-      "action": "combat_script",
-      "action_params": "w(0.5),keypress(x),wait(0.2),keypress(x),wait(0.2),keypress(x),attack(0.1);钟离 d(0.1),e(hold);茜特菈莉 e;莱依拉 e;伊涅芙 e;",
-      "id": 13,
       "move_mode": "fly",
       "type": "path",
-      "x": 598.78,
-      "y": 693.25
+      "x": 591.2606,
+      "y": 673.1083
     },
     {
       "action": "fight",
       "action_params": "",
-      "id": 14,
+      "id": 13,
       "move_mode": "dash",
       "type": "path",
-      "x": 591.38,
-      "y": 669.12
+      "x": 589.5348,
+      "y": 666.8218
     }
   ]
 }

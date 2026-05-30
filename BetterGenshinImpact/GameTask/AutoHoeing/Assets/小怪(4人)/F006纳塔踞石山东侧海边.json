@@ -18,7 +18,7 @@
     "description": "  路线信息：该路线预计用时86秒，包含以下怪物：3只疾讯勇士·引索客、1只疾讯勇士·荡风斥候、1只匿叶龙武士·旋锯飞叶、3只幼匿叶龙、2只匿叶龙。",
     "enable_monster_loot_split": false,
     "hash_res": "24232381",
-    "last_modified_time": 1779992357634,
+    "last_modified_time": 1780080924778,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "F006纳塔踞石山东侧海边",
@@ -55,18 +55,9 @@
       "y": -2306.72
     },
     {
-      "action": "combat_script",
-      "action_params": "attack(0.3)",
-      "id": 4,
-      "move_mode": "walk",
-      "type": "path",
-      "x": 7661.03,
-      "y": -2306.72
-    },
-    {
       "action": "",
       "action_params": "",
-      "id": 5,
+      "id": 4,
       "move_mode": "walk",
       "type": "path",
       "x": 7669.0781,
@@ -75,7 +66,7 @@
     {
       "action": "combat_script",
       "action_params": "attack(0.1)",
-      "id": 6,
+      "id": 5,
       "move_mode": "dash",
       "type": "path",
       "x": 7693.9727,
@@ -84,7 +75,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 7,
+      "id": 6,
       "move_mode": "walk",
       "type": "path",
       "x": 7681.8,
@@ -93,7 +84,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 8,
+      "id": 7,
       "move_mode": "dash",
       "type": "path",
       "x": 7679.34,
@@ -102,7 +93,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 9,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
       "x": 7658.64,

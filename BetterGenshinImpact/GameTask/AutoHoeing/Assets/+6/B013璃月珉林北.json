@@ -31,7 +31,7 @@
     },
     {
       "action": "combat_script",
-      "action_params": ";钟离 keypress(q),keydown(e),wait(1),keyup(e);茜特菈莉 e;莱依拉 e;伊涅芙 e; ;",
+      "action_params": ";钟离 keypress(q),keydown(e),wait(1),keyup(e);茜特菈莉 e;莱依拉 e;伊涅芙 e;尼可 e; ;",
       "id": 2,
       "move_mode": "dash",
       "type": "path",

@@ -7,12 +7,13 @@
       }
     ],
     "bgi_version": "0.45.0",
-    "description": "  路线信息：该路线预计用时53秒，包含以下怪物：1只幼突角龙、4只突角龙。",
+    "description": "  路线信息：该路线预计用时62.42秒，包含以下怪物：1只疾讯勇士·重刃讯使、1只流刃勇士·锯脂者、1只结羽勇士·腾空士、1只嵴锋龙武士·碎晶打者。",
     "enable_monster_loot_split": false,
-    "last_modified_time": 1780080010043,
+    "hash_res": "37172767",
+    "last_modified_time": 1780071350010,
     "map_match_method": "",
-    "map_name": "AncientSacredMountain",
-    "name": "ZF009纳塔远古圣山聚火祭验所西-2",
+    "map_name": "Teyvat",
+    "name": "F037纳塔悠悠集市南",
     "tags": [],
     "type": "collect",
     "version": "1.0"
@@ -24,8 +25,8 @@
       "id": 1,
       "move_mode": "walk",
       "type": "teleport",
-      "x": -80.9502,
-      "y": -248.4893
+      "x": 13905.499,
+      "y": 327.8872
     },
     {
       "action": "fight",
@@ -33,17 +34,8 @@
       "id": 2,
       "move_mode": "dash",
       "type": "path",
-      "x": -100.6116,
-      "y": -276.001
-    },
-    {
-      "action": "fight",
-      "action_params": "",
-      "id": 3,
-      "move_mode": "dash",
-      "type": "path",
-      "x": -146.7109,
-      "y": -267.0469
+      "x": 13807.4951,
+      "y": 304.9331
     }
   ]
 }

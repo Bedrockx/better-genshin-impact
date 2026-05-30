@@ -245,6 +245,15 @@ public class PathExecutor
     /// </summary>
     private Dictionary<int, string?> _syncPointMap = new();
 
+    /// <summary>
+    /// 段级缓存（fastsync-redesign-parameter-passing spec / OQ-1=c）：
+    /// 当前段内 waypoint 索引 → 抢报 syncId（仅命中 _syncPointMap 的项）。
+    /// 段循环开始时构建一次（投影 _syncPointMap 中 listIdx == 当前段 的项），
+    /// 下一段重新构建。取代旧的 FastSyncMapKeyResolver 线性扫描——直接 O(1) 查询。
+    /// 单机 / 无同步点段：保持 null，所有反查直接短路。
+    /// </summary>
+    private Dictionary<int, string?>? _wpIdxToSyncIdCache;
+
     public CombatScenes? _combatScenes;
     // private readonly Dictionary<string, string> _actionAvatarIndexMap = new();
 
@@ -415,6 +424,23 @@ public class PathExecutor
             // （正常情况下消费点会清理，但显式重置确保语义清晰）
             MultiplayerRevivalGate.Reset(ref _multiplayerRevivalDetected);
 
+            // === 段级抢报缓存构建（fastsync-redesign-parameter-passing spec / OQ-1=c）===
+            // 把 _syncPointMap 中属于本段的项投影到 wpIdx 索引，O(1) 查询。
+            // 单机 / 无同步点段：保持 null，所有反查直接短路。
+            _wpIdxToSyncIdCache = null;
+            if (MultiplayerCoordinator != null && _syncPointMap.Count > 0)
+            {
+                var __segIdx = waypointsList.FindIndex(wps => wps == waypoints);
+                var __cache = new Dictionary<int, string?>();
+                foreach (var kv in _syncPointMap)
+                {
+                    var __listIdx = kv.Key / 10000;
+                    var __wpIdx = kv.Key % 10000;
+                    if (__listIdx == __segIdx) __cache[__wpIdx] = kv.Value;
+                }
+                _wpIdxToSyncIdCache = __cache;
+            }
+
             // === 集体卡死跳段消费点 2（multiplayer-mutual-wait-collective-skip §8.7 / OQ-6 A）===
             // 段切换前消费一次：避免跨段残留信号位 + 段开始前若已收到跳段请求立即处理。
             // 段切换点不在 MoveForward 持按状态，故无需 KeyUp。
@@ -500,113 +526,44 @@ public class PathExecutor
                         
                         CurWaypoint = (waypoints.FindIndex(wps => wps == waypoint), waypoint);
 
-                        // === 快速同步点抢报 watcher 前移装配（fast-sync-point-claim-no-effect-fix spec §4.1）===
-                        // 装配位置矫正：watcher 在整个 waypoint 处理期间都活，覆盖 MoveTo / MoveCloseTo / 战斗 /
-                        // WaitForAllPlayers 所有阶段；旧版本只在「到达集合点」判定块内 Task.Run，玩家此时已停下，
-                        // 距离不再收敛 → 0 LOG（详见 bugfix.md BC1 / 2.10）。
-                        // 闭包变量固化纪律保留（FR19 / H1 守门 / UB7 3.13）：watcher 仅看 captured*。
-                        var __mapKey_fs = CurWaypoints.Item1 * 10000 + CurWaypoint.Item1;
-                        string? __syncIdMaybe_fs = null;
-                        if (MultiplayerCoordinator != null
-                            && waypoint.Type != WaypointType.Teleport.Code
-                            && _syncPointMap.TryGetValue(__mapKey_fs, out var __sid_fs))
+                        // === 抢报 syncId 反查（fastsync-redesign-parameter-passing spec / OQ-1=c）===
+                        // 段级缓存 _wpIdxToSyncIdCache 中查命中的 syncId（None 时为 null）。
+                        // 透传给 MoveTo / MoveCloseTo / HandleTeleportWaypoint，函数内部循环
+                        // 命中距离阈值时 inline 抢报。单机 / 缓存 null 时整链路短路。
+                        string? __fastSyncId = null;
+                        if (MultiplayerCoordinator != null && _wpIdxToSyncIdCache != null)
                         {
-                            __syncIdMaybe_fs = __sid_fs;
-                        }
-                        var __pathingGate_fs = new BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.FastSyncOneShotGate();
-                        var __fastWatcherCts_fs = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        Task? __fastWatcherTask_fs = null;
-                        var __shouldArmPathing_fs = MultiplayerCoordinator != null
-                            && BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.FastSyncDecisions
-                                .ShouldArmPathingWatcher(
-                                    TaskContext.Instance().Config.AutoHoeingConfig,
-                                    isMultiplayer: true,
-                                    isConnected: MultiplayerCoordinator.IsConnected,
-                                    syncIdNonNull: __syncIdMaybe_fs != null);
-                        if (__shouldArmPathing_fs && __syncIdMaybe_fs != null)
-                        {
-                            var __capturedSyncId_fs = __syncIdMaybe_fs;
-                            var __capturedWaypoint_fs = waypoint;
-                            var __capturedProgress_fs = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
-                            var __capturedCoordinator_fs = MultiplayerCoordinator!;
-                            var __threshold_fs = BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.FastSyncDecisions
-                                .ClampPathingDistance(TaskContext.Instance().Config.AutoHoeingConfig.FastSyncPathingDistance);
-                            var __fastStartTick_fs = Environment.TickCount;
-                            Logger.LogDebug("[联机][FastSync] 路径 watcher 启动 syncId={SyncId} 阈值={Th:F1}米",
-                                __capturedSyncId_fs, __threshold_fs);
-                            __fastWatcherTask_fs = Task.Run(async () =>
-                            {
-                                int __claimCount_fs = 0;
-                                int __skipForGateCount_fs = 0;
-                                int __getPosFailCount_fs = 0;
-                                bool __nanLogged_fs = false;
-                                try
-                                {
-                                    while (!__fastWatcherCts_fs.IsCancellationRequested)
-                                    {
-                                        Point2f pos;
-                                        try
-                                        {
-                                            using var screen = CaptureToRectArea();
-                                            pos = Navigation.GetPosition(screen, __capturedWaypoint_fs.MapName, __capturedWaypoint_fs.MapMatchMethod);
-                                        }
-                                        catch (OperationCanceledException) { throw; }
-                                        catch (Exception)
-                                        {
-                                            __getPosFailCount_fs++;
-                                            pos = new Point2f(0, 0);
-                                        }
-                                        var dist = pos == new Point2f(0, 0)
-                                            ? double.NaN
-                                            : Navigation.GetDistance(__capturedWaypoint_fs, pos);
-                                        if (double.IsNaN(dist) && !__nanLogged_fs)
-                                        {
-                                            Logger.LogDebug("[联机][FastSync] 路径 watcher 检测到无效距离值（首次） syncId={SyncId}", __capturedSyncId_fs);
-                                            __nanLogged_fs = true;
-                                        }
-                                        if (BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.FastSyncDecisions
-                                                .ShouldFastReport(dist, __threshold_fs, gateAlreadyArmed: !__pathingGate_fs.IsArmable))
-                                        {
-                                            if (__pathingGate_fs.TryArm())
-                                            {
-                                                __claimCount_fs++;
-                                                if (!__capturedCoordinator_fs.IsConnected) return;
-                                                Logger.LogInformation("[联机][FastSync] 路径抢报命中 syncId={SyncId} 距离={Dist:F2}米 阈值={Th:F1}米 自启动={Elapsed}ms",
-                                                    __capturedSyncId_fs, dist, __threshold_fs, Environment.TickCount - __fastStartTick_fs);
-                                                await __capturedCoordinator_fs.FastReportArrivalAsync(__capturedSyncId_fs, __fastWatcherCts_fs.Token, __capturedProgress_fs);
-                                            }
-                                            else
-                                            {
-                                                __skipForGateCount_fs++;
-                                            }
-                                            return;
-                                        }
-                                        await Task.Delay(200, __fastWatcherCts_fs.Token);
-                                    }
-                                }
-                                catch (OperationCanceledException) { /* 正常路径取消 */ }
-                                catch (Exception ex)
-                                {
-                                    Logger.LogWarning(ex, "[联机][FastSync] 路径 watcher 异常退出 syncId={SyncId}", __capturedSyncId_fs);
-                                }
-                                finally
-                                {
-                                    Logger.LogDebug("[联机][FastSync] 路径 watcher 退出 syncId={SyncId} 抢报次数={Claim} 跳过Gate={Skip} 失败GetPos={Fail} 自启动={Elapsed}ms",
-                                        __capturedSyncId_fs, __claimCount_fs, __skipForGateCount_fs, __getPosFailCount_fs, Environment.TickCount - __fastStartTick_fs);
-                                }
-                            }, __fastWatcherCts_fs.Token);
-                        }
-                        else if (TaskContext.Instance().Config.AutoHoeingConfig.FastSyncPointEnabled
-                                 && MultiplayerCoordinator != null
-                                 && waypoint.Type != WaypointType.Teleport.Code
-                                 && __syncIdMaybe_fs != null)
-                        {
-                            Logger.LogDebug("[联机][FastSync] 路径 watcher 跳过装配 syncId={SyncId} reason=IsConnected={Conn}",
-                                __syncIdMaybe_fs, MultiplayerCoordinator.IsConnected);
+                            _wpIdxToSyncIdCache.TryGetValue(CurWaypoint.Item1, out __fastSyncId);
                         }
 
-                        try
+                        // === 段内"下一个还没抢报"的 syncPoint 反查（修复"非传送同步点不提前抢报"）===
+                        // 走 wp0/wp1/wp2 时也要让 MoveTo 内部循环用「到 wp4(战斗+sync) 的距离」判定，
+                        // 距离收敛到 FastSyncPathingDistance 时抢报 wp4 的 syncId。
+                        string? __nextPendingSyncId = null;
+                        WaypointForTrack? __nextPendingSyncWaypoint = null;
+                        if (MultiplayerCoordinator != null && _wpIdxToSyncIdCache != null && _wpIdxToSyncIdCache.Count > 0)
                         {
+                            // 找：当前段内 wpIdx >= CurWaypoint.Item1 && syncId != null && coordinator 还没记为已抢报
+                            int __bestWpIdx = int.MaxValue;
+                            string? __bestSyncId = null;
+                            foreach (var __kv in _wpIdxToSyncIdCache)
+                            {
+                                if (__kv.Value == null) continue;
+                                if (__kv.Key < CurWaypoint.Item1) continue;
+                                if (MultiplayerCoordinator.IsFastReported(__kv.Value)) continue;
+                                if (__kv.Key < __bestWpIdx)
+                                {
+                                    __bestWpIdx = __kv.Key;
+                                    __bestSyncId = __kv.Value;
+                                }
+                            }
+                            if (__bestSyncId != null && __bestWpIdx < waypoints.Count)
+                            {
+                                __nextPendingSyncId = __bestSyncId;
+                                __nextPendingSyncWaypoint = waypoints[__bestWpIdx];
+                            }
+                        }
+
                         //计算下一个节点到当前节点的距离
                         nextWaypoint = waypoint == waypoints.Last() ? null : waypoints[waypoints.IndexOf(waypoint) + 1];
                         if (nextWaypoint != null)
@@ -626,13 +583,13 @@ public class PathExecutor
                         // 此处仅做严格路径等待，watcher 在 waypoint 循环末尾的 finally 内 cancel。
                         if (MultiplayerCoordinator != null && waypoint.Type != WaypointType.Teleport.Code)
                         {
-                            // syncId 复用 §4.1.A 已计算的 __syncIdMaybe_fs 避免重复 TryGetValue
-                            if (__syncIdMaybe_fs != null)
+                            // syncId 复用 §抢报反查已计算的 __fastSyncId 避免重复 TryGetValue
+                            if (__fastSyncId != null)
                             {
                                 var progress = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
-                                Logger.LogInformation("[联机] 到达集合点，等待所有玩家，syncId={SyncId}, 进度={Progress}", __syncIdMaybe_fs, progress);
-                                await MultiplayerCoordinator.WaitForAllPlayers(__syncIdMaybe_fs, ct, progress);
-                                Logger.LogInformation("[联机] 集合完成，继续前进，syncId={SyncId}", __syncIdMaybe_fs);
+                                Logger.LogInformation("[联机] 到达集合点，等待所有玩家，syncId={SyncId}, 进度={Progress}", __fastSyncId, progress);
+                                await MultiplayerCoordinator.WaitForAllPlayers(__fastSyncId, ct, progress);
+                                Logger.LogInformation("[联机] 集合完成，继续前进，syncId={SyncId}", __fastSyncId);
                             }
                         }
 
@@ -659,82 +616,22 @@ public class PathExecutor
                             // 联机模式：把传送类异常（TpPointNotActivate、tpTask 内部 5 次重试耗尽抛出的 InvalidOperationException）
                             // 转成 RetryException，进入"同步点前/后"异常处理框架（重试 3 次后跳到下一段，而不是跳整个 JSON）。
                             // 单机模式：保留原有行为，让异常自然上抛。
+                            //
+                            // 抢报 syncId 反查（fastsync-redesign-parameter-passing spec / OQ-1=c）：
+                            // 段级缓存中查命中的传送同步点 syncId（None 时为 null），
+                            // 透传给 HandleTeleportWaypoint → TpTask.Tp，TpTask.IsLoadingScreen 命中时
+                            // 内联抢报。单机 / 缓存 null 时整链路短路。
+                            string? __tpFastSyncId = null;
+                            if (MultiplayerCoordinator != null && _wpIdxToSyncIdCache != null)
+                            {
+                                _wpIdxToSyncIdCache.TryGetValue(CurWaypoint.Item1, out __tpFastSyncId);
+                            }
+
                             if (MultiplayerCoordinator != null)
                             {
-                                // === 快速同步点抢报 handler 注册（multiplayer-fast-sync-host-controlled spec FR11-FR14）===
-                                // 注册时机：在 HandleTeleportWaypoint 之前 += handler；在 finally 内 -= handler，与
-                                // TpTask.SuppressAutoRevivalClick set/clear 守护模式对称。
-                                var tpMapKey = CurWaypoints.Item1 * 10000 + CurWaypoint.Item1;
-                                _syncPointMap.TryGetValue(tpMapKey, out var capturedTpSyncIdMaybe);
-                                var capturedTpSyncId = capturedTpSyncIdMaybe;
-                                var capturedTpProgress = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
-                                var tpGate = new BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.FastSyncOneShotGate();
-                                var capturedDelayMs = BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.FastSyncDecisions
-                                    .ClampTeleportDelay(TaskContext.Instance().Config.AutoHoeingConfig.FastSyncTeleportLoadingDelayMs);
-                                var shouldArmTp = capturedTpSyncId != null
-                                    && BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.FastSyncDecisions
-                                        .ShouldArmPathingWatcher(
-                                            TaskContext.Instance().Config.AutoHoeingConfig,
-                                            isMultiplayer: true,
-                                            isConnected: MultiplayerCoordinator.IsConnected,
-                                            syncIdNonNull: true);
-                                Action<long>? tpHandler = null;
-                                if (shouldArmTp && capturedTpSyncId != null)
-                                {
-                                    var coordinator = MultiplayerCoordinator;
-                                    var tpStartTick = Environment.TickCount;
-                                    tpHandler = (loadingTickMs) =>
-                                    {
-                                        _ = Task.Run(async () =>
-                                        {
-                                            try
-                                            {
-                                                if (capturedDelayMs > 0)
-                                                    await Task.Delay(capturedDelayMs, ct);
-                                                if (!tpGate.TryArm())
-                                                {
-                                                    // === 早退诊断（fast-sync-point-claim-no-effect-fix spec §4.2 EB3 / 2.6）===
-                                                    Logger.LogDebug("[联机][FastSync] 传送抢报早退 syncId={SyncId} reason=tpGate已抢", capturedTpSyncId);
-                                                    return;
-                                                }
-                                                if (!coordinator.IsConnected)
-                                                {
-                                                    Logger.LogDebug("[联机][FastSync] 传送抢报早退 syncId={SyncId} reason=IsConnected=false", capturedTpSyncId);
-                                                    return;
-                                                }
-                                                Logger.LogInformation("[联机][FastSync] 传送 loading 抢报命中 syncId={SyncId} 延时={Delay}ms 自启动={Elapsed}ms",
-                                                    capturedTpSyncId, capturedDelayMs, Environment.TickCount - tpStartTick);
-                                                await coordinator.FastReportArrivalAsync(capturedTpSyncId, ct, capturedTpProgress);
-                                            }
-                                            catch (OperationCanceledException)
-                                            {
-                                                // FR14 silent，但补 LogDebug 让用户能看到「早退原因 ct 取消」（EB3 / 2.6）
-                                                Logger.LogDebug("[联机][FastSync] 传送抢报早退 syncId={SyncId} reason=ct已取消", capturedTpSyncId);
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                Logger.LogWarning(ex, "[联机][FastSync] 传送抢报异常退出 syncId={SyncId}", capturedTpSyncId);
-                                            }
-                                        }, ct);
-                                    };
-                                    BetterGenshinImpact.GameTask.AutoTrackPath.TpTask.OnLoadingScreenDetected += tpHandler;
-                                    // === 传送 handler 已注册 LogDebug（fast-sync-point-claim-no-effect-fix spec §4.2 EB3 / 2.5）===
-                                    Logger.LogDebug("[联机][FastSync] 传送抢报 handler 已注册 syncId={SyncId} 延时={Delay}ms",
-                                        capturedTpSyncId, capturedDelayMs);
-                                }
-                                else if (TaskContext.Instance().Config.AutoHoeingConfig.FastSyncPointEnabled
-                                         && MultiplayerCoordinator != null)
-                                {
-                                    // === 传送 handler 跳过装配 LogDebug（fast-sync-point-claim-no-effect-fix spec §4.2 EB3 / 2.7）===
-                                    Logger.LogDebug("[联机][FastSync] 传送抢报跳过装配 syncId={SyncId} reason=IsConnected={Conn}, syncIdNonNull={SidNN}",
-                                        capturedTpSyncId ?? "<null>",
-                                        MultiplayerCoordinator.IsConnected,
-                                        capturedTpSyncId != null);
-                                }
-
                                 try
                                 {
-                                    await HandleTeleportWaypoint(waypoint);
+                                    await HandleTeleportWaypoint(waypoint, fastSyncId: __tpFastSyncId);
                                 }
                                 catch (TaskCanceledException) { throw; }
                                 catch (NormalEndException) { throw; }
@@ -745,14 +642,6 @@ public class PathExecutor
                                 {
                                     Logger.LogWarning("[联机] 传送失败，转为 RetryException 进入异常处理流程，原因: {Msg}", tpEx.Message);
                                     throw new RetryException($"传送失败：{tpEx.Message}");
-                                }
-                                finally
-                                {
-                                    // FR13：handler 注销（即使传送失败 / 异常路径也必须释放，避免下次传送误触发）
-                                    if (tpHandler != null)
-                                    {
-                                        BetterGenshinImpact.GameTask.AutoTrackPath.TpTask.OnLoadingScreenDetected -= tpHandler;
-                                    }
                                 }
                             }
                             else
@@ -878,7 +767,7 @@ public class PathExecutor
                                 {
                                     // Logger.LogWarning("战斗后节点较近222！！-2");
                                     last2Waypoints = false;
-                                    await MoveTo(waypoint,true,task,nextWaypoint,nextDdistance);
+                                    await MoveTo(waypoint,true,task,nextWaypoint,nextDdistance, fastSyncId: __nextPendingSyncId, fastSyncWaypoint: __nextPendingSyncWaypoint);
                                 }
                             }
                             
@@ -886,7 +775,7 @@ public class PathExecutor
 
                             if (IsTargetPoint(waypoint))
                             {
-                                await MoveCloseTo(waypoint);
+                                await MoveCloseTo(waypoint, fastSyncId: __nextPendingSyncId, fastSyncWaypoint: __nextPendingSyncWaypoint);
                             }
 
                             //skipOtherOperations如果重试，则跳过相关操作，
@@ -1121,19 +1010,6 @@ public class PathExecutor
                             }
                         }
                         _lastWaypoint = waypoint;
-                        }
-                        finally
-                        {
-                            // === 快速同步点抢报 watcher 收尾（fast-sync-point-claim-no-effect-fix spec §4.1.C）===
-                            if (__fastWatcherTask_fs != null)
-                            {
-                                __fastWatcherCts_fs.Cancel();
-                                try { await __fastWatcherTask_fs.WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None); }
-                                catch (TimeoutException) { Logger.LogWarning("[联机][FastSync] 路径 watcher 退出超时 syncId={SyncId}", __syncIdMaybe_fs); }
-                                catch (Exception ex) { Logger.LogWarning(ex, "[联机][FastSync] 路径 watcher 等待退出异常 syncId={SyncId}", __syncIdMaybe_fs); }
-                            }
-                            __fastWatcherCts_fs.Dispose();
-                        }
                     }
 
                     if (waypoints == waypointsList.Last())
@@ -2134,7 +2010,7 @@ public class PathExecutor
         return changeBigMap;
     }
 
-    private async Task HandleTeleportWaypoint(WaypointForTrack waypoint,WaypointForTrack? lastWaypoint = null)
+    private async Task HandleTeleportWaypoint(WaypointForTrack waypoint, WaypointForTrack? lastWaypoint = null, string? fastSyncId = null)
     {
         WorldStateMonitor?.BeginTeleportSuppression();
         try
@@ -2142,7 +2018,7 @@ public class PathExecutor
             var forceTp = waypoint.Action == ActionEnum.ForceTp.Code;
             TpTask tpTask = new TpTask(ct);
             await TryGetExpeditionRewardsDispatch(tpTask);
-            var (tpX, tpY) = await tpTask.Tp(waypoint.GameX, waypoint.GameY, waypoint.MapName, forceTp, requireLoadingScreen: MultiplayerCoordinator != null);
+            var (tpX, tpY) = await tpTask.Tp(waypoint.GameX, waypoint.GameY, waypoint.MapName, forceTp, requireLoadingScreen: MultiplayerCoordinator != null, fastSyncId: fastSyncId);
             var (tprX, tprY) = MapManager.GetMap(waypoint.MapName, waypoint.MapMatchMethod)
                 .ConvertGenshinMapCoordinatesToImageCoordinates(new Point2f((float)tpX, (float)tpY));
             Navigation.SetPrevPosition(tprX, tprY); // 通过上一个位置直接进行局部特征匹配
@@ -2167,9 +2043,10 @@ public class PathExecutor
 
     public DateTime moveToStartTime;
 
-    public async Task MoveTo(WaypointForTrack waypoint,bool isGetOut = true, PathingTask? task = null, Waypoint? nextWaypoint = null,double? nextDistance = null,int retryDis = 4, bool isPoint = true, double? closeDistance = null)
+    public async Task MoveTo(WaypointForTrack waypoint,bool isGetOut = true, PathingTask? task = null, Waypoint? nextWaypoint = null,double? nextDistance = null,int retryDis = 4, bool isPoint = true, double? closeDistance = null, string? fastSyncId = null, WaypointForTrack? fastSyncWaypoint = null)
     {
         // Logger.LogWarning("999");
+        bool fastReported = false;  // 抢报一次性短路 bool（fastsync-redesign-parameter-passing spec）
         // 切人
         Task.Run(async () =>
         {
@@ -2341,6 +2218,37 @@ public class PathExecutor
              }
             var distance = Navigation.GetDistance(waypoint, position);
             Debug.WriteLine($"接近目标点中，距离为{distance}");
+
+            // === 路径同步点抢报（fastsync-redesign-parameter-passing spec / OQ-7=a）===
+            // fastSyncId == null（单机/未启用）→ ShouldFastReportInPathing 短路返回 false
+            // fastSyncWaypoint 非 null → 用「到 sync waypoint 的距离」判断（覆盖非 sync waypoint 的"提前"抢报）
+            // fastSyncWaypoint == null → 退化为「到当前 waypoint 的距离」（向后兼容）
+            var __fastDist = fastSyncWaypoint != null
+                ? Navigation.GetDistance(fastSyncWaypoint, position)
+                : distance;
+            if (FastSyncDecisions.ShouldFastReportInPathing(
+                    __fastDist,
+                    MultiplayerCoordinator?.EffectiveConfig.FastSyncPathingDistance ?? 10.0,
+                    fastSyncId,
+                    isMultiplayer: MultiplayerCoordinator != null,
+                    isConnected: MultiplayerCoordinator?.IsConnected ?? false,
+                    alreadyReported: fastReported))
+            {
+                fastReported = true;
+                var __progress = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
+                try
+                {
+                    // fire-and-forget：上报后立即返回，不阻塞 MoveTo 主流程；
+                    // 后续严格 WaitForAllPlayers 路径会再上报一次走完整等待（服务端 idempotent）
+                    await MultiplayerCoordinator!.FastReportAsync(fastSyncId!, __progress);
+                    Logger.LogInformation("[联机][FastSync] MoveTo 抢报命中 syncId={SyncId} dist={Dist:F2}", fastSyncId, __fastDist);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "[联机][FastSync] MoveTo 抢报异常，已忽略 syncId={SyncId}", fastSyncId);
+                }
+            }
             if (!isPoint)
             {
                 if(retryDis > 6)
@@ -3409,11 +3317,12 @@ public class PathExecutor
     /// 联机万叶聚物战后回点分支已经先用 MoveTo 粗接近至 < 4，故只需少量精接近步数即可，传 10（约 0.8 秒）即可。
     /// 单机 / 联机其它调用点不传新参数即保持原行为，单机零回归。
     /// </summary>
-    public async Task MoveCloseTo(WaypointForTrack waypoint, double closeDistance = 2.0, int? tailDelayMs = null, int maxSteps = 25)
+    public async Task MoveCloseTo(WaypointForTrack waypoint, double closeDistance = 2.0, int? tailDelayMs = null, int maxSteps = 25, string? fastSyncId = null, WaypointForTrack? fastSyncWaypoint = null)
     {
         ImageRegion screen;
         Point2f position;
         int targetOrientation;
+        bool fastReported = false;  // 抢报一次性短路 bool（fastsync-redesign-parameter-passing spec）
         Logger.LogDebug("精确接近目标点，位置({x2},{y2})", $"{waypoint.GameX:F1}", $"{waypoint.GameY:F1}");
 
         // 战斗结束后小地图可能短暂消失，等待派蒙头像出现（小地图可见的标志）。
@@ -3458,7 +3367,38 @@ public class PathExecutor
             EndJudgment(screen);
 
             position = await GetPosition(screen, waypoint);
-            if (MoveCloseToDecisions.ShouldStop(Navigation.GetDistance(waypoint, position), closeDistance))
+            var distance = Navigation.GetDistance(waypoint, position);
+
+            // === 路径同步点抢报（fastsync-redesign-parameter-passing spec / OQ-7=a）===
+            // fastSyncId == null（单机/未启用）→ ShouldFastReportInPathing 短路返回 false
+            // fastSyncWaypoint 非 null → 用「到 sync waypoint 的距离」判断
+            var __fastDist = fastSyncWaypoint != null
+                ? Navigation.GetDistance(fastSyncWaypoint, position)
+                : distance;
+            if (FastSyncDecisions.ShouldFastReportInPathing(
+                    __fastDist,
+                    MultiplayerCoordinator?.EffectiveConfig.FastSyncPathingDistance ?? 10.0,
+                    fastSyncId,
+                    isMultiplayer: MultiplayerCoordinator != null,
+                    isConnected: MultiplayerCoordinator?.IsConnected ?? false,
+                    alreadyReported: fastReported))
+            {
+                fastReported = true;
+                var __progress = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
+                try
+                {
+                    // fire-and-forget：上报后立即返回，不阻塞 MoveCloseTo 主流程
+                    await MultiplayerCoordinator!.FastReportAsync(fastSyncId!, __progress);
+                    Logger.LogInformation("[联机][FastSync] MoveCloseTo 抢报命中 syncId={SyncId} dist={Dist:F2}", fastSyncId, __fastDist);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "[联机][FastSync] MoveCloseTo 抢报异常，已忽略 syncId={SyncId}", fastSyncId);
+                }
+            }
+
+            if (MoveCloseToDecisions.ShouldStop(distance, closeDistance))
             {
                 Logger.LogDebug("已到达路径点");
                 break;

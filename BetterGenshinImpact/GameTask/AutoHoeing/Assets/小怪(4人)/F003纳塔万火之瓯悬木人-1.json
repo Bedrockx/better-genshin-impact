@@ -18,7 +18,7 @@
     "description": "  路线信息：该路线预计用时95秒，包含以下怪物：1只疾讯勇士·重刃讯使、1只匿叶龙武士·流火鸣空、1只幼匿叶龙、2只匿叶龙。",
     "enable_monster_loot_split": false,
     "hash_res": "39681351",
-    "last_modified_time": 1779817143997,
+    "last_modified_time": 1780080889916,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "F003纳塔万火之瓯悬木人-1",
@@ -46,18 +46,9 @@
       "y": -2188.76
     },
     {
-      "action": "",
-      "action_params": "",
-      "id": 3,
-      "move_mode": "dash",
-      "type": "path",
-      "x": 8684.13,
-      "y": -2188.76
-    },
-    {
       "action": "fight",
       "action_params": "",
-      "id": 4,
+      "id": 3,
       "move_mode": "dash",
       "type": "path",
       "x": 8705.62,

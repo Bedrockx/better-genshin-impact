@@ -11,7 +11,7 @@
     "description": "  路线信息：该路线预计用时216.63秒，包含以下怪物：1只射手丘丘人、1只丘丘雷兜王、1只丘丘岩盔王、1只大型碎石隙境原体、3只碎石隙境原体、2只大型狂蔓隙境原体。",
     "enable_monster_loot_split": false,
     "hash_res": "10796441",
-    "last_modified_time": 1779816866784,
+    "last_modified_time": 1780070317353,
     "map_match_method": "",
     "map_name": "Teyvat",
     "name": "E037枫丹厄里那斯北",
@@ -44,8 +44,8 @@
       "id": 3,
       "move_mode": "dash",
       "type": "path",
-      "x": 5073.7363,
-      "y": 2997.5068
+      "x": 5074.6211,
+      "y": 2996.5156
     },
     {
       "action": "",
@@ -53,13 +53,22 @@
       "id": 4,
       "move_mode": "dash",
       "type": "path",
-      "x": 5049.5742,
-      "y": 2971.5029
+      "x": 5058.3496,
+      "y": 2977.8799
     },
     {
       "action": "",
       "action_params": "",
       "id": 5,
+      "move_mode": "dash",
+      "type": "path",
+      "x": 5037.4463,
+      "y": 2974.2993
+    },
+    {
+      "action": "",
+      "action_params": "",
+      "id": 6,
       "move_mode": "dash",
       "type": "path",
       "x": 5018.6523,
@@ -68,7 +77,7 @@
     {
       "action": "stop_flying",
       "action_params": "",
-      "id": 6,
+      "id": 7,
       "move_mode": "fly",
       "type": "path",
       "x": 4990.3623,
@@ -77,7 +86,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 7,
+      "id": 8,
       "move_mode": "dash",
       "type": "path",
       "x": 4970.3633,
@@ -86,7 +95,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 8,
+      "id": 9,
       "move_mode": "walk",
       "type": "teleport",
       "x": 5113.59,
@@ -95,7 +104,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 9,
+      "id": 10,
       "move_mode": "run",
       "type": "path",
       "x": 5103.63,
@@ -104,7 +113,7 @@
     {
       "action": "stop_flying",
       "action_params": "",
-      "id": 10,
+      "id": 11,
       "move_mode": "fly",
       "type": "path",
       "x": 5105.63,
@@ -113,7 +122,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 11,
+      "id": 12,
       "move_mode": "dash",
       "type": "path",
       "x": 5086.54,
@@ -122,7 +131,7 @@
     {
       "action": "",
       "action_params": "",
-      "id": 12,
+      "id": 13,
       "move_mode": "run",
       "type": "path",
       "x": 5092.49,
@@ -131,7 +140,7 @@
     {
       "action": "fight",
       "action_params": "",
-      "id": 13,
+      "id": 14,
       "move_mode": "dash",
       "type": "path",
       "x": 5165.23,
