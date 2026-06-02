@@ -29,6 +29,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Fischless.GameCapture;
 
 using Vanara.PInvoke;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
@@ -1718,10 +1719,12 @@ public class TpTask
     /// <returns></returns>
     private bool CheckMapChooseIcon(ImageRegion imageRegion)
     {
+        var isHdrCapture = TaskContext.Instance().Config.CaptureMode == nameof(CaptureModes.WindowsGraphicsCaptureHdr);
         var hasMapChooseIcon = false;
 
         // 全匹配一遍
-        var rResultList = MatchTemplateHelper.MatchMultiPicForOnePic(imageRegion.CacheGreyMat[_assets.MapChooseIconRoi], _assets.MapChooseIconGreyMatList);
+        using var mapChooseIconRoi = imageRegion.CacheGreyMat[_assets.MapChooseIconRoi].Clone();
+        var rResultList = MatchTemplateHelper.MatchMultiPicForOnePic(mapChooseIconRoi, _assets.MapChooseIconGreyMatList, isHdrCapture ? 0.7 : 0.8);
         // 按高度排序
         if (rResultList.Count > 0)
         {
@@ -1734,7 +1737,7 @@ public class TpTask
                 using var textRegion = ra.Find(new RecognitionObject
                 {
                     // RecognitionType = RecognitionTypes.Ocr,
-                    RecognitionType = RecognitionTypes.ColorRangeAndOcr,
+                    RecognitionType = isHdrCapture ? RecognitionTypes.Ocr : RecognitionTypes.ColorRangeAndOcr,
                     LowerColor = new Scalar(249, 249, 249), // 只取白色文字
                     UpperColor = new Scalar(255, 255, 255),
                 });

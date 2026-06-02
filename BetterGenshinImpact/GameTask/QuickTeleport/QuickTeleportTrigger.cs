@@ -11,6 +11,7 @@ using System;
 using System.Linq;
 using System.Windows.Forms;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
+using Fischless.GameCapture;
 
 namespace BetterGenshinImpact.GameTask.QuickTeleport;
 
@@ -126,8 +127,12 @@ internal class QuickTeleportTrigger : ITaskTrigger
     {
         var hasMapChooseIcon = false;
 
+        var isHdrCapture = TaskContext.Instance().Config.CaptureMode == nameof(CaptureModes.WindowsGraphicsCaptureHdr);
+
         // 全匹配一遍
-        var rResultList = MatchTemplateHelper.MatchMultiPicForOnePic(content.CaptureRectArea.CacheGreyMat[_assets.MapChooseIconRoi], _assets.MapChooseIconGreyMatList);
+        using var mapChooseIconRoi = content.CaptureRectArea.CacheGreyMat[_assets.MapChooseIconRoi].Clone();
+        var rResultList = MatchTemplateHelper.MatchMultiPicForOnePic(mapChooseIconRoi, _assets.MapChooseIconGreyMatList, isHdrCapture ? 0.7 : 0.8);
+
         // 按高度排序
         if (rResultList.Count > 0)
         {
@@ -140,7 +145,7 @@ internal class QuickTeleportTrigger : ITaskTrigger
                 using var textRegion = ra.Find(new RecognitionObject
                 {
                     // RecognitionType = RecognitionTypes.Ocr,
-                    RecognitionType = RecognitionTypes.ColorRangeAndOcr,
+                    RecognitionType = isHdrCapture ? RecognitionTypes.Ocr : RecognitionTypes.ColorRangeAndOcr,
                     LowerColor = new Scalar(249, 249, 249), // 只取白色文字
                     UpperColor = new Scalar(255, 255, 255),
                 });
