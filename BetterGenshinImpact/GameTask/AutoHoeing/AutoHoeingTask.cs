@@ -2615,6 +2615,8 @@ public class AutoHoeingTask : ISoloTask
 
         int count = 0;
         int consecutiveSkipCount = 0; // 联机模式：连续跳过路线计数（需求 1）
+        int completedCount = 0; // 本轮成功完整执行的线路数（用于轮结束统计日志）
+        int skippedCount = 0;   // 本轮被跳过的线路数（联机跳过/CD跳过，用于轮结束统计日志）
         var groupStartTime = DateTime.Now;
         double remainingEstimatedTime = totalEstimatedTime;
         double skippedTime = 0;
@@ -2758,11 +2760,17 @@ public class AutoHoeingTask : ISoloTask
                 _logger.LogInformation("路线 {Name} 未刷新，跳过", route.FileName);
                 skippedTime += route.AdjustedTime;
                 remainingEstimatedTime -= route.AdjustedTime;
+                skippedCount++;
                 continue;
             }
 
-            _logger.LogInformation("{Prefix}开始第 {N}/{T} 条线路: {Name}",
-                roundPrefix, startIndex + count, groupRoutes.Count, route.FileName);
+            var tsRouteEstimate = TimeSpan.FromSeconds(Math.Max(0, route.AdjustedTime));
+            var tsRoundRemain = TimeSpan.FromSeconds(Math.Max(0, remainingEstimatedTime));
+            _logger.LogInformation(
+                "{Prefix}开始第 {N}/{T} 条线路: {Name}，本线路预计用时 {EH}时{EMin}分{ES}秒，本轮预计剩余 {H}时{Min}分{S}秒",
+                roundPrefix, startIndex + count, groupRoutes.Count, route.FileName,
+                (int)tsRouteEstimate.TotalHours, tsRouteEstimate.Minutes, tsRouteEstimate.Seconds,
+                (int)tsRoundRemain.TotalHours, tsRoundRemain.Minutes, tsRoundRemain.Seconds);
 
             // 白芙切换
             if (_shouldSwitchFurina)
@@ -2925,6 +2933,7 @@ public class AutoHoeingTask : ISoloTask
                             break; // 退出路线循环
                         }
 
+                        skippedCount++;
                         continue; // 跳到下一条路线，不记录 CD
                     }
 
@@ -2983,6 +2992,7 @@ public class AutoHoeingTask : ISoloTask
                         "{Prefix}完成第 {N}/{T} 条线路: {Name}，该组预计剩余: {H}时{Min}分{S}秒",
                         roundPrefix, startIndex + count, groupRoutes.Count, route.FileName,
                         (int)tsRemain.TotalHours, tsRemain.Minutes, tsRemain.Seconds);
+                    completedCount++;
                 }
             }
             catch (Exception ex)
@@ -2990,6 +3000,14 @@ public class AutoHoeingTask : ISoloTask
                 _logger.LogError("执行路线 {Name} 出错: {Msg}", route.FileName, ex.Message);
             }
         }
+
+        // 本轮锄地结束统计：用时 + 完成/跳过线路数（需求：每轮结束输出统计信息）
+        var roundElapsed = DateTime.Now - groupStartTime;
+        _logger.LogInformation(
+            "{Prefix}本轮锄地结束统计：用时 {H}时{Min}分{S}秒，完成 {Done} 条 / 跳过 {Skip} 条（计划共 {Total} 条）",
+            roundPrefix,
+            (int)roundElapsed.TotalHours, roundElapsed.Minutes, roundElapsed.Seconds,
+            completedCount, skippedCount, groupRoutes.Count);
     }
 
     /// <summary>

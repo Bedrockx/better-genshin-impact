@@ -853,6 +853,7 @@ public class AutoFightTask : ISoloTask
                 {
                     _allFightDoneReceived = true;
                     FightEndTotoly = true; // 立即打断仍在酣战的主循环
+                    Logger.LogInformation("[联机][结束配额] 收到全队战斗结束广播，结束本场战斗 syncKey={Key}", _currentFightSyncKey);
                 }
             };
             __quorumCoordinator.Client.AllFightDone += __onAllFightDone;
