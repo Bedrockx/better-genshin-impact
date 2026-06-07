@@ -1576,10 +1576,28 @@ public class AutoHoeingTask : ISoloTask
 
                 // 非第一轮：需要重新组队进入新房主的世界，并重新加载 CD
                 _worldStateMonitor?.BeginRoundSwitch();
-                await SetupNextRoundAsync(round, roundHostPlayer, amIHost, client, playerOrder.Count);
+                var setupGroupTags = BuildGroupTags();
+                var setupOutcome = await SetupNextRoundAsync(round, roundHostPlayer, amIHost, client, playerOrder.Count, setupGroupTags);
                 _worldStateMonitor?.EndRoundSwitch();
+
+                // 空轮预跳过：全体（房主+成员）都未进世界 → 跳过本轮锄地与收尾，直接下一轮。
+                // 不调用 SyncRoundEndAsync / LeaveCurrentWorldAsync（无人进世界，无需离开，
+                // 且该轮无人到达 round_end 屏障，见 Req 8）。清理本轮 coordinator 引用后 continue。
+                if (setupOutcome == RoundSetupOutcome.PreSkipEmptyRound)
+                {
+                    _logger.LogInformation("[多世界] 第 {Round} 轮空轮预跳过，直接进入下一轮", round + 1);
+                    if (_multiplayerCoordinator != null)
+                    {
+                        _multiplayerCoordinator.OnDegraded -= _ => { };
+                        _multiplayerCoordinator = null;
+                    }
+                    _executionEngine?.SetCoordinator(null);
+                    _executionEngine?.SetWorldStateMonitor(null);
+                    continue;
+                }
+
                 _multiplayerCoordinator?.ResetForNewRound();
-                if (_multiplayerCoordinator == null)
+                if (setupOutcome == RoundSetupOutcome.Abort || _multiplayerCoordinator == null)
                 {
                     _logger.LogError("[多世界] 第 {Round} 轮初始化失败，停止后续轮次", round + 1);
                     // 尝试回到自己世界，避免卡在别人世界
@@ -1648,11 +1666,22 @@ public class AutoHoeingTask : ISoloTask
         catch (Exception ex) { _logger.LogWarning(ex, "[多世界] 任务结束退出世界失败，忽略"); }
     }
 
+    /// <summary>SetupNextRoundAsync 的结果：决定多世界主循环后续走向。</summary>
+    private enum RoundSetupOutcome
+    {
+        /// <summary>正常完成建房/加入，进入本轮锄地。</summary>
+        Proceed,
+        /// <summary>本轮被预判为 Empty_Round 并已预跳过 → 主循环跳过锄地与收尾，直接下一轮。</summary>
+        PreSkipEmptyRound,
+        /// <summary>建房/配置等致命失败 → 主循环 break（沿用原 _multiplayerCoordinator==null 语义）。</summary>
+        Abort,
+    }
+
     /// <summary>
     /// 设置下一轮：新房主创建房间，成员加入
     /// </summary>
-    private async Task SetupNextRoundAsync(int round, PlayerInfo roundHostPlayer, bool amIHost,
-        CoordinatorClient client, int playerCount)
+    private async Task<RoundSetupOutcome> SetupNextRoundAsync(int round, PlayerInfo roundHostPlayer, bool amIHost,
+        CoordinatorClient client, int playerCount, List<List<string>> groupTags)
     {
         try
         {
@@ -1698,7 +1727,7 @@ public class AutoHoeingTask : ISoloTask
                 if (newCode == null)
                 {
                     _logger.LogError("[多世界] 第 {Round} 轮创建房间失败（重试3次后仍失败），终止多世界模式", round + 1);
-                    return;
+                    return RoundSetupOutcome.Abort;
                 }
                 _config.CurrentRoomCode = newCode;
                 _logger.LogInformation("[多世界] 新房间码: {Code}", newCode);
@@ -1746,7 +1775,7 @@ public class AutoHoeingTask : ISoloTask
                     if (!uploadSuccess)
                     {
                         _multiplayerCoordinator = null;
-                        return;
+                        return RoundSetupOutcome.Abort;
                     }
                 }
                 else
@@ -1754,17 +1783,47 @@ public class AutoHoeingTask : ISoloTask
                     // 多世界模式下_firstHostConfig为null是严重错误，必须终止
                     _logger.LogError("[多世界] 第 {Round} 轮房主配置丢失（_firstHostConfig为null），这表明第1轮配置保存失败，终止多世界模式", round + 1);
                     _multiplayerCoordinator = null;
-                    return;
+                    return RoundSetupOutcome.Abort;
                 }
 
                 await client.ReportHostReadyAsync();
+
+                // === 空轮预跳过（multiplayer-host-empty-round-preskip-before-world-join）===
+                // 仅多世界轮换房主在等成员进世界之前预判本轮 CD 过滤后是否无可跑线路。
+                // 为空：提前 SetHostRouteList([]) 上传空列表（成员据原子快照在进世界前判空），
+                //       不调用 WaitForMembers，直接预跳过本轮。
+                // 普通"运行锄地路线"模式才预判；其它模式 preSkipRoutes==null → 不预跳过（降级兜底）。
+                var preSkipRoutes = TryLoadGroupRouteFileNamesForPreSkip(groupTags); // List<RouteInfo>?
+                if (preSkipRoutes != null)
+                {
+                    // CD 查询键为 FileName；用容错字典（重复文件名 last-wins，避免 ToDictionary 抛重复键），
+                    // CD 状态按 FileName 查询，重复名取任一即可（同名线路 CD 记录一致）。
+                    var byName = new Dictionary<string, RouteInfo>();
+                    foreach (var r in preSkipRoutes) byName[r.FileName] = r;
+                    var hostSet = EmptyRoundPreSkipDecisions.FilterHostRouteSet(
+                        preSkipRoutes.Select(r => r.FileName), _config.StartRouteIndex,
+                        name => _cdManager.IsOnCooldown(byName[name]));
+                    _logger.LogInformation(
+                        "[多世界][预跳过] 房主={Host} 第 {Round} 轮预判：分组线路 {Total} 条，CD过滤后 {Kept} 条，EmptyRound={Empty}",
+                        _config.PlayerName, round + 1, preSkipRoutes.Count, hostSet.Count, hostSet.Count == 0);
+                    if (hostSet.Count == 0)
+                    {
+                        // 提前上传空列表，使服务端 HostRouteListUploaded=true & list=[]，
+                        // 成员进世界前 GetHostRouteListStatus 即得 (true, []) → 判定 Empty_Round。
+                        await client.SetHostRouteListAsync(new List<string>());
+                        _logger.LogWarning("[多世界][预跳过] 房主第 {Round} 轮无可跑线路，已上传空列表，跳过本轮（不等成员、不进世界）", round + 1);
+                        return RoundSetupOutcome.PreSkipEmptyRound;
+                    }
+                }
+                // === 空轮预跳过结束；非空轮维持现状：不提前上传，仍在步骤1上传 ===
+
                 var actualCount = await autoParty.WaitForMembersAsync(
                     playerCount, whitelist, client, _config.PartyTimeoutSeconds, _ct);
 
                 if (actualCount <= 0)
                 {
                     _logger.LogError("[多世界] 第 {Round} 轮等待成员超时", round + 1);
-                    return;
+                    return RoundSetupOutcome.Abort;
                 }
 
                 // 先注册监听再上报，避免信号在上报和等待之间丢失
@@ -1830,7 +1889,7 @@ public class AutoHoeingTask : ISoloTask
                 {
                     _logger.LogError("[多世界] 等待超时，未找到新房主 [{Host}] 的房间，终止多世界模式", roundHostPlayer.PlayerName);
                     _multiplayerCoordinator = null;
-                    return;
+                    return RoundSetupOutcome.Abort;
                 }
 
                 // 加入房间后立刻发心跳，确保服务器知道成员在线（避免 AllOnlineMembersReported 提前触发）
@@ -1851,7 +1910,7 @@ public class AutoHoeingTask : ISoloTask
                         if (!await hostReadyTcs.Task)
                         {
                             _logger.LogError("[多世界] 等待房主就绪超时");
-                            return;
+                            return RoundSetupOutcome.Abort;
                         }
                     }
                 }
@@ -1922,15 +1981,29 @@ public class AutoHoeingTask : ISoloTask
                     // 多世界模式下配置同步失败是严重错误，必须终止
                     _logger.LogError("[多世界] 第 {Round} 轮成员无法获取房主配置（重试3次后仍失败），终止多世界模式", round + 1);
                     _multiplayerCoordinator = null;
-                    return;
+                    return RoundSetupOutcome.Abort;
                 }
+
+                // === 空轮预跳过-成员侧（multiplayer-host-empty-round-preskip-before-world-join）===
+                // 进世界前用原子快照查询房主路线状态：(uploaded=true, count=0) ⟺ 本轮 Empty_Round
+                // （不变式：房主仅在预判为空时才提前上传空列表；非空轮此处必为 uploaded=false）。
+                // 成员分支既有代码统一用 client（协调器客户端参数），此处保持一致。
+                // 旧服务端降级返回 (false,空) → 不预跳过 → 照常进世界（进世界后步骤1判空兜底）。
+                var (preUploaded, preNames) = await client.GetHostRouteListStatusAsync();
+                if (HostRouteListDecisions.ClassifyFromAtomicSnapshot(preUploaded, preNames.Count, timedOut: false)
+                    == HostRouteListDecisions.MemberRouteListOutcome.SkipRoundEmpty)
+                {
+                    _logger.LogWarning("[多世界][预跳过] 本轮房主路线为空，跳过本轮（进世界前），第 {Round} 轮", round + 1);
+                    return RoundSetupOutcome.PreSkipEmptyRound;
+                }
+                // === 成员侧预跳过结束；未命中则照常进世界，进世界后仍有步骤1判空兜底 ===
 
                 // 加入新房主世界
                 var joinOk = await autoParty.JoinHostWorldAsync(roundHostPlayer.PlayerUid, _ct);
                 if (!joinOk)
                 {
                     _logger.LogError("[多世界] 加入第 {Round} 轮房主世界失败", round + 1);
-                    return;
+                    return RoundSetupOutcome.Abort;
                 }
 
                 // 先注册 AllWorldJoined 监听，再上报，避免信号在上报和等待之间丢失
@@ -1995,6 +2068,8 @@ public class AutoHoeingTask : ISoloTask
             {
                 await client.MarkRoomStartedAsync();
             }
+
+            return RoundSetupOutcome.Proceed;
         }
         catch (Exception ex)
         {
@@ -2002,6 +2077,7 @@ public class AutoHoeingTask : ISoloTask
             _multiplayerCoordinator = null;
             // 初始化失败也要恢复 WorldStateMonitor 检测（需求 2）
             _worldStateMonitor?.EndRoundSwitch();
+            return RoundSetupOutcome.Abort;
         }
     }
 
@@ -3282,6 +3358,63 @@ public class AutoHoeingTask : ISoloTask
         groupTags[0] = groupTags.SelectMany(t => t).Distinct().ToList();
 
         return groupTags;
+    }
+
+    /// <summary>
+    /// 多世界空轮预判用：加载本轮"分组过滤后"(Group==GroupIndex && Selected) 的线路集合。
+    /// 仅覆盖普通"运行锄地路线"模式（与 ProcessRoutesByGroup 的 groupRoutes 构建一致）；
+    /// 固定调试线路 / 非"运行锄地路线" 模式返回 null 表示"无法可靠预判" → 调用方降级不预跳过。
+    /// 复刻 RunSingleWorldAsync 普通模式分支的加载链：加载→初始化CD→自优化→标记→选择→分组→更新CD记录。
+    /// multiplayer-host-empty-round-preskip-before-world-join。
+    /// </summary>
+    private List<RouteInfo>? TryLoadGroupRouteFileNamesForPreSkip(List<List<string>> groupTags)
+    {
+        try
+        {
+            // 仅普通"运行锄地路线"模式可安全预判；其它模式（固定调试/调试分配/强制刷新/目标怪物）
+            // 走原有进世界后判空兜底，避免预判与步骤1实际集合不一致。
+            if (_config.UseFixedDebugRoutes) return null;
+            if (_config.OperationMode != "运行锄地路线") return null;
+
+            // 预处理路线（与 RunSingleWorldAsync 普通模式分支保持一致）
+            var pathingDir = Path.Combine(_dataDir, "pathing");
+            var routes = RouteInfoLoader.LoadRoutes(
+                pathingDir, _monsterRepo, _config.IgnoreRate, groupTags[0]);
+
+            // 初始化CD和运行记录
+            foreach (var route in routes)
+                _cdManager.InitializeRoute(route);
+
+            // 自我优化
+            SelfOptimizer.Apply(routes, _config.DisableSelfOptimization, _config.CuriosityFactor);
+
+            // 标记过滤
+            var priorityTags = ParseChineseTags(_config.PriorityTags);
+            var excludeTags = ParseChineseTags(_config.ExcludeTags);
+            if (!_config.PickupMode.Contains("模板匹配") && !excludeTags.Contains("沙暴"))
+                excludeTags.Add("沙暴");
+
+            RouteMarker.MarkRoutes(routes, groupTags, priorityTags, excludeTags);
+
+            // 路线选择优化
+            var targetElite = Math.Max(0, _config.TargetEliteNum) + 5;
+            var targetMonster = Math.Max(0, _config.TargetMonsterNum) + 25;
+            _routeSelector.SelectOptimalRoutes(
+                routes, _config.EfficiencyIndex, targetElite, targetMonster, _config.SortMode);
+
+            // 分组分配
+            RouteGroupAssigner.AssignGroups(routes, groupTags);
+            _cdManager.UpdateAllRecords(routes);
+
+            // 返回本轮分组过滤后（Group==GroupIndex && Selected）的线路（与 ProcessRoutesByGroup 的 groupRoutes 一致）
+            return routes.Where(r => r.Group == _config.GroupIndex && r.Selected).ToList();
+        }
+        catch (Exception ex)
+        {
+            // 可恢复：预判加载失败不应中断轮换，降级为"不预跳过"，由进世界后步骤1判空兜底。
+            _logger.LogWarning(ex, "[多世界][预跳过] 加载本轮线路失败，降级为不预跳过（进世界后判空兜底）");
+            return null;
+        }
     }
 
     private static List<string> ParseChineseTags(string input)
