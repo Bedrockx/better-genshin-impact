@@ -145,7 +145,7 @@
                                     Text="{Binding RoomWhitelist, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <ui:TextBlock Margin="0,0,0,8"
                                       Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                      Text="逗号分隔，留空不限，房主自己也要加进去"
+                                      Text="逗号分隔，房主自己也要加进去，留空不限"
                                       TextWrapping="Wrap" />
                         <ui:ToggleSwitch Margin="0,0,0,4"
                                          Content="启用多世界连续锄地"
@@ -193,19 +193,19 @@
                                             HorizontalAlignment="Left"
                                             PlaceholderText="秒"
                                             Text="{Binding SyncTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <ui:TextBlock Margin="0,0,0,2" Text="最低同步人数" />
+                                <ui:TextBlock Margin="0,0,0,2" Text="最低同步人数，0=等齐所有人" />
                                 <ui:TextBox Width="70"
                                             Margin="0,0,0,8"
                                             HorizontalAlignment="Left"
                                             PlaceholderText="0=等齐"
                                             Text="{Binding MinPlayersToSync, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <ui:TextBlock Margin="0,0,0,2" Text="集合点最小距离" />
+                                <ui:TextBlock Margin="0,0,0,2" Text="集合点最小距离，根据线路生成的同步点最小距离" />
                                 <ui:TextBox Width="70"
                                             Margin="0,0,0,8"
                                             HorizontalAlignment="Left"
                                             PlaceholderText="默认30"
                                             Text="{Binding SyncPointMinDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <ui:TextBlock Margin="0,0,0,2" Text="战斗超时(秒)" />
+                                <ui:TextBlock Margin="0,0,0,2" Text="战斗超时(秒)，根据练度，建议小怪25，精英30" />
                                 <ui:TextBox Width="70"
                                             Margin="0,0,0,8"
                                             HorizontalAlignment="Left"
@@ -215,14 +215,14 @@
                                                  Content="启用快速同步点抢报"
                                                  IsChecked="{Binding FastSyncPointEnabled, Mode=TwoWay}" />
                                 <StackPanel Margin="12,0,0,0">
-                                    <ui:TextBlock Margin="0,0,0,2" Text="路径抢报距离阈值" />
+                                    <ui:TextBlock Margin="0,0,0,2" Text="路径抢报距离阈值，提前多少距离上报到点" />
                                     <ui:TextBox Width="70"
                                                 Margin="0,0,0,2"
                                                 HorizontalAlignment="Left"
                                                 IsEnabled="{Binding FastSyncParamsEnabled}"
-                                                PlaceholderText="米，5-30，默认10"
+                                                PlaceholderText="米，5-30，默认30"
                                                 Text="{Binding FastSyncPathingDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <ui:TextBlock Margin="0,4,0,2" Text="传送loading抢报延迟" />
+                                    <ui:TextBlock Margin="0,4,0,2" Text="传送loading抢报延迟，加载页面多少秒上报到点" />
                                     <ui:TextBox Width="70"
                                                 HorizontalAlignment="Left"
                                                 IsEnabled="{Binding FastSyncParamsEnabled}"
@@ -230,10 +230,10 @@
                                                 Text="{Binding FastSyncTeleportLoadingDelayMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <ui:ToggleSwitch Margin="0,8,0,4"
-                                                 Content="启用共享战斗配额结束同步（房主设置，同步成员）"
+                                                 Content="启用共享战斗配额结束同步(怪物仇恨共享)"
                                                  IsChecked="{Binding SharedFightEndQuorumEnabled, Mode=TwoWay}" />
                                 <StackPanel Margin="12,0,0,0">
-                                    <ui:TextBlock Margin="0,0,0,2" Text="配额比例（0-1，默认0.5，过半）" />
+                                    <ui:TextBlock Margin="0,0,0,2" Text="战斗结束人数/总人数的值，超过即全员结束战斗" />
                                     <ui:TextBox Width="70"
                                                 HorizontalAlignment="Left"
                                                 IsEnabled="{Binding SharedFightEndQuorumParamsEnabled}"
@@ -252,7 +252,7 @@
                             </ui:CardExpander.Header>
                             <StackPanel>
                                 <ui:ToggleSwitch Margin="0,0,0,4"
-                                                 Content="启用万叶聚物同步"
+                                                 Content="启用万叶聚物同步(参数默认0/5/5/6即可)"
                                                  IsChecked="{Binding EnableKazuhaSync, Mode=TwoWay}" />
                                 <StackPanel Margin="12,0,0,0">
                                     <ui:TextBlock Margin="0,0,0,2" Text="聚物完成后停留" />
@@ -260,14 +260,14 @@
                                                 Margin="0,0,0,2"
                                                 HorizontalAlignment="Left"
                                                 IsEnabled="{Binding KazuhaParamsEnabled}"
-                                                PlaceholderText="秒，0-30，默认1"
+                                                PlaceholderText="秒，0-30，默认0"
                                                 Text="{Binding KazuhaSyncWaitSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <ui:TextBlock Margin="0,4,0,2" Text="聚物同步总超时" />
                                     <ui:TextBox Width="70"
                                                 Margin="0,0,0,2"
                                                 HorizontalAlignment="Left"
                                                 IsEnabled="{Binding KazuhaParamsEnabled}"
-                                                PlaceholderText="秒，5-120，默认20"
+                                                PlaceholderText="秒，5-120，默认5"
                                                 Text="{Binding KazuhaSyncTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <ui:TextBlock Margin="0,4,0,2" Text="E技CD等待上限" />
                                     <ui:TextBox Width="70"
@@ -416,15 +416,31 @@
                          IsExpanded="False">
             <ui:CardExpander.Header>
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <ui:TextBlock Grid.Column="0"
+                                  Grid.Row="0"
                                   VerticalAlignment="Center"
                                   FontTypography="Body"
                                   Text="线路变体偏好" />
-                    <StackPanel Grid.Column="1"
+                    
+                    <!-- 横线 -->
+                    <Border Grid.Column="0"
+                            Grid.Row="1"
+                            Grid.ColumnSpan="3"
+                            Margin="0,8,40,8"
+                            BorderBrush="{ui:ThemeResource ControlFillColorSecondaryBrush}"
+                            BorderThickness="0,0,40,1" />
+                    
+                    <StackPanel Grid.Column="1" Grid.Row="0"
                                 Margin="12,0,8,0"
                                 HorizontalAlignment="Left"
                                 Orientation="Horizontal">
@@ -433,6 +449,14 @@
                                    Content="使用教程" />
                         <ui:Button x:Name="VariantRulesButton" Content="制作规则" />
                     </StackPanel>
+                    
+                    <ui:TextBlock Grid.Column="0"
+                                  Grid.Row="2"
+                                  Grid.ColumnSpan="3"
+                                  VerticalAlignment="Center"
+                                  FontTypography="Body"
+                                  Margin="0,0,0,0"
+                                  Text="同一线路的不同版本，查看线路Readme了解" />
                 </Grid>
             </ui:CardExpander.Header>
             <ContentControl x:Name="VariantPanelHost" />
