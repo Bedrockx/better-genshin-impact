@@ -343,7 +343,7 @@ public class TpTask
                     int timeoutMs = 800 + _tpConfig.StepIntervalMilliseconds * 10;
                     if (_tpConfig.FastDragRecognitionEnabled)
                     {
-                        await WaitMapStableOrTimeoutAsync(1000); // fast-drag-recognition-acceleration spec
+                        await WaitMapStableOrTimeoutAsync(500); // fast-drag-recognition-acceleration spec
                     }
                     else
                     {
@@ -363,7 +363,7 @@ public class TpTask
         }
         
         // 5. 判断传送点是否在当前界面，若否则移动地图
-        await WaitMapStableOrTimeoutAsync(1000,20,5); // fast-drag-recognition-acceleration spec
+        // await WaitMapStableOrTimeoutAsync(1000,20,5); // fast-drag-recognition-acceleration spec
         bigMapInAllMapRect = GetBigMapRect(mapName);
         var retryCount = 0;
         do
@@ -676,21 +676,26 @@ public class TpTask
         }
 
         Simulation.SendInput.SimulateAction(GIActions.OpenMap);
+        // Logger.LogWarning("尝试打开大地图界面，识别当前位置");
         
         // 加速识别模式：轮询等大地图 UI 出现，兜底 2500ms（≈旧逻辑 1000+500*3 上限）
         // fast-drag-recognition-acceleration spec / step 1 boot delay optimization
         if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
         {
-            await WaitMapStableOrTimeoutAsync(timeoutMs: 1000); 
+            await Delay(200, ct);
+            await WaitMapStableOrTimeoutAsync(timeoutMs: 1300); 
             using var ra2 = CaptureToRectArea();
             if (ra2.Find(QuickTeleportAssets.Instance.MapScaleButtonRo).IsExist())
             {
                 return true;
             }
         }
+        else
+        {
+            await Delay(500, ct);
+        }
 
         // 旧行为：固定 1000ms 后再 3 次 500ms 重试
-        await Delay(500, ct);
         for (int i = 0; i < 30; i++)
         {
             using var ra12 = CaptureToRectArea();
@@ -700,6 +705,7 @@ public class TpTask
             }
             else
             {
+                Logger.LogWarning("成功识别到大地图界面-1");
                 return true;
             }
         }
@@ -1241,7 +1247,7 @@ public class TpTask
             try
             {
                 using var ra = CaptureToRectArea();
-                var p1 = ra.SrcMat.At<Vec3b>(860, 520);
+                var p1 = ra.SrcMat.At<Vec3b>(860, 500);
                 var p2 = ra.SrcMat.At<Vec3b>(860, 540);
                 if (ra.Find(QuickTeleportAssets.Instance.MapScaleButtonRo).IsExist() && prev1.HasValue && p1 == prev1.Value && p2 == prev2!.Value)
                 {
@@ -1621,11 +1627,6 @@ public class TpTask
 
     internal async Task SwitchArea(string areaName)
     {
-        if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
-        {
-            await WaitMapStableOrTimeoutAsync(timeoutMs: 50);
-        }
-        
         GameCaptureRegion.GameRegionClick((rect, scale) => (rect.Width - 160 * scale, rect.Height - 60 * scale));
         
         // 加速识别模式：等地区菜单弹出（白色 X 关闭按钮出现），兜底 300ms 与旧 Delay 等值。
@@ -1672,7 +1673,7 @@ public class TpTask
         // fast-drag-recognition-acceleration spec / SwitchArea tail wait optimization
         if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
         {
-            await WaitMapStableOrTimeoutAsync(timeoutMs: 500);
+            await WaitMapStableOrTimeoutAsync(timeoutMs: 1000);
         }
         else
         {
