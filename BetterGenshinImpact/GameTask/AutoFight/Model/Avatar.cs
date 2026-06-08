@@ -269,28 +269,48 @@ public class Avatar
     /// <exception cref="RetryException"></exception>
     public static void TpForRecover(CancellationToken ct, Exception ex)
     {
-        using (var bitmap = CaptureToRectArea())
-        {
-            if (Bv.IsInRevivePrompt(bitmap))
-            {
-                Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
-                Sleep(300, ct);
-            }
-        }
-        
-        // tp 到七天神像复活（通知 WorldStateMonitor 进入传送抑制期）
-        BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentWorldStateMonitor?.BeginTeleportSuppression();
+        // return-to-point-not-suspended-during-tpforrecover-fix spec：
+        // Avatar.TpForRecover 是绕过 PathExecutor.TpStatueOfTheSeven 的独立去神像路径，
+        // 前一 spec 只在 PathExecutor.TpStatueOfTheSeven 置位 IsTeleportingToStatue，遗漏了本路径。
+        // 此处补齐写点：进入去神像流程即置位标志（方法入口最前、复苏弹窗 ESC 处理之前），
+        // 使两条"战斗中回点"后台循环（万叶 KazuhaContinuousReturnLoopAsync + 通用
+        // GeneralReturnToFightPointLoopAsync）已有的 gate ShouldStopReturnForTeleport(IsTeleportingToStatue)
+        // 立即命中 return 终止本场回点循环，不再把角色拉离神像。窗口取方法整体（方案 B，最宽）：
+        // 角色此刻已倒地/红血，回点本就无意义，一进入流程就终止最贴合用户诉求。
+        // finally 复位保证任何退出路径（末尾 throw ex 抛 RetryException / 传送抛异常 / 取消）都复位，
+        // 标志不会永久悬挂。复用前一 spec 的同一标志/纯函数/gate，不新增信号、不改回点循环代码。
+        // 严禁与 IsTpForRecover（吃药作用域）/ IsSuspend / IsSuspendedByCapture 混用。
+        // 详见 design.md 改动 / Property 1 / Property 4。
+        AutoFightTask.IsTeleportingToStatue = true;
         try
         {
-            var tpTask = new TpTask(ct);
-            tpTask.TpToStatueOfTheSeven(requireLoadingScreen: BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentMultiplayerCoordinator != null).Wait(ct);
+            using (var bitmap = CaptureToRectArea())
+            {
+                if (Bv.IsInRevivePrompt(bitmap))
+                {
+                    Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
+                    Sleep(300, ct);
+                }
+            }
+
+            // tp 到七天神像复活（通知 WorldStateMonitor 进入传送抑制期）
+            BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentWorldStateMonitor?.BeginTeleportSuppression();
+            try
+            {
+                var tpTask = new TpTask(ct);
+                tpTask.TpToStatueOfTheSeven(requireLoadingScreen: BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentMultiplayerCoordinator != null).Wait(ct);
+            }
+            finally
+            {
+                BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentWorldStateMonitor?.EndTeleportSuppression();
+            }
+            Logger.LogInformation("血量恢复完成。【设置】-【七天神像设置】可以修改回血相关配置。-p");
+            throw ex;
         }
         finally
         {
-            BetterGenshinImpact.GameTask.AutoPathing.PathExecutor.CurrentWorldStateMonitor?.EndTeleportSuppression();
+            AutoFightTask.IsTeleportingToStatue = false;
         }
-        Logger.LogInformation("血量恢复完成。【设置】-【七天神像设置】可以修改回血相关配置。-p");
-        throw ex;
     }
 
     /// <summary>
