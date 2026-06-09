@@ -1600,7 +1600,10 @@ public class AutoHoeingTask : ISoloTask
                 await PrepareMultiplayerPartyAndAvatar();
 
                 // 非第一轮：需要重新组队进入新房主的世界，并重新加载 CD
-                _worldStateMonitor?.BeginRoundSwitch();
+                // 抑制墙钟兜底按集合点超时联动（PartyTimeoutSeconds + 余量，Resolve 内叠加）：
+                // SetupNextRoundAsync 内部多处等待（WaitForMembers / AllJoined / HostReady）均以
+                // PartyTimeoutSeconds 为单次超时，故兜底以同一量级 + 余量作上界，避免误杀重组队长等待。
+                _worldStateMonitor?.BeginRoundSwitch(_config.PartyTimeoutSeconds);
                 var setupGroupTags = BuildGroupTags();
                 var setupOutcome = await SetupNextRoundAsync(round, roundHostPlayer, amIHost, client, playerOrder.Count, setupGroupTags);
                 _worldStateMonitor?.EndRoundSwitch();
@@ -1649,7 +1652,9 @@ public class AutoHoeingTask : ISoloTask
             {
                 _logger.LogInformation("[多世界] 第 {Round} 轮锄地完成，等待全员同步", round + 1);
                 // 轮次切换期间忽略 WorldStateMonitor 的 IsInMultiGame 检测（需求 2）
-                _worldStateMonitor?.BeginRoundSwitch();
+                // SyncRoundEndAsync 用 PartyTimeoutSeconds 构造 SyncBarrier，墙钟兜底必须 > 该集合点超时，
+                // 故传 PartyTimeoutSeconds，由 Resolve 叠加 60s 余量后作为兜底上界（Property 1）。
+                _worldStateMonitor?.BeginRoundSwitch(_config.PartyTimeoutSeconds);
                 await SyncRoundEndAsync(round, client);
 
                 // 离开世界：成员先主动离开，房主等待后再关闭房间

@@ -53,7 +53,10 @@ public class WorldStateMonitor : IAsyncDisposable
     // === 轮次切换抑制（需求 7）===
     private volatile bool _isRoundSwitching;
     private DateTime _roundSwitchStart;
-    private const int RoundSwitchTimeoutSeconds = 120;
+    // 轮次切换墙钟兜底超时（秒）。不再写死 120：由 BeginRoundSwitch 注入运行时值
+    // （= PartyTimeoutSeconds + 余量），经 RoundSwitchTimeoutDecisions.Resolve 钳制。
+    // 初值为安全下限，保证 BeginRoundSwitch 调用前/单机无注入时行为不短于原 120s。
+    private int _roundSwitchTimeoutSeconds = RoundSwitchTimeoutDecisions.SafeFloorSeconds;
 
     /// <summary>
     /// 多世界轮次是否正在切换中（公开只读访问，供 AutoHoeingTask 的事件处理器使用）。
@@ -145,12 +148,21 @@ public class WorldStateMonitor : IAsyncDisposable
         _logger.LogDebug("[WorldStateMonitor] 传送失败重试，刷新传送抑制计时");
     }
 
-    /// <summary>多世界轮次切换开始，暂停所有检测。</summary>
-    public void BeginRoundSwitch()
+    /// <summary>
+    /// 多世界轮次切换开始，暂停所有检测。
+    /// </summary>
+    /// <param name="suppressionTimeoutSeconds">
+    /// 本次抑制的墙钟兜底超时（秒），由调用方按 config.PartyTimeoutSeconds + 余量 传入。
+    /// 经 RoundSwitchTimeoutDecisions.Resolve 钳制后写入 _roundSwitchTimeoutSeconds，
+    /// 取代原写死的 120s，使兜底永远晚于集合点等待超时。详见 design.md §Fix Implementation。
+    /// </summary>
+    public void BeginRoundSwitch(int suppressionTimeoutSeconds)
     {
         _roundSwitchStart = DateTime.UtcNow;
+        _roundSwitchTimeoutSeconds = RoundSwitchTimeoutDecisions.Resolve(suppressionTimeoutSeconds);
         _isRoundSwitching = true;
-        _logger.LogInformation("[WorldStateMonitor] 进入轮次切换状态");
+        _logger.LogInformation("[WorldStateMonitor] 进入轮次切换状态（墙钟兜底 {Timeout}s）",
+            _roundSwitchTimeoutSeconds);
     }
 
     /// <summary>多世界轮次切换完成，恢复检测并重置状态。</summary>
@@ -259,13 +271,13 @@ public class WorldStateMonitor : IAsyncDisposable
                 TeleportSuppressionTimeoutSeconds);
         }
 
-        // 0b. 轮次切换超时自动解除
+        // 0b. 轮次切换超时自动解除（兜底超时为实例字段，已联动集合点等待超时 + 余量）
         if (_isRoundSwitching &&
-            (DateTime.UtcNow - _roundSwitchStart).TotalSeconds > RoundSwitchTimeoutSeconds)
+            (DateTime.UtcNow - _roundSwitchStart).TotalSeconds > _roundSwitchTimeoutSeconds)
         {
             _isRoundSwitching = false;
             _logger.LogError("[WorldStateMonitor] 轮次切换超过 {Timeout}s 未解除，触发协调停止",
-                RoundSwitchTimeoutSeconds);
+                _roundSwitchTimeoutSeconds);
             await ConfirmExitAsync("轮次切换超时");
             return;
         }
