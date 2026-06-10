@@ -906,7 +906,7 @@ public class AutoBossTask : ISoloTask
             PickDropsAfterFightEnabled = false,
             KazuhaPickupEnabled = false,
             QinDoublePickUp = false,
-            ExpBasedPickupEnabled = false,
+            ExpKazuhaPickup = false,
             KazuhaPartyName = string.Empty,
             BattleThresholdForLoot = -1,
             OnlyPickEliteDropsMode = "DisableAutoPickupForNonElite"
