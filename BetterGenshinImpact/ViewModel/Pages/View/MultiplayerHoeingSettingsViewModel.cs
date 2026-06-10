@@ -77,6 +77,10 @@ public partial class MultiplayerHoeingSettingsViewModel : ObservableObject
     [ObservableProperty] private string _kazuhaReturnAbnormalCoordThreshold = "";
     [ObservableProperty] private string _kazuhaReturnReseedRetryCount = "";
 
+    // ===== 调试（hoeing-multiplayer-lagging-member-catchup）：落后成员逐段追赶，纯本地、成员侧 =====
+    [ObservableProperty] private bool _enableLaggingCatchUp;
+    [ObservableProperty] private string _lagSegmentThreshold = "";
+
     // ===== D 成员区 =====
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TargetHostEnabled))]
@@ -184,6 +188,10 @@ public partial class MultiplayerHoeingSettingsViewModel : ObservableObject
         _kazuhaReturnAbnormalCoordThreshold = GetStr("kazuhaReturnAbnormalCoordThreshold", g.KazuhaReturnAbnormalCoordThreshold.ToString());
         _kazuhaReturnReseedRetryCount = GetInt("kazuhaReturnReseedRetryCount", g.KazuhaReturnReseedRetryCount).ToString();
 
+        // hoeing-multiplayer-lagging-member-catchup：落后追赶调试参数（纯本地）
+        _enableLaggingCatchUp = GetBool("enableLaggingCatchUp", g.EnableLaggingCatchUp);
+        _lagSegmentThreshold = GetInt("lagSegmentThreshold", g.LagSegmentThreshold).ToString();
+
         _joinModeSelection = GetStr("memberJoinMode", "byHostName") == "random" ? "随机加入现有房间" : "指定房主名称";
         _targetHostName = GetStr("targetHostName", g.TargetHostName);
 
@@ -228,6 +236,10 @@ public partial class MultiplayerHoeingSettingsViewModel : ObservableObject
         if (int.TryParse(KazuhaSecondApproachMaxSteps, out var ksam)) settings["kazuhaSecondApproachMaxSteps"] = ksam;
         if (double.TryParse(KazuhaReturnAbnormalCoordThreshold, out var krt)) settings["kazuhaReturnAbnormalCoordThreshold"] = krt;
         if (int.TryParse(KazuhaReturnReseedRetryCount, out var krc)) settings["kazuhaReturnReseedRetryCount"] = krc;
+
+        // hoeing-multiplayer-lagging-member-catchup：落后追赶调试参数（纯本地）
+        settings["enableLaggingCatchUp"] = EnableLaggingCatchUp;
+        if (int.TryParse(LagSegmentThreshold, out var lst)) settings["lagSegmentThreshold"] = lst;
         if (int.TryParse(FightTimeoutSeconds, out var fts)) settings["fightTimeoutSeconds"] = fts;
 
         settings["fastSyncPointEnabled"] = FastSyncPointEnabled;

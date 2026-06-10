@@ -1740,6 +1740,11 @@ public class CoordinatorHub : Hub
             lock (room) { room.BroadcastedSyncIds.Add(sid); }   // fastsync-claim-short-circuit-premature-release-fix: 记录本轮已广播，供晚到抢报方补发
         }
 
+        // === hoeing-multiplayer-lagging-member-catchup（改动 8）：刷新 CurrentProgress 后广播玩家列表 ===
+        // 使客户端 CurrentPlayerList 缓存的段级 CurrentProgress 随同步点推进刷新（落后追赶判定数据源，避免 BUG-C）。
+        // lock 外 await，复用已有 PlayerListUpdated 事件，无新增协议；旧客户端忽略多余字段/推送。
+        await Clients.Group(roomCode).SendAsync("PlayerListUpdated", room.Players);
+
         // === 集体卡死监测 piggyback（multiplayer-mutual-wait-collective-skip §8.4 改动 1）===
         await EvaluateCollectiveStuckPiggybackAsync(room, roomCode);
     }
@@ -1920,6 +1925,11 @@ public class CoordinatorHub : Hub
             }
         }
         // 非阻塞：不满足条件时直接返回，客户端通过 AllArrived 事件等待
+
+        // === hoeing-multiplayer-lagging-member-catchup（改动 8）：刷新 CurrentProgress 后广播玩家列表 ===
+        // 使客户端 CurrentPlayerList 缓存的段级 CurrentProgress 随同步点推进刷新（落后追赶判定数据源，避免 BUG-C）。
+        // lock 外 await，复用已有 PlayerListUpdated 事件，无新增协议；旧客户端忽略多余字段/推送。
+        await Clients.Group(roomCode).SendAsync("PlayerListUpdated", room.Players);
 
         // === 集体卡死监测 piggyback（multiplayer-mutual-wait-collective-skip §8.4 改动 1）===
         await EvaluateCollectiveStuckPiggybackAsync(room, roomCode);

@@ -449,6 +449,20 @@ public partial class AutoHoeingConfig : ObservableObject
     private int _kazuhaReturnReseedRetryCount = 3;
 
     /// <summary>
+    /// 联机调试：启用落后成员逐段追赶。默认 false（骨架阶段手动开启，实测稳定后再考虑默认开）。
+    /// 仅联机模式 + 成员侧生效，单机零感知。
+    /// </summary>
+    [ObservableProperty]
+    private bool _enableLaggingCatchUp = false;
+
+    /// <summary>
+    /// 联机调试：落后追赶触发阈值（落后多少段才触发逐段跳进），默认 1，下限 1。
+    /// 真段级语义：落后 ≥ N 段触发（数据源 = CurrentPlayerList 各玩家段级 CurrentProgress）。
+    /// </summary>
+    [ObservableProperty]
+    private int _lagSegmentThreshold = 1;
+
+    /// <summary>
     /// 房间白名单，逗号分隔的玩家名称
     /// </summary>
     [ObservableProperty]

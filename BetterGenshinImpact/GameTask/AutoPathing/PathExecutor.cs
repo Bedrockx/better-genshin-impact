@@ -680,6 +680,24 @@ public class PathExecutor
                                         // 正常同步点：统一等待（传送必等待默认启用）
                                         else
                                         {
+                                            // === 落后追赶判定（hoeing-multiplayer-lagging-member-catchup spec / 关键问题 1 + BUG-C/D/E）===
+                                            // 仅此处（段起点传送点正常同步块=段边界）插入；集合点/异常点/强制点均不插入（BUG-E）。
+                                            // 两项本地标志守卫：异常恢复未占用 SkipToNextSegment、本轮无待收尾跳段（关键问题 4）。
+                                            // mySeg 用本地实时 ComputeProgress（不读缓存）。判定纯同步读内存、不引入不可取消阻塞。
+                                            if (!SkipToNextSegment && !_needReportNormalBeforeSync)
+                                            {
+                                                long mySeg = ComputeProgress(CurWaypoints.Item1, CurWaypoint.Item1);
+                                                if (MultiplayerCoordinator.TryGetLaggingCatchUpDecision(mySeg))
+                                                {
+                                                    // ① fire-and-forget 上报本段进度（推进服务端 CurrentProgress，避免 BUG-C 大部队空等）
+                                                    await MultiplayerCoordinator.FastReportAsync(tpSyncId, tpProgress);
+                                                    // ② 抛 LaggingCatchUpSkipException 跳出 try 路点循环，由 catch(RetryException) 最前面的
+                                                    //    非异常跳段分支处理（置 SkipToNextSegment + break）。不用 continue/裸 break/throw 普通 RetryException（BUG-D）。
+                                                    Logger.LogWarning("[落后追赶] 段同步点 {SyncId} 判定落后，已 fire-and-forget 上报本段进度，抛 LaggingCatchUpSkipException 跳段，mySeg={My}", tpSyncId, mySeg);
+                                                    throw new LaggingCatchUpSkipException("[落后追赶] 段级落后，跳段追赶");
+                                                }
+                                            }
+
                                             Logger.LogInformation("[联机] 传送完成，等待所有玩家同步，syncId={SyncId}, 进度={P}", tpSyncId, tpProgress);
                                             await MultiplayerCoordinator.WaitForAllPlayers(tpSyncId, ct, tpProgress);
                                             Logger.LogInformation("[联机] 传送同步完成，继续前进，syncId={SyncId}", tpSyncId);
@@ -1080,6 +1098,17 @@ public class PathExecutor
                 }
                 catch (RetryException retryException)
                 {
+                    // === 落后追赶非异常跳段分支（BUG-D 修复，必须在 escalation 消费 / _syncPointReached 分流 / Reviving 上报之前）===
+                    if (retryException is LaggingCatchUpSkipException)
+                    {
+                        // 落后追赶：Normal 语义跳段，不上报 Reviving、不消费 escalation、不走异常分流。
+                        // 进度已在抛异常前 fire-and-forget 上报（BUG-C）。下一段起点经 _needReportNormalBeforeSync 上报 Normal。
+                        SkipToNextSegment = true;
+                        _needReportNormalBeforeSync = true;
+                        Logger.LogInformation("[落后追赶] 跳段追赶：置 SkipToNextSegment，下一段起点上报 Normal，原因: {Msg}", retryException.Message);
+                        break; // 出 for-i 重试循环，外层段循环下一段顶部消费 SkipToNextSegment 传送到下一段
+                    }
+
                     // 计算目标进度：跳到下一段开头的传送点
                     // 当前段索引 = CurWaypoints.Item1，下一段 = CurWaypoints.Item1 + 1，传送点是该段的 waypoint 0
                     var nextSegmentIdx = CurWaypoints.Item1 + 1;

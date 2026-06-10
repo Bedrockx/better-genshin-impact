@@ -404,6 +404,44 @@ public class MultiplayerCoordinator : IAsyncDisposable
     /// </summary>
     public bool IsFastReported(string syncId) => _fastReportedSyncIds.ContainsKey(syncId);
 
+    /// <summary>
+    /// 段级落后追赶判定（hoeing-multiplayer-lagging-member-catchup spec / 关键问题 1）。
+    /// PathExecutor 在段起点传送点正常同步块（WaitForAllPlayers 之前）调用：传入本地实时 mySegProgress，
+    /// 本方法读客户端缓存 CurrentPlayerList 归约大部队段级进度（房主优先 / 在线最大），调纯函数判定。
+    /// 纯同步读内存、无 await、无网络往返。守卫：开关关闭 / 单机 / 房主 / 进度不可得 → false。
+    /// </summary>
+    public bool TryGetLaggingCatchUpDecision(long mySegProgress)
+    {
+        if (!EffectiveConfig.MultiplayerEnabled) return false;
+        if (!EffectiveConfig.EnableLaggingCatchUp) return false;
+        bool isMember = !_client.IsHost;
+        if (!isMember) return false;
+
+        var myUid = _client.MyPlayerUid;
+        long? hostSeg = null;
+        var peerSegs = new System.Collections.Generic.List<long>();
+        foreach (var player in _client.CurrentPlayerList)
+        {
+            if (player.PlayerUid == myUid) continue;
+            long seg = player.CurrentProgress;
+            if (player.IsHost) hostSeg = seg;
+            else peerSegs.Add(seg);
+        }
+        long squadSeg = LaggingCatchUpDecisions.ResolveSquadSegmentProgress(hostSeg, peerSegs);
+
+        bool shouldCatchUp = LaggingCatchUpDecisions.ShouldCatchUp(
+            isMember: true, enabled: true,
+            mySegmentProgress: mySegProgress, squadSegmentProgress: squadSeg,
+            lagSegmentThreshold: EffectiveConfig.LagSegmentThreshold);
+
+        if (shouldCatchUp)
+        {
+            _logger.LogWarning("[落后追赶] 段同步点：我 {My} 落后大部队 {Squad}（阈值 {T} 段），跳下一段",
+                mySegProgress, squadSeg, EffectiveConfig.LagSegmentThreshold);
+        }
+        return shouldCatchUp;
+    }
+
     // === 上报状态 ===
 
     public async Task ReportFightingStatusAsync(bool isFighting)

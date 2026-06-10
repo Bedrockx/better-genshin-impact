@@ -729,6 +729,8 @@ public partial class MultiplayerHoeingSettingsView : UserControl
             "syncPointMinDistance", "startRouteIndex", "enableKazuhaSync", "multiplayerUseFixedFightStrategy",
             "kazuhaSyncWaitSeconds", "kazuhaSyncTimeoutSeconds", "kazuhaWaitSkillCdSeconds",
             "fightTimeoutSeconds",
+            // === 落后追赶调试参数（单机模式清除，hoeing-multiplayer-lagging-member-catchup）===
+            "enableLaggingCatchUp", "lagSegmentThreshold",
             // === 快速同步点抢报（单机模式清除）===
             "fastSyncPointEnabled", "fastSyncPathingDistance", "fastSyncTeleportLoadingDelayMs",
             "sharedFightEndQuorumEnabled", "sharedFightEndQuorumRatio",
