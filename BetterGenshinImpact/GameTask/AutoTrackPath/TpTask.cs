@@ -298,8 +298,8 @@ public class TpTask
 
         if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
         {
-            await Delay(100, ct);
-            await WaitMapStableOrTimeoutAsync(500); 
+            await Delay(200, ct);
+            await WaitMapStableOrTimeoutAsync(300); 
         }
         else
         {
@@ -1673,7 +1673,7 @@ public class TpTask
         // fast-drag-recognition-acceleration spec / SwitchArea tail wait optimization
         if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
         {
-            await WaitMapStableOrTimeoutAsync(timeoutMs: 1000);
+            await WaitMapStableOrTimeoutAsync(timeoutMs: 500);
         }
         else
         {
