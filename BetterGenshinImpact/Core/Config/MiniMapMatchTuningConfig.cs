@@ -22,12 +22,13 @@ public partial class MiniMapMatchTuningConfig : ObservableObject
     public const float DefaultRank0Threshold = 0.99f;
     public const float DefaultRank1Threshold = 0.97f;
     public const float DefaultRank2Threshold = 0.95f;
-    public const int DefaultGlobalMatchFallbackThreshold = 2;
+    public const int DefaultGlobalMatchFallbackThreshold = 1;
     public const int DefaultGetPositionLockTimeoutMs = 100;
-    public const bool DefaultZeroCoordGuardEnabled = false;
-    public const bool DefaultDiagnosticsEnabled = true;
-    public const bool DefaultDumpFailedFrame = true;
+    public const bool DefaultZeroCoordGuardEnabled = true;
+    public const bool DefaultDiagnosticsEnabled = false;
+    public const bool DefaultDumpFailedFrame = false;
     public const int DefaultDumpThrottleMs = 2000;
+    public const double DefaultGlobalMatchJumpGuardThreshold = 50;
 
     // ===== Requirement 1：置信度阈值组（rank0/1/2）=====
     [ObservableProperty] private float _rank0ConfidenceThreshold = DefaultRank0Threshold;
@@ -47,6 +48,11 @@ public partial class MiniMapMatchTuningConfig : ObservableObject
     [ObservableProperty] private bool _diagnosticsEnabled = DefaultDiagnosticsEnabled;
     [ObservableProperty] private bool _dumpFailedFrame = DefaultDumpFailedFrame;
     [ObservableProperty] private int _dumpThrottleMs = DefaultDumpThrottleMs;
+
+    // ===== 全局匹配回退跳变保护：全局命中坐标距回退前锚点超此阈值 → 判误匹配丢弃。
+    // 仅作用于"局部失败→全局回退命中"分支，不影响正常局部匹配帧。
+    // 默认 50（与万叶聚物 RecognizedPositionGuardThreshold 一致），<=0 视为关闭保护。=====
+    [ObservableProperty] private double _globalMatchJumpGuardThreshold = DefaultGlobalMatchJumpGuardThreshold;
 }
 
 /// <summary>
@@ -75,7 +81,7 @@ public static class MiniMapMatchTuningValidator
 
     private static bool IsValidUnit(float v) => !float.IsNaN(v) && v >= 0f && v <= 1f;
 
-    /// <summary>全局回退阈值 &lt; 1 → 回落默认 2（Requirement 2.4）。</summary>
+    /// <summary>全局回退阈值 &lt; 1 → 回落默认（Requirement 2.4）。</summary>
     public static (int value, bool fellBack) ValidateFallbackThreshold(int candidate)
         => candidate < 1
             ? (MiniMapMatchTuningConfig.DefaultGlobalMatchFallbackThreshold, true)

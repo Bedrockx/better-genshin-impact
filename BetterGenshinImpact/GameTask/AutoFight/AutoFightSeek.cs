@@ -545,7 +545,10 @@ namespace BetterGenshinImpact.GameTask.AutoFight
 
                     if (((RotationCount == (isRotationSeek? 50:3)) || RotationCount == (isRotationSeek? 50:1)) && retryCount == 0)
                     {
-                        if (!AutoFightTask.FightEndTotoly)Simulation.SendInput.Mouse.MiddleButtonClick();
+                        if (!AutoFightTask.FightEndTotoly)
+                        {
+                            Simulation.SendInput.Mouse.MiddleButtonClick();
+                        }
                         await Task.Delay(300, ct);
                     }
 

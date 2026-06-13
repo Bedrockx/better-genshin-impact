@@ -494,8 +494,12 @@ public class PathExecutor
                             if (__curIdx >= 1)
                             {
                                 var __prevWp = waypoints[__curIdx - 1];
+                                // 排除 orientation 朝向点：朝向点不移动角色，角色仍停在上一帧真实位置，
+                                // 不能用 waypoint 坐标播种锚点（否则局部匹配锚错到目标点附近，导致坐标漂移、朝向角度跳变走歪）。
+                                // 仅对会真实移动角色的节点做中间节点播种。
                                 if (waypoint.Type != WaypointType.Teleport.Code
-                                    && __prevWp.Type != WaypointType.Teleport.Code)
+                                    && __prevWp.Type != WaypointType.Teleport.Code
+                                    && waypoint.Type != WaypointType.Orientation.Code)
                                 {
                                     var __seed = KazuhaCollectPositionGuardDecisions.ComputeMidRouteSeedAnchor(
                                         __prevWp.X, __prevWp.Y, waypoint.X, waypoint.Y);

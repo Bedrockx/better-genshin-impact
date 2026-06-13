@@ -46,6 +46,12 @@ public class NavigationInstance
             return value;
         }
     }
+
+    // 全局匹配回退跳变保护阈值（图像坐标距离）：全局命中坐标距回退前锚点超此值 → 判误匹配。
+    // <=0 视为关闭保护。UI 实时生效。
+    private static double GlobalMatchJumpGuardThreshold
+        => ConfigService.Config?.MiniMapMatchTuningConfig?.GlobalMatchJumpGuardThreshold
+           ?? MiniMapMatchTuningConfig.DefaultGlobalMatchJumpGuardThreshold;
     
     public void Reset()
     {
@@ -92,8 +98,21 @@ public class NavigationInstance
                         }
                         else
                         {
-                            _consecutiveFailCount = 0;
-                            diagBranch = "局部失败→全局匹配命中";
+                            // 跳变保护：全局命中坐标距回退前锚点过远 → 判误匹配（恶劣/重复纹理环境
+                            // 全局匹配易匹配到相似的错误位置），丢弃该坐标当作识别失败，避免污染朝向计算。
+                            var jumpGuard = GlobalMatchJumpGuardThreshold;
+                            var jumpDist = p.DistanceTo(new Point2f(savedPrevX, savedPrevY));
+                            if (jumpGuard > 0 && jumpDist > jumpGuard)
+                            {
+                                (_prevX, _prevY) = (savedPrevX, savedPrevY);
+                                p = default;
+                                diagBranch = $"局部失败→全局命中但跳变过大({jumpDist:F0}>{jumpGuard:F0})判误匹配丢弃";
+                            }
+                            else
+                            {
+                                _consecutiveFailCount = 0;
+                                diagBranch = "局部失败→全局匹配命中";
+                            }
                         }
                     }
                     else

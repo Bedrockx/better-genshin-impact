@@ -339,6 +339,13 @@
                                         Text="{Binding Config.MiniMapMatchTuningConfig.GetPositionLockTimeoutMs, Mode=TwoWay}" />
                         </WrapPanel>
 
+                        <!--  全局回退跳变保护：全局命中坐标距锚点超此值判误匹配丢弃，0=关闭  -->
+                        <WrapPanel Margin="0,0,0,8">
+                            <ui:TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="全局回退跳变保护阈值(像素,0=关)" />
+                            <ui:TextBox MinWidth="80"
+                                        Text="{Binding Config.MiniMapMatchTuningConfig.GlobalMatchJumpGuardThreshold, Mode=TwoWay}" />
+                        </WrapPanel>
+
                         <!--  零坐标防呆（Requirement 4）  -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <ui:ToggleSwitch Margin="0,0,8,0"

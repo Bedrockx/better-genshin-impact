@@ -812,10 +812,10 @@ public class AutoFightTask : ISoloTask
                     }
                 }
             }
-            foreach (var kvp in useSkillListWithA)
-            {
-                Logger.LogError($"{{ {kvp.Key}, {kvp.Value} }}");
-            }
+            // foreach (var kvp in useSkillListWithA)
+            // {
+            //     Logger.LogError($"{{ {kvp.Key}, {kvp.Value} }}");
+            // }
         }
         else
         {
