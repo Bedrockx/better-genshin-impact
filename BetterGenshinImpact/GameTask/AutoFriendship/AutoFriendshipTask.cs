@@ -382,7 +382,7 @@ public partial class AutoFriendshipTask : ISoloTask, IDisposable
             _fighting = false;
             try {
                 AutoFightTask.FightEndTotoly = true;
-                await Delay(5000, _ct);
+                await Delay(2500, _ct);
                 cts.Cancel();
             } catch { }
         }
