@@ -287,7 +287,10 @@ public class WorldStateMonitor : IAsyncDisposable
         try
         {
             using var region = CaptureToRectArea();
-            var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(region);
+            // applyAuthoritativeCrossValidation: false —— 掉线检测只信纯视觉。真掉出房间时协调器名单
+            // 滞后仍报多人，交叉校验覆盖会把"已掉出"(false) 翻回 true 导致漏报掉线。
+            var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(
+                region, applyAuthoritativeCrossValidation: false);
             isInMultiGame = status.IsInMultiGame;
             _consecutiveScreenshotFailures = 0;
         }
@@ -457,7 +460,10 @@ public class WorldStateMonitor : IAsyncDisposable
                 try
                 {
                     using var region = CaptureToRectArea();
-                    var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(region);
+                    // applyAuthoritativeCrossValidation: false —— 重试期"已掉出"判定只信纯视觉，
+                    // 不被滞后协调器翻回 true。
+                    var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(
+                        region, applyAuthoritativeCrossValidation: false);
                     if (!status.IsInMultiGame)
                     {
                         _logger.LogWarning("[WorldStateMonitor] 重试加入房间期间 IsInMultiGame 变 false，中止重试");

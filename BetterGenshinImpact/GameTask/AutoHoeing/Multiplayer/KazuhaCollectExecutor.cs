@@ -100,9 +100,23 @@ public static class KazuhaCollectExecutor
                 onProgress?.Invoke(KazuhaCollectStage.Switched);
             }
 
-            // 视觉先判 → 推算兜底（照搬 AutoFightTask.cs L1377~L1408 万叶长 E 拾取样板）。
-            // 视觉就绪（AvatarSkillAsync 返回 false）→ 立即触发 SkillCdReady，跳过 WaitSkillCd 推算；
-            // 视觉看到 CD（AvatarSkillAsync 返回 true）→ 走 WaitSkillCd 推算兜底，保留 waitSkillCdSeconds 本地超时。
+            // 判 CD 前临场稳定（对齐 AutoFightTask.cs L1820-1827）：
+            // 切人 + 等画面稳，避免切人/落地动画期间截帧导致 E 图标连通块偏少被误判"就绪"。
+            kazuha!.TrySwitch(20);
+            await Delay(50, ct);
+            using (var raActive = CaptureToRectArea())
+            {
+                if (!kazuha.IsActive(raActive))
+                {
+                    // TrySwitch 失败兜底：万叶未真正出战时再切一次，避免被误判为就绪
+                    kazuha.TrySwitch(20);
+                    await Delay(50, ct);
+                }
+            }
+
+            // 视觉先判 → CD 中走 WaitSkillCd(ct) 无上限（对齐 AutoFightTask.cs L1822 万叶长 E 拾取样板）。
+            // 视觉就绪（AvatarSkillAsync 返回 false）→ 立即触发 SkillCdReady，跳过等待；
+            // 视觉看到 CD（AvatarSkillAsync 返回 true）→ 等到 E 的 CD 真正结束再放。
             // retryCount=1：内部不重试只判一次；isResetCd=false：不动 ManualSkillCd 状态机；
             // needLog=true：日志含 CD 状态。
             if (await AutoFightSkill.AvatarSkillAsync(
@@ -110,19 +124,11 @@ public static class KazuhaCollectExecutor
                     skills: false, retryCount: 1, ct: ct,
                     image: null, needLog: true, isResetCd: false))
             {
-                // 视觉看到 CD 数字 → 走 WaitSkillCd 推算兜底（带 waitSkillCdSeconds 本地超时上限）
-                try
-                {
-                    using var cdCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    cdCts.CancelAfter(TimeSpan.FromSeconds(waitSkillCdSeconds));
-                    await kazuha!.WaitSkillCd(cdCts.Token);
-                    onProgress?.Invoke(KazuhaCollectStage.SkillCdReady);
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                {
-                    // 仅当外层 ct 未触发时才视为本地超时直放；外层 ct 触发的取消应继续向上抛
-                    onProgress?.Invoke(KazuhaCollectStage.SkillCdTimeoutForce);
-                }
+                // 对齐自动战斗：WaitSkillCd(ct) 无本地超时上限，等到 E 的 CD 真正结束再放。
+                // 外层 ct 取消时 WaitSkillCd 自然抛 OperationCanceledException 向上传播
+                // （由 finally 释放按键，符合 bugfix 3.8）。
+                await kazuha!.WaitSkillCd(ct);
+                onProgress?.Invoke(KazuhaCollectStage.SkillCdReady);
             }
             else
             {

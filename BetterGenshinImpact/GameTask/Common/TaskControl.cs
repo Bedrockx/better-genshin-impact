@@ -282,7 +282,13 @@ public class TaskControl
         }
     }
 
-    private static void CheckAndActivateGameWindow()
+    // throwOnForegroundLost：Cfg=Off 严格模式下，前台不是原神时是否抛 RetryException。
+    //  - 默认 true = 现有行为，Sleep/Delay/CheckAndSleep 调用方不传参，逐字节不变
+    //    （它们外层有 NewRetry.Do(..., 1s, 100) 节流，严格模式抛异常是用户预期）。
+    //  - 仅 CaptureGameImage 恢复循环传 false：不抛异常、不抢焦点、直接 return，
+    //    让循环继续走到尾部 200ms Thread.Sleep 节流后重试，从根因消除零延迟忙循环。
+    // 决议见 spec focus-lost-minimized-capture-busyloop-crash-fix / bugfix.md §Resolved Decisions D-2。
+    private static void CheckAndActivateGameWindow(bool throwOnForegroundLost = true)
     {
         // 用户按快捷键暂停 → 这是"希望 BGI 停下"的唯一明确信号（steering spec-adjacent-state-audit §2）。
         // 暂停期间不抢焦点、不持续检测，直到用户再次按热键解除暂停。
@@ -305,14 +311,20 @@ public class TaskControl
             return;
         }
 
-        // P-1：Cfg=Off 旧分支保留——用户显式希望"前台不是原神就抛异常暂停"的严格模式
+        // P-1：Cfg=Off 旧分支——用户显式希望"前台不是原神就抛异常暂停"的严格模式
         if (!TaskContext.Instance().Config.OtherConfig.RestoreFocusOnLostEnabled)
         {
             if (!SystemControl.IsGenshinImpactActiveByProcess())
             {
-                var name = SystemControl.GetActiveByProcess();
-                Logger.LogWarning($"当前获取焦点的窗口为: {name}，不是原神，暂停");
-                throw new RetryException("当前获取焦点的窗口不是原神");
+                // throwOnForegroundLost=true（Sleep/Delay/CheckAndSleep 默认）：保留严格模式抛异常（外层 NewRetry 1s 节流）。
+                // throwOnForegroundLost=false（CaptureGameImage 恢复循环）：不抛、不打刷屏告警、直接 return，
+                //   交由循环尾部 200ms Thread.Sleep 节流 + 每 5s 一条 Debug 进度处理，消除零延迟自旋。
+                if (throwOnForegroundLost)
+                {
+                    var name = SystemControl.GetActiveByProcess();
+                    Logger.LogWarning($"当前获取焦点的窗口为: {name}，不是原神，暂停");
+                    throw new RetryException("当前获取焦点的窗口不是原神");
+                }
             }
             return;
         }
@@ -573,9 +585,11 @@ public class TaskControl
                 // 关键：每次 iter 顶部驱动一次焦点恢复（单步），让主线程在等画面时也持续抢焦点。
                 // 没有这一步，CheckAndActivateGameWindow 仅在 Sleep/Delay 调用栈触发，主线程
                 // 进入本循环后焦点恢复永远不会被驱动 → 焦点抢不回 → 帧不来 → 30s 后 RetryException 终止任务。
-                // Cfg=Off 时该调用会抛 RetryException，由外层 try/finally 清零 IsSuspendedByCapture 后冒泡。
-                // 决议见 spec focus-recovery-driven-by-capture-loop / bugfix.md §4 EB-2。
-                CheckAndActivateGameWindow();
+                // 传 throwOnForegroundLost:false —— Cfg=Off 失焦/最小化时不抛异常、不抢焦点、直接 return，
+                // 由本循环尾部 200ms Thread.Sleep 节流后重试（安静等画面回来），消除零延迟忙循环。
+                // Cfg=On 时本参数不影响（走 FocusRecoveryDecisions 抢焦点路径）。
+                // 决议见 spec focus-lost-minimized-capture-busyloop-crash-fix / bugfix.md §Resolved Decisions D-2。
+                CheckAndActivateGameWindow(throwOnForegroundLost: false);
 
                 // elapsed ≥ 2s 且本轮未重启过 → 重建 capture session。
                 // 应对 GraphicsCapture._captureItem.Closed 触发后 session 永久失效（Win11 反复最小化 race）。
