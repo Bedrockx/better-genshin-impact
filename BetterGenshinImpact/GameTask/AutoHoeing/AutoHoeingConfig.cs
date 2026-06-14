@@ -239,6 +239,16 @@ public partial class AutoHoeingConfig : ObservableObject
     private int _startRouteIndex = 0;
 
     /// <summary>
+    /// 线路关键词过滤：逗号分隔（支持全角「，」/半角「,」）的关键词列表。
+    /// 文件名（不含路径、不含 .json 扩展名）包含任一关键词的线路将被跳过。
+    /// 默认空字符串 = 不过滤（旧配置零感知）。匹配不区分大小写。
+    /// 单机和联机均支持；联机由房主上传前过滤，成员不二次过滤。
+    /// hoeing-route-keyword-filter spec。
+    /// </summary>
+    [ObservableProperty]
+    private string _routeFilterKeywords = "";
+
+    /// <summary>
     /// 玩家名称，联机时显示给其他玩家
     /// </summary>
     [ObservableProperty]

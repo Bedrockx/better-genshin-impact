@@ -533,6 +533,9 @@ public class PathExecutor
                                 if (__kv.Value == null) continue;
                                 if (__kv.Key < CurWaypoint.Item1) continue;
                                 if (MultiplayerCoordinator.IsFastReported(__kv.Value)) continue;
+                                // strict 门控（hoeing-strict-syncpoint-no-lookahead-preclaim spec）：
+                                // strict 同步点仅在该节点本身允许 look-ahead，前序节点跳过（继续向后找非 strict 候选，OQ-1 方案 a）。
+                                if (!FastSyncDecisions.IsLookAheadAllowedForCandidate(__kv.Value, __kv.Key, CurWaypoint.Item1)) continue;
                                 if (__kv.Key < __bestWpIdx)
                                 {
                                     __bestWpIdx = __kv.Key;

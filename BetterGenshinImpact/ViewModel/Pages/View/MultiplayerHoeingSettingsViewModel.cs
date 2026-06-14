@@ -49,6 +49,7 @@ public partial class MultiplayerHoeingSettingsViewModel : ObservableObject
     // ===== C 同步给成员区 =====
     [ObservableProperty] private string _syncPointMinDistance = "";
     [ObservableProperty] private string _startRouteIndex = "";
+    [ObservableProperty] private string _routeFilterKeywords = "";
     [ObservableProperty] private string _fightTimeoutSeconds = "";
 
     [ObservableProperty]
@@ -167,6 +168,7 @@ public partial class MultiplayerHoeingSettingsViewModel : ObservableObject
         // 字符串形态读入 double（等价现状 GetStr(key, double.ToString())），不得改成 GetDouble
         _syncPointMinDistance = GetStr("syncPointMinDistance", g.SyncPointMinDistance.ToString());
         _startRouteIndex = GetInt("startRouteIndex", g.StartRouteIndex).ToString();
+        _routeFilterKeywords = GetStr("routeFilterKeywords", g.RouteFilterKeywords);
         _fightTimeoutSeconds = GetInt("fightTimeoutSeconds", g.FightTimeoutSeconds).ToString();
 
         _fastSyncPointEnabled = GetBool("fastSyncPointEnabled", g.FastSyncPointEnabled);
@@ -224,6 +226,7 @@ public partial class MultiplayerHoeingSettingsViewModel : ObservableObject
 
         if (double.TryParse(SyncPointMinDistance, out var spd)) settings["syncPointMinDistance"] = spd;
         if (int.TryParse(StartRouteIndex, out var sri)) settings["startRouteIndex"] = sri;
+        settings["routeFilterKeywords"] = RouteFilterKeywords;
         settings["enableKazuhaSync"] = EnableKazuhaSync;
         settings["multiplayerUseFixedFightStrategy"] = MultiplayerUseFixedFightStrategy;
         if (int.TryParse(KazuhaSyncWaitSeconds, out var ksw)) settings["kazuhaSyncWaitSeconds"] = ksw;

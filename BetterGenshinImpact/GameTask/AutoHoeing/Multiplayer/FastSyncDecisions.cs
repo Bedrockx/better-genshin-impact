@@ -68,4 +68,34 @@ internal static class FastSyncDecisions
     {
         return Math.Clamp(raw, 0, 3000);
     }
+
+    /// <summary>
+    /// 判定一个同步点 syncId 是否为 strict（严格抢报）模式。
+    /// 规则：syncId 以序数比较（Ordinal，大小写敏感）包含小写子串 "strict" 即为 strict。
+    ///   - "strict_1" / "mystrict2" / "s1_strict" → true
+    ///   - "Strict_1" / "STRICT" / "fight_1"      → false
+    ///   - null / ""                              → false
+    /// 详见 .kiro/specs/hoeing-strict-syncpoint-no-lookahead-preclaim/requirements.md Requirement 1。
+    /// </summary>
+    public static bool IsStrictSyncId(string? syncId)
+    {
+        if (string.IsNullOrEmpty(syncId)) return false;
+        return syncId.IndexOf("strict", StringComparison.Ordinal) >= 0;
+    }
+
+    /// <summary>
+    /// 判定一个 look-ahead 候选同步点是否允许作为「提前抢报」目标。
+    ///
+    /// 普通同步点：恒允许（保持现有 look-ahead 行为）。
+    /// strict 同步点：仅当角色当前正处理的节点就是该候选节点本身（candidateWpIdx == currentWpIdx）才允许；
+    ///                否则不允许（关闭前序节点的提前抢报，方案甲）。
+    ///
+    /// 返回 false 表示：调用方应跳过该候选，继续向后查找下一个候选（OQ-1 方案 a）。
+    /// 详见 design.md §1.2。
+    /// </summary>
+    public static bool IsLookAheadAllowedForCandidate(string? candidateSyncId, int candidateWpIdx, int currentWpIdx)
+    {
+        if (!IsStrictSyncId(candidateSyncId)) return true;
+        return candidateWpIdx == currentWpIdx;
+    }
 }

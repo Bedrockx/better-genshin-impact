@@ -395,6 +395,13 @@
                                   TextWrapping="Wrap">
                         如果使用单机调试线路，关闭联机选项进行线路调试，建议使用联机内置线路，针对联机做了优化。<LineBreak />
                     </ui:TextBlock>
+                    <!--  关键词过滤  -->
+                    <ui:TextBlock Margin="0,0,0,2"
+                                  Text="以逗号分隔关键词，文件名包含任一关键词线路将被跳过"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBox Margin="0,0,0,8"
+                                PlaceholderText="例如：传奇，十六倍"
+                                Text="{Binding RouteFilterKeywords, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     <!--  从第几条路线开始  -->
                     <ui:TextBlock Margin="0,0,0,2" Text="从第几条路线开始(0=CD过滤)" />
                     <ui:TextBox Width="70"

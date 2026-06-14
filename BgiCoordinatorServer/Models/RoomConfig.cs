@@ -5,6 +5,8 @@ public class RoomConfig
 {
     public double SyncPointMinDistance { get; set; } = 30;
     public int StartRouteIndex { get; set; } = 0;
+    /// <summary>线路关键词过滤（逗号分隔，全角/半角），文件名含任一关键词的线路跳过。默认空=不过滤。hoeing-route-keyword-filter，与客户端 RoomConfig 严格对称</summary>
+    public string RouteFilterKeywords { get; set; } = "";
     public bool UseFixedDebugRoutes { get; set; } = false;
     public string FixedDebugRoutePath { get; set; } = "";
     public bool DebugMode { get; set; } = false;

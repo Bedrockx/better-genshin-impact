@@ -5430,6 +5430,21 @@
                                                  Value="{Binding Config.AutoHoeingConfig.KazuhaSecondApproachMaxSteps, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
 
+                                <!-- 线路关键词过滤 -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <ui:TextBlock Grid.Row="0" FontTypography="Body" Text="线路关键词过滤" TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                 Text="逗号分隔（支持全角，/半角,），文件名含任一关键词的线路跳过；留空=不过滤" TextWrapping="Wrap" />
+                                    <ui:TextBox Grid.Row="2" Margin="0,4,0,0"
+                                               PlaceholderText="例如：传奇，十六倍"
+                                               Text="{Binding Config.AutoHoeingConfig.RouteFilterKeywords, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+
                                 <!-- 从第几条路线开始 -->
                                 <Grid Margin="0,0,0,8">
                                     <Grid.RowDefinitions>

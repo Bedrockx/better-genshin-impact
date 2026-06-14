@@ -397,6 +397,7 @@ public class AutoHoeingTask : ISoloTask
             _config.MultiplayerEnabled = false;
             _config.DebugMode = false;
             _config.StartRouteIndex = 0;
+            _config.RouteFilterKeywords = "";
             _config.SyncPointMinDistance = 30.0;
             _config.EnableKazuhaSync = false;
             _config.MultiplayerUseFixedFightStrategy = true;  // 默认 ON（保持现有固定策略行为）
@@ -738,6 +739,7 @@ public class AutoHoeingTask : ISoloTask
                 {
                     SyncPointMinDistance = _config.SyncPointMinDistance,
                     StartRouteIndex = _config.StartRouteIndex,
+                    RouteFilterKeywords = _config.RouteFilterKeywords,
                     UseFixedDebugRoutes = _config.UseFixedDebugRoutes,
                     FixedDebugRoutePath = _config.FixedDebugRoutePath,
                     DebugMode = _config.DebugMode,
@@ -1123,6 +1125,7 @@ public class AutoHoeingTask : ISoloTask
                     {
                         _config.SyncPointMinDistance = hostConfig.SyncPointMinDistance;
                         _config.StartRouteIndex = hostConfig.StartRouteIndex;
+                        _config.RouteFilterKeywords = hostConfig.RouteFilterKeywords;
                         _config.UseFixedDebugRoutes = hostConfig.UseFixedDebugRoutes;
                         _config.FixedDebugRoutePath = hostConfig.FixedDebugRoutePath;
                         _config.DebugMode = hostConfig.DebugMode;
@@ -1925,6 +1928,7 @@ public class AutoHoeingTask : ISoloTask
                 {
                     _config.SyncPointMinDistance = hostConfig.SyncPointMinDistance;
                     _config.StartRouteIndex = hostConfig.StartRouteIndex;
+                    _config.RouteFilterKeywords = hostConfig.RouteFilterKeywords;
                     _config.UseFixedDebugRoutes = hostConfig.UseFixedDebugRoutes;
                     _config.FixedDebugRoutePath = hostConfig.FixedDebugRoutePath;
                     _config.DebugMode = hostConfig.DebugMode;
@@ -2378,12 +2382,24 @@ public class AutoHoeingTask : ISoloTask
             if (isHost || string.IsNullOrEmpty(_coordinatorClientRef.HostPlayerUid))
             {
                 // 房主：CD 过滤后上传最终路线文件名列表
+                var keywordsHost = RouteKeywordFilterDecisions.ParseKeywords(_config.RouteFilterKeywords);
                 var hostRouteNames = groupRoutes
                     .Where(r => _config.StartRouteIndex > 0 || !_cdManager.IsOnCooldown(r))
+                    .Where(r =>
+                    {
+                        var nameNoExt = Path.GetFileNameWithoutExtension(r.FileName);
+                        if (RouteKeywordFilterDecisions.ShouldSkip(nameNoExt, keywordsHost))
+                        {
+                            var hit = RouteKeywordFilterDecisions.MatchedKeyword(nameNoExt, keywordsHost);
+                            _logger.LogInformation("[联机] 房主关键词过滤跳过线路 {Name}（命中关键词：{Keyword}）", r.FileName, hit);
+                            return false;
+                        }
+                        return true;
+                    })
                     .Select(r => r.FileName)
                     .ToList();
                 await _coordinatorClientRef.SetHostRouteListAsync(hostRouteNames);
-                _logger.LogInformation("[联机] 房主已上传路线列表，共 {Count} 条（CD过滤后）", hostRouteNames.Count);
+                _logger.LogInformation("[联机] 房主已上传路线列表，共 {Count} 条（CD+关键词过滤后）", hostRouteNames.Count);
 
                 // 用过滤后的列表替换 groupRoutes
                 var hostRouteSet = new HashSet<string>(hostRouteNames);
@@ -2811,6 +2827,23 @@ public class AutoHoeingTask : ISoloTask
                 remainingEstimatedTime -= route.AdjustedTime;
                 skippedCount++;
                 continue;
+            }
+
+            // 关键词过滤（与 CD 过滤独立叠加，Req 4.5）。
+            // 联机由房主上传前过滤，成员不二次过滤（决策 e）：仅单机生效。
+            if (!_config.MultiplayerEnabled)
+            {
+                var keywords = RouteKeywordFilterDecisions.ParseKeywords(_config.RouteFilterKeywords);
+                var nameNoExt = Path.GetFileNameWithoutExtension(route.FileName);
+                if (RouteKeywordFilterDecisions.ShouldSkip(nameNoExt, keywords))
+                {
+                    var hit = RouteKeywordFilterDecisions.MatchedKeyword(nameNoExt, keywords);
+                    _logger.LogInformation("路线 {Name} 命中关键词「{Keyword}」，跳过", route.FileName, hit);
+                    skippedTime += route.AdjustedTime;
+                    remainingEstimatedTime -= route.AdjustedTime;
+                    skippedCount++;
+                    continue;
+                }
             }
 
             var tsRouteEstimate = TimeSpan.FromSeconds(Math.Max(0, route.AdjustedTime));
@@ -3538,6 +3571,7 @@ public class AutoHoeingTask : ISoloTask
 
         // 单机和联机均支持的字段
         _config.StartRouteIndex = Get("startRouteIndex", _config.StartRouteIndex);
+        _config.RouteFilterKeywords = Get("routeFilterKeywords", _config.RouteFilterKeywords);
         _config.DebugMode = Get("debugMode", _config.DebugMode);
         if (_settingsOverride.ContainsKey("useFixedDebugRoutes"))
             _config.UseFixedDebugRoutes = Get("useFixedDebugRoutes", _config.UseFixedDebugRoutes);
@@ -3724,6 +3758,9 @@ public class AutoHoeingTask : ISoloTask
             // ===== 第七部分：多世界连续锄地配置 =====
             new() { Name = "multiWorldEnabled", Label = "启用多世界连续锄地\n房主设定，完成一个世界后轮换到下一个玩家的世界", Type = "bool", DefaultValue = config.MultiWorldEnabled },
             new() { Name = "multiWorldCount", Label = "多世界锄地轮数（1-4）\n由房主设定，按加入顺序依次成为房主", Type = "number", DefaultValue = config.MultiWorldCount },
+
+            // ===== 线路关键词过滤（hoeing-route-keyword-filter spec，单机和联机均支持）=====
+            new() { Name = "routeFilterKeywords", Label = "线路关键词过滤\n逗号分隔（支持全角，/半角,），文件名含任一关键词的线路跳过；留空=不过滤", Type = "text", DefaultValue = config.RouteFilterKeywords },
         };
     }
 
