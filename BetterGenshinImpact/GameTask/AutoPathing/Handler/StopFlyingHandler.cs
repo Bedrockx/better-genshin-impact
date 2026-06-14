@@ -35,6 +35,7 @@ public class StopFlyingHandler : IActionHandler
             if (isFlying)
             {
                 await Delay(300, ct);
+                if(i <= 2)Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
             }
             else
             {
@@ -45,6 +46,7 @@ public class StopFlyingHandler : IActionHandler
         if (i == 50)
         {
             Logger.LogWarning("动作：下落攻击 超时结束");
+            Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
         }
         else
         {
