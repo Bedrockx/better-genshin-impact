@@ -676,8 +676,12 @@ public class AutoPartyTask
             if (!Bv.IsInMainUi(stableRa))
                 return false;
 
+            // applyAuthoritativeCrossValidation: false —— 退世界检测只信纯视觉结论，
+            // 绕过第 2 层协调器交叉校验。退世界阶段协调器 CurrentRoomPlayerCount 滞留旧房间人数，
+            // 交叉校验会把"已回到单人世界"(IsInMultiGame=false) 误翻转为 true，导致 5 次重试全失败。
             var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(
-                stableRa, AutoFightAssets.Instance, NullLogger.Instance);
+                stableRa, AutoFightAssets.Instance, NullLogger.Instance,
+                applyAuthoritativeCrossValidation: false);
             return !status.IsInMultiGame;
         }
         catch (Exception ex)

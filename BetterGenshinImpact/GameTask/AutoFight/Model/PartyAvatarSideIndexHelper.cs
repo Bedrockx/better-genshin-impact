@@ -29,7 +29,7 @@ public class PartyAvatarSideIndexHelper
     /// <param name="imageRegion"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    public static MultiGameStatus DetectedMultiGameStatus(ImageRegion imageRegion, AutoFightAssets? autoFightAssets = null, ILogger? logger = null)
+    public static MultiGameStatus DetectedMultiGameStatus(ImageRegion imageRegion, AutoFightAssets? autoFightAssets = null, ILogger? logger = null, bool applyAuthoritativeCrossValidation = true)
     {
         if (autoFightAssets == null)
         {
@@ -84,8 +84,12 @@ public class PartyAvatarSideIndexHelper
         // 联机锄地运行时（provider 非 null）以协调器权威在线人数/IsHost 交叉校验视觉计数，
         // 不一致以权威为准覆盖并置 PlayerCountOverridden=true（调用层据此重抓帧重识别）。
         // provider 为 null（单机/非锄地/未注入）→ 完全跳过，纯视觉零感知。
+        // applyAuthoritativeCrossValidation=false（仅退世界检测 IsBackInOwnWorldAsync 传入）：
+        // 跳过第 2 层交叉校验，使用纯视觉结论。退世界场景协调器人数滞后，覆盖会把
+        // 正确的"已回到单人世界"视觉结论（IsInMultiGame=false）错误翻转为 true。
+        // 默认 true：战斗识别 / 入房检测 / 世界监控等所有现有调用方行为逐字节不变。
         var provider = Core.Config.PathingConditionConfig.AuthoritativePlayerCountProvider;
-        if (provider != null)
+        if (ShouldApplyCrossValidation(applyAuthoritativeCrossValidation, provider != null))
         {
             (bool available, int authCount, bool authIsHost) = provider();
             var resolved = MultiGamePlayerCountCrossValidator.Resolve(
@@ -110,6 +114,14 @@ public class PartyAvatarSideIndexHelper
 
         return status;
     }
+
+    /// <summary>
+    /// 第 2 层交叉校验是否应执行：仅当显式允许（applyFlag）且 provider 已注入（providerPresent）。
+    /// 退世界检测传 applyFlag=false → 永远跳过；单机 providerPresent=false → 永远跳过。
+    /// 纯函数无外部依赖，便于属性测试。
+    /// </summary>
+    internal static bool ShouldApplyCrossValidation(bool applyFlag, bool providerPresent)
+        => applyFlag && providerPresent;
 
     /// <summary>
     /// 根据已知的某个角色编号位置，计算其他角色编号的位置
