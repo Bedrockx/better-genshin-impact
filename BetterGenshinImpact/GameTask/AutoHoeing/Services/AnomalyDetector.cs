@@ -154,10 +154,21 @@ public class AnomalyDetector
                         var suppressed = TpTask.SuppressAutoRevivalClick;
                         if (!suppressed)
                         {
+                            //释放所有按键
+                            Simulation.ReleaseAllKey();
                             Logger.LogInformation("识别到联机已倒下界面（色块检测），点击复苏按钮");
-                            await Task.Delay(300, ct);
+                            await Task.Delay(100, ct);
                             region.ClickTo(960, 1020);
-                            await Task.Delay(500, ct);
+                            region.ClickTo(960, 1020);
+                            await Task.Delay(100, ct);
+                            Simulation.ReleaseAllKey();
+                            region.ClickTo(960, 1020);
+                            region.ClickTo(960, 1020);
+                            await Task.Delay(100, ct);
+                            Simulation.ReleaseAllKey();
+                            region.ClickTo(960, 1020);
+                            region.ClickTo(960, 1020);
+                            await Task.Delay(300, ct);
                         }
                         else
                         {
