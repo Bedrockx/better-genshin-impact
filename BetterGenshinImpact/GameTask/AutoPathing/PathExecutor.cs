@@ -1002,7 +1002,7 @@ public class PathExecutor
                                                             // isGetOut: true → false 关闭卡死脱困，避免脱困逻辑在战后聚物粗接近期间
                                                             // 随机扭动/跳跃/复苏传送，与战斗主循环/聚物定位抢镜头抢移动。
                                                             await MoveTo(waypoint, isGetOut: false, task: null, nextWaypoint: null,
-                                                                nextDistance: null, retryDis: 4, isPoint: false);
+                                                                nextDistance: null, retryDis: 4, isPoint: false, escapeClimbOnReturn: true);
                                                         }
                                                     }
                                                 }
@@ -1034,7 +1034,7 @@ public class PathExecutor
                                                     collectPointWaitTask = ks.TryWaitForCollectPointAsync(collectPointSyncKey, timeoutMs: 5000, ct);
                                                 }
 
-                                                await MoveCloseTo(waypoint, closeDistance: 2.0, tailDelayMs: 0, maxSteps: 5);
+                                                await MoveCloseTo(waypoint, closeDistance: 2.0, tailDelayMs: 0, maxSteps: 5, escapeClimbOnReturn: true);
 
                                                 // 第一段走完，await 后台 wait task 看是否拿到广播 → 拿到则二段精接近聚物点。
                                                 // 超时未到 → 退化到第二段精接近"战斗点"（与原 spec closeDistance:1.0 单段路径等价的体验）。
@@ -1081,7 +1081,7 @@ public class PathExecutor
                                                         // multiplayer-kazuha-collect-point-broadcast: 二段 maxSteps 改为可配置（KazuhaSecondApproachMaxSteps）。
                                                         var cfgMaxSteps = TaskContext.Instance().Config.AutoHoeingConfig.KazuhaSecondApproachMaxSteps;
                                                         var maxSteps = cfgMaxSteps >= 1 && cfgMaxSteps <= 30 ? cfgMaxSteps : 6;
-                                                        await MoveCloseTo(tmp, closeDistance: 0.5, tailDelayMs: 0, maxSteps: maxSteps);
+                                                        await MoveCloseTo(tmp, closeDistance: 0.5, tailDelayMs: 0, maxSteps: maxSteps, escapeClimbOnReturn: true);
                                                     }
                                                 }
                                                 catch (OperationCanceledException) { throw; }
@@ -2294,7 +2294,7 @@ public class PathExecutor
 
     public DateTime moveToStartTime;
 
-    public async Task MoveTo(WaypointForTrack waypoint,bool isGetOut = true, PathingTask? task = null, Waypoint? nextWaypoint = null,double? nextDistance = null,int retryDis = 4, bool isPoint = true, double? closeDistance = null, string? fastSyncId = null, WaypointForTrack? fastSyncWaypoint = null)
+    public async Task MoveTo(WaypointForTrack waypoint,bool isGetOut = true, PathingTask? task = null, Waypoint? nextWaypoint = null,double? nextDistance = null,int retryDis = 4, bool isPoint = true, double? closeDistance = null, string? fastSyncId = null, WaypointForTrack? fastSyncWaypoint = null, bool escapeClimbOnReturn = false)
     {
         // Logger.LogWarning("999");
         bool fastReported = false;  // 抢报一次性短路 bool（fastsync-redesign-parameter-passing spec）
@@ -2456,7 +2456,18 @@ public class PathExecutor
             using var screen2 = CaptureToRectArea();
 
             EndJudgment(screen2);
-            
+
+            // hoeing-return-fightpoint-climb-detect-drop:
+            // 仅回点路径（escapeClimbOnReturn==true）启用攀爬脱离；其它所有调用方默认 false 零感知。
+            // 复用本帧 screen2（无副作用纯查询），检测到攀爬即发一次 Drop（取消攀爬键），
+            // Delay(500) 冷却避免连发。不做卡死/扭动/跳跃/复苏/NormalAttack。
+            if (escapeClimbOnReturn && Bv.GetMotionStatus(screen2) == MotionStatus.Climb)
+            {
+                Logger.LogInformation("[联机] 回点检测到攀爬，发送 Drop 脱离");
+                Simulation.SendInput.SimulateAction(GIActions.Drop);
+                await Delay(500, ct);
+            }
+
              (position, additionalTimeInMs) = await GetPositionAndTime(screen2, waypoint,isPoint);
              if (additionalTimeInMs>0)
              {
@@ -3573,7 +3584,7 @@ public class PathExecutor
     /// 联机万叶聚物战后回点分支已经先用 MoveTo 粗接近至 < 4，故只需少量精接近步数即可，传 10（约 0.8 秒）即可。
     /// 单机 / 联机其它调用点不传新参数即保持原行为，单机零回归。
     /// </summary>
-    public async Task MoveCloseTo(WaypointForTrack waypoint, double closeDistance = 2.0, int? tailDelayMs = null, int maxSteps = 25, string? fastSyncId = null, WaypointForTrack? fastSyncWaypoint = null)
+    public async Task MoveCloseTo(WaypointForTrack waypoint, double closeDistance = 2.0, int? tailDelayMs = null, int maxSteps = 25, string? fastSyncId = null, WaypointForTrack? fastSyncWaypoint = null, bool escapeClimbOnReturn = false)
     {
         ImageRegion screen;
         Point2f position;
@@ -3621,6 +3632,16 @@ public class PathExecutor
             screen = CaptureToRectArea();
 
             EndJudgment(screen);
+
+            // hoeing-return-fightpoint-climb-detect-drop:
+            // 仅回点路径（escapeClimbOnReturn==true）启用攀爬脱离；其它所有调用方默认 false 零感知。
+            // 复用本帧 screen（无副作用纯查询），检测到攀爬即发一次 Drop，Delay(500) 冷却避免连发。
+            if (escapeClimbOnReturn && Bv.GetMotionStatus(screen) == MotionStatus.Climb)
+            {
+                Logger.LogInformation("[联机] 回点检测到攀爬，发送 Drop 脱离");
+                Simulation.SendInput.SimulateAction(GIActions.Drop);
+                await Delay(500, ct);
+            }
 
             position = await GetPosition(screen, waypoint);
             var distance = Navigation.GetDistance(waypoint, position);
