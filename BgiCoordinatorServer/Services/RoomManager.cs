@@ -89,6 +89,41 @@ public class RoomManager
 
         lock (room)
         {
+            // === 宽限期内重连复用（resilience-framework §2c）===
+            // 检查是否是宽限期内重连（同 playerUid 或同 playerName）
+            var graceMember = room.Players.FirstOrDefault(p =>
+                room.GracePendingMembers.ContainsKey(p.ConnectionId) &&
+                ((!string.IsNullOrEmpty(playerUid) && p.PlayerUid == playerUid) ||
+                 (!string.IsNullOrEmpty(playerName) && p.PlayerName == playerName)));
+            if (graceMember != null)
+            {
+                // 复用：更新 ConnectionId，清除宽限期标记
+                var oldConnId = graceMember.ConnectionId;
+                room.GracePendingMembers.Remove(oldConnId);
+                // 更新 ArrivalSets / FightDoneSets / FightParticipantSets 中的 connectionId
+                foreach (var set in room.ArrivalSets.Values)
+                {
+                    if (set.Remove(oldConnId))
+                        set.Add(connectionId);
+                }
+                foreach (var set in room.FightDoneSets.Values)
+                {
+                    if (set.Remove(oldConnId))
+                        set.Add(connectionId);
+                }
+                foreach (var set in room.FightParticipantSets.Values)
+                {
+                    if (set.Remove(oldConnId))
+                        set.Add(connectionId);
+                }
+                graceMember.ConnectionId = connectionId;
+                graceMember.LastHeartbeat = DateTime.UtcNow;
+                _connectionRoomMap.TryRemove(oldConnId, out _);
+                _connectionRoomMap[connectionId] = roomCode;
+                _logger?.LogInformation("[JoinRoom] 成员 {Name} 宽限期内重连复用，房间 {Code}", playerName, roomCode);
+                return (true, null);
+            }
+
             // 白名单检查（按玩家名称），房主自己（同 UID 或同名）跳过检查
             var isHost = room.Players.Count > 0 &&
                 ((!string.IsNullOrEmpty(playerUid) && room.Players[0].PlayerUid == playerUid) ||

@@ -958,108 +958,109 @@ public class CoordinatorHub : Hub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        // 先获取断线玩家所在的房间信息（在 LeaveRoom 之前）
+        // 获取断线玩家所在的房间信息
         var (disconnectedRoom, disconnectedRoomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
         var wasHost = disconnectedRoom?.HostConnectionId == Context.ConnectionId;
 
-        var affectedCodes = _roomManager.LeaveRoom(Context.ConnectionId);
-
-        foreach (var code in affectedCodes)
+        if (disconnectedRoom != null && disconnectedRoomCode != null)
         {
-            var updatedRoom = _roomManager.GetRoom(code);
-            if (updatedRoom == null) continue;
-
-            var players = updatedRoom.Players ?? [];
-            await Clients.Group(code).SendAsync("PlayerListUpdated", players);
-
-            // 如果断线的是房主，优先广播 RoomClosed（风险 4 容错）
-            if (wasHost && code == disconnectedRoomCode)
+            if (wasHost)
             {
-                _logger.LogWarning("[OnDisconnectedAsync] 房主断线，广播 RoomClosed: 房间={RoomCode}", code);
-                await Clients.Group(code).SendAsync("RoomClosed", "房主已断开连接");
-                continue; // 房主断线后不做 ArrivalSets 重评估（房间即将关闭）
+                // === 房主断线：保持现有逻辑（广播 RoomClosed + 删房）===
+                _logger.LogWarning("[OnDisconnectedAsync] 房主断线，广播 RoomClosed: 房间={RoomCode}", disconnectedRoomCode);
+                await Clients.Group(disconnectedRoomCode).SendAsync("RoomClosed", "房主已断开连接");
+                _roomManager.LeaveRoom(Context.ConnectionId);
+                _roomManager.DeleteRoom(disconnectedRoomCode);
             }
-
-            // 重新评估所有未完成的同步点（风险 3：在 lock 内完成检查）
-            List<string> satisfiedSyncIds;
-            lock (updatedRoom)
+            else
             {
-                satisfiedSyncIds = updatedRoom.ArrivalSets
-                    .Where(kvp => AllOnlineMembersReportedStatic(updatedRoom, kvp.Value))
-                    .Select(kvp => kvp.Key)
-                    .ToList();
-            }
-
-            // 广播满足条件的同步点（在 lock 外执行 await）
-            foreach (var syncId in satisfiedSyncIds)
-            {
-                _logger.LogInformation("[OnDisconnectedAsync] 玩家断线后重新评估：同步点 {SyncId} 条件满足，广播 AllArrived，房间={RoomCode}",
-                    syncId, code);
-                await Clients.Group(code).SendAsync("AllArrived", syncId);
-                _roomManager.ClearArrivalSet(code, syncId);
-                lock (updatedRoom) { updatedRoom.BroadcastedSyncIds.Add(syncId); }   // fastsync-claim-short-circuit-premature-release-fix: 记录本轮已广播，供晚到抢报方补发
-            }
-
-            // === 集体卡死监测 piggyback（multiplayer-mutual-wait-collective-skip §8.4 改动 5）===
-            // 玩家断线后剩余玩家可能进入"集体卡死"状态（其余正常玩家卡在不同 syncId）
-            await EvaluateCollectiveStuckPiggybackAsync(updatedRoom, code);
-
-            // 万叶聚物同步：候选切换 + 兜底（kazuha-player-auto-detection requirements 5.5 / Property 10）
-            // 任意玩家断线都从候选列表移除（不论是否当前 Kazuha）
-            bool shouldBroadcastSwitch = false;
-            bool shouldBroadcastKazuhaSkipped = false;
-            string switchedToUid = "";
-            lock (updatedRoom)
-            {
-                updatedRoom.KazuhaCandidates.RemoveAll(c => c.ConnectionId == Context.ConnectionId);
-
-                if (updatedRoom.KazuhaCollect.KazuhaConnectionId == Context.ConnectionId)
+                // === 成员断线：进宽限期，不删人、不广播 PlayerListUpdated 缩水 ===
+                lock (disconnectedRoom)
                 {
-                    // 当前 Kazuha 断线 → 选下一个仍在线的候选
-                    var onlineCandidate = updatedRoom.KazuhaCandidates.FirstOrDefault(c =>
-                        updatedRoom.Players.Any(p => p.ConnectionId == c.ConnectionId
-                            && DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2)));
+                    disconnectedRoom.GracePendingMembers[Context.ConnectionId] = DateTime.UtcNow.AddSeconds(15);
+                }
+                _logger.LogInformation("[OnDisconnectedAsync] 成员 {ConnId} 进入宽限期(15s)，房间 {Code} 人数保持 {N}",
+                    Context.ConnectionId, disconnectedRoomCode, disconnectedRoom.Players.Count);
 
-                    if (onlineCandidate != null)
+                // SignalR 会自动从 Group 移除断线连接，room.Players 不删
+
+                // 重新评估所有未完成的同步点（断线的人不应阻塞同步点）
+                List<string> satisfiedSyncIds;
+                lock (disconnectedRoom)
+                {
+                    satisfiedSyncIds = disconnectedRoom.ArrivalSets
+                        .Where(kvp => AllOnlineMembersReportedStatic(disconnectedRoom, kvp.Value))
+                        .Select(kvp => kvp.Key)
+                        .ToList();
+                }
+
+                // 广播满足条件的同步点（在 lock 外执行 await）
+                foreach (var syncId in satisfiedSyncIds)
+                {
+                    _logger.LogInformation("[OnDisconnectedAsync] 玩家断线后重新评估：同步点 {SyncId} 条件满足，广播 AllArrived，房间={RoomCode}",
+                        syncId, disconnectedRoomCode);
+                    await Clients.Group(disconnectedRoomCode).SendAsync("AllArrived", syncId);
+                    _roomManager.ClearArrivalSet(disconnectedRoomCode, syncId);
+                    lock (disconnectedRoom) { disconnectedRoom.BroadcastedSyncIds.Add(syncId); }
+                }
+
+                // === 集体卡死监测 piggyback（multiplayer-mutual-wait-collective-skip §8.4 改动 5）===
+                await EvaluateCollectiveStuckPiggybackAsync(disconnectedRoom, disconnectedRoomCode);
+
+                // 万叶聚物同步：候选切换 + 兜底（kazuha-player-auto-detection requirements 5.5 / Property 10）
+                bool shouldBroadcastSwitch = false;
+                bool shouldBroadcastKazuhaSkipped = false;
+                string switchedToUid = "";
+                lock (disconnectedRoom)
+                {
+                    disconnectedRoom.KazuhaCandidates.RemoveAll(c => c.ConnectionId == Context.ConnectionId);
+
+                    if (disconnectedRoom.KazuhaCollect.KazuhaConnectionId == Context.ConnectionId)
                     {
-                        updatedRoom.KazuhaCollect.KazuhaConnectionId = onlineCandidate.ConnectionId;
-                        switchedToUid = onlineCandidate.PlayerUid;
-                        shouldBroadcastSwitch = true;
-                    }
-                    else
-                    {
-                        // 候选耗尽 → 走原 kazuha_disconnected 兜底
-                        updatedRoom.KazuhaCollect.KazuhaConnectionId = null;
-                        if (updatedRoom.KazuhaCollect.ArrivedAtFightPoint.Count > 0
-                            && !updatedRoom.KazuhaCollect.TerminalBroadcasted)
+                        var onlineCandidate = disconnectedRoom.KazuhaCandidates.FirstOrDefault(c =>
+                            disconnectedRoom.Players.Any(p => p.ConnectionId == c.ConnectionId
+                                && DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2)));
+
+                        if (onlineCandidate != null)
                         {
-                            updatedRoom.KazuhaCollect.TerminalBroadcasted = true;
-                            updatedRoom.KazuhaCollect.TerminalKind = "Skipped";
-                            shouldBroadcastKazuhaSkipped = true;
+                            disconnectedRoom.KazuhaCollect.KazuhaConnectionId = onlineCandidate.ConnectionId;
+                            switchedToUid = onlineCandidate.PlayerUid;
+                            shouldBroadcastSwitch = true;
+                        }
+                        else
+                        {
+                            disconnectedRoom.KazuhaCollect.KazuhaConnectionId = null;
+                            if (disconnectedRoom.KazuhaCollect.ArrivedAtFightPoint.Count > 0
+                                && !disconnectedRoom.KazuhaCollect.TerminalBroadcasted)
+                            {
+                                disconnectedRoom.KazuhaCollect.TerminalBroadcasted = true;
+                                disconnectedRoom.KazuhaCollect.TerminalKind = "Skipped";
+                                shouldBroadcastKazuhaSkipped = true;
+                            }
                         }
                     }
                 }
-            }
-            if (shouldBroadcastSwitch)
-            {
-                _logger.LogInformation("[OnDisconnectedAsync] 万叶玩家断线，切换到下一候选 {Uid}，房间={RoomCode}",
-                    switchedToUid, code);
-                await Clients.Group(code).SendAsync("KazuhaPlayerUpdated", switchedToUid);
-            }
-            if (shouldBroadcastKazuhaSkipped)
-            {
-                _logger.LogWarning("[OnDisconnectedAsync] 万叶玩家断线且候选耗尽，广播 KazuhaCollectSkipped(kazuha_disconnected)，房间={RoomCode}", code);
-                string? syncKey;
-                lock (updatedRoom)
+                if (shouldBroadcastSwitch)
                 {
-                    syncKey = updatedRoom.KazuhaCollect.CurrentSyncKey;
+                    _logger.LogInformation("[OnDisconnectedAsync] 万叶玩家断线，切换到下一候选 {Uid}，房间={RoomCode}",
+                        switchedToUid, disconnectedRoomCode);
+                    await Clients.Group(disconnectedRoomCode).SendAsync("KazuhaPlayerUpdated", switchedToUid);
                 }
-                await Clients.Group(code).SendAsync("KazuhaCollectSkipped", "kazuha_disconnected", syncKey ?? "");
+                if (shouldBroadcastKazuhaSkipped)
+                {
+                    _logger.LogWarning("[OnDisconnectedAsync] 万叶玩家断线且候选耗尽，广播 KazuhaCollectSkipped(kazuha_disconnected)，房间={RoomCode}", disconnectedRoomCode);
+                    string? syncKey;
+                    lock (disconnectedRoom)
+                    {
+                        syncKey = disconnectedRoom.KazuhaCollect.CurrentSyncKey;
+                    }
+                    await Clients.Group(disconnectedRoomCode).SendAsync("KazuhaCollectSkipped", "kazuha_disconnected", syncKey ?? "");
+                }
             }
         }
 
-        _logger.LogInformation("连接 {ConnId} 断开，影响房间：{Rooms}",
-            Context.ConnectionId, string.Join(", ", affectedCodes));
+        _logger.LogInformation("连接 {ConnId} 断开，房间={Room}",
+            Context.ConnectionId, disconnectedRoomCode ?? "(无)");
 
         // 清理 group 跟踪表，避免静态字典内存泄漏
         _connectionGroups.TryRemove(Context.ConnectionId, out _);
@@ -1069,12 +1070,13 @@ public class CoordinatorHub : Hub
 
     /// <summary>
     /// 静态版本的 AllOnlineMembersReported，用于 OnDisconnectedAsync 中的重新评估。
-    /// 必须在 lock(room) 内调用。
+    /// 必须在 lock(room) 内调用。排除宽限期中的成员（断线的人不应阻塞同步点）。
     /// </summary>
     private static bool AllOnlineMembersReportedStatic(Room room, HashSet<string> reported)
     {
         var onlinePlayers = room.Players
             .Where(p => DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2))
+            .Where(p => !room.GracePendingMembers.ContainsKey(p.ConnectionId))
             .ToList();
 
         if (onlinePlayers.Count == 0) return false;

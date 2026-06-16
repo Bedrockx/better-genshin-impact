@@ -7,6 +7,9 @@ public class Room
     public List<PlayerInfo> Players { get; set; } = [];
     public DateTime CreatedAt { get; set; }
 
+    /// <summary>断线宽限期：connectionId → 过期时间。成员 SignalR 断线后不立即删人，宽限期内重连复用。</summary>
+    public Dictionary<string, DateTime> GracePendingMembers { get; set; } = new();
+
     /// <summary>syncPointId → 已到达的 connectionId 集合</summary>
     public Dictionary<string, HashSet<string>> ArrivalSets { get; set; } = [];
 

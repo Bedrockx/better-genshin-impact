@@ -94,6 +94,49 @@ public class HeartbeatMonitor : IHostedService, IDisposable
                         .SendAsync("PlayerListUpdated", players);
                 }
             }
+
+            // 4. 宽限期到期清理（resilience-framework §2d）
+            foreach (var (graceRoom, graceRoomCode) in _roomManager.GetAllRoomsWithCodes())
+            {
+                List<string> expired;
+                lock (graceRoom)
+                {
+                    expired = graceRoom.GracePendingMembers
+                        .Where(kvp => kvp.Value < DateTime.UtcNow)
+                        .Select(kvp => kvp.Key)
+                        .ToList();
+                }
+
+                foreach (var connId in expired)
+                {
+                    lock (graceRoom)
+                    {
+                        graceRoom.GracePendingMembers.Remove(connId);
+                        var player = graceRoom.Players.FirstOrDefault(p => p.ConnectionId == connId);
+                        if (player != null)
+                        {
+                            graceRoom.Players.Remove(player);
+                            // 清理该连接在各同步集合中的记录
+                            foreach (var set in graceRoom.ArrivalSets.Values)
+                                set.Remove(connId);
+                            foreach (var set in graceRoom.FightDoneSets.Values)
+                                set.Remove(connId);
+                            foreach (var set in graceRoom.FightParticipantSets.Values)
+                                set.Remove(connId);
+                            graceRoom.WorldJoinedSet.Remove(connId);
+                            graceRoom.RouteVerificationDoneSet.Remove(connId);
+
+                            _logger.LogWarning("房间 {RoomCode} 成员 {PlayerName}({Uid}) 宽限期满未重连，删除",
+                                graceRoomCode, player.PlayerName, player.PlayerUid);
+
+                            _ = _hubContext.Clients.Group(graceRoomCode)
+                                .SendAsync("MemberStatusChanged", player.PlayerUid, "Offline", long.MaxValue);
+                            _ = _hubContext.Clients.Group(graceRoomCode)
+                                .SendAsync("PlayerListUpdated", graceRoom.Players);
+                        }
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {

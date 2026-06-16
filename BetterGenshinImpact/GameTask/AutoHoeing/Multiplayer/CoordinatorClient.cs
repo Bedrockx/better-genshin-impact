@@ -157,6 +157,12 @@ public class CoordinatorClient : IAsyncDisposable
         {
             _connection = new HubConnectionBuilder()
                 .WithUrl(serverUrl)
+                .WithAutomaticReconnect(new[] {
+                    TimeSpan.Zero,
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromSeconds(30)
+                })
                 .Build();
 
             _connection.On<List<PlayerInfo>>("PlayerListUpdated",
@@ -263,6 +269,30 @@ public class CoordinatorClient : IAsyncDisposable
                     _logger.LogError("[联机] 收到 CollectiveSkipDegraded: reason={Reason}", reason);
                     CollectiveSkipDegradedReceived?.Invoke(reason);
                 });
+
+            _connection.Reconnected += async (newConnectionId) =>
+            {
+                _logger.LogInformation("[联机] SignalR 重连成功，重新加入房间: {Code}", _currentRoomCode);
+                if (!string.IsNullOrEmpty(_currentRoomCode))
+                {
+                    try
+                    {
+                        await _connection.InvokeAsync("JoinRoom", _currentRoomCode, _playerName ?? "", _playerUid ?? "");
+                        _logger.LogInformation("[联机] 重连后重新加入房间成功");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[联机] 重连后重新加入房间失败");
+                    }
+                }
+            };
+
+            _connection.Reconnecting += (error) =>
+            {
+                _logger.LogWarning(error, "[联机] SignalR 连接断开，正在自动重连...");
+                _worldStateMonitor?.NotifyHeartbeatSuccess(); // 重置失败计数
+                return Task.CompletedTask;
+            };
 
             _connection.Closed += OnConnectionClosed;
 
@@ -623,6 +653,10 @@ public class CoordinatorClient : IAsyncDisposable
             _playerName = playerName;
             _playerUid = playerUid;
             _isInRoom = result != null;
+            if (result != null)
+            {
+                _currentRoomCode = result;
+            }
             return result;
         }
         catch (Exception ex)
