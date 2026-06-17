@@ -319,6 +319,9 @@ public class PathExecutor
         CurrentActiveInstance = this;
         try
         {
+        Logger.LogInformation("[DIAG] Pathing 入口，task.Positions.Count={Count}, FullPath={Path}",
+            task.Positions?.Count ?? -1, task.FullPath ?? "(null)");
+
         // SuspendableDictionary;
         const string sdKey = "PathExecutor";
         var sd = RunnerContext.Instance.SuspendableDictionary;
@@ -332,22 +335,28 @@ public class PathExecutor
             return;
         }
 
+        Logger.LogInformation("[DIAG] 准备 SwitchPartyBefore");
         // 切换队伍
         if (!await SwitchPartyBefore(task))
         {
             return;
         }
+        Logger.LogInformation("[DIAG] SwitchPartyBefore 完成");
 
+        Logger.LogInformation("[DIAG] 准备 ValidateGameWithTask");
         // 校验路径是否可以执行
         if (!await ValidateGameWithTask(task))
         {
             return;
         }
+        Logger.LogInformation("[DIAG] ValidateGameWithTask 完成，准备 InitializePathing");
 
         InitializePathing(task);
+        Logger.LogInformation("[DIAG] InitializePathing 完成，准备 ConvertWaypointsForTrack");
         
         // 转换、按传送点分割路径
         var waypointsList = ConvertWaypointsForTrack(task.Positions, task);
+        Logger.LogInformation("[DIAG] ConvertWaypointsForTrack 完成，段数={Count}", waypointsList.Count);
 
         // 联机模式：预计算所有战斗点的集合点映射
         // key = listIdx * 10000 + syncPointIdx（集合点索引），value = syncPointId

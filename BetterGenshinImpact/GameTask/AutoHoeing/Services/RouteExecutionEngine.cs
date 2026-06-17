@@ -217,7 +217,7 @@ public class RouteExecutionEngine
             }
             catch (Exception ex)
             {
-                Logger.LogError("执行地图追踪出错: {Msg}", ex.Message);
+                Logger.LogError(ex, "[DIAG] 执行地图追踪出错（完整堆栈）: {Msg}", ex.Message);
             }
             finally
             {
@@ -307,7 +307,7 @@ public class RouteExecutionEngine
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            Logger.LogDebug("并发任务异常: {Msg}", ex.Message);
+            Logger.LogError(ex, "[DIAG] 并发任务异常（完整堆栈）: {Msg}", ex.Message);
         }
 
         sw.Stop();
