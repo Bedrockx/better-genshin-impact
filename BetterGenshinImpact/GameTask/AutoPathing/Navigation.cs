@@ -7,8 +7,6 @@ using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using BetterGenshinImpact.GameTask.Common.Map.Maps;
 using BetterGenshinImpact.GameTask.Common.Map.Maps.Base;
-using BetterGenshinImpact.GameTask.Common;
-using Microsoft.Extensions.Logging;
 
 namespace BetterGenshinImpact.GameTask.AutoPathing;
 
@@ -22,24 +20,7 @@ public class Navigation
     {
         if (!_isWarmUp)
         {
-            var memBefore = GC.GetTotalMemory(false) / 1024 / 1024;
-            var privBefore = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1024 / 1024;
-            TaskControl.Logger.LogInformation(
-                "[DIAG] WarmUp 开始：mapMatchMethod='{Method}'，GC托管内存={Gc}MB，进程私有内存={Priv}MB",
-                mapMatchMethod, memBefore, privBefore);
-            try
-            {
-                MapManager.GetMap(MapTypes.Teyvat, mapMatchMethod).WarmUp();
-                var memAfter = GC.GetTotalMemory(false) / 1024 / 1024;
-                var privAfter = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1024 / 1024;
-                TaskControl.Logger.LogInformation(
-                    "[DIAG] WarmUp 完成：GC托管内存={Gc}MB，进程私有内存={Priv}MB", memAfter, privAfter);
-            }
-            catch (Exception ex)
-            {
-                TaskControl.Logger.LogError(ex, "[DIAG] WarmUp 加载地图模板异常（完整堆栈）: {Msg}", ex.Message);
-                throw;
-            }
+            MapManager.GetMap(MapTypes.Teyvat, mapMatchMethod).WarmUp();
         }
 
         _isWarmUp = true;

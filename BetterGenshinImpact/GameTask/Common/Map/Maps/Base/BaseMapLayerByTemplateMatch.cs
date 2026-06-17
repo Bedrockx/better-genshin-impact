@@ -10,7 +10,6 @@ using OpenCvSharp;
 using System.Text.Json.Serialization;
 using BetterGenshinImpact.Core.Recognition.OpenCv.TemplateMatch;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
-using Microsoft.Extensions.Logging;
 
 namespace BetterGenshinImpact.GameTask.Common.Map.Maps.Base;
 
@@ -62,9 +61,6 @@ public class BaseMapLayerByTemplateMatch
         }
         foreach (var layer in layers)
         {
-            TaskControl.Logger.LogInformation(
-                "[DIAG] 加载地图层 LayerId={LayerId} Floor={Floor} IsOverSize={Over}",
-                layer.LayerId, layer.Floor, layer.IsOverSize);
             layer.LoadLayer(layerDir);
         }
         return layers;

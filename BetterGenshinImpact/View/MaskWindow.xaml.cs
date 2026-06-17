@@ -52,6 +52,14 @@ public partial class MaskWindow : Window
     private MaskWindowConfig? _maskWindowConfig;
     private MapLabelSearchWindow? _mapLabelSearchWindow;
     private CancellationTokenSource? _mapLabelCategorySelectCts;
+
+    /// <summary>
+    /// 日志框裁剪重入守卫：LogTextBoxTextChanged 内 RemoveAt/Clear 会再次触发 TextChanged
+    /// 并同步重入本方法。置位期间重入直接 return，根除 RemoveAt→TextChanged→RemoveAt 递归栈溢出。
+    /// TextChanged 在 WPF UI 线程（Dispatcher）上同步重入，普通 bool 即可，无需锁/volatile。
+    /// </summary>
+    private bool _isTrimmingLog;
+
     static MaskWindow()
     {
         if (Application.Current.TryFindResource("TextThemeFontFamily") is FontFamily fontFamily)
@@ -336,17 +344,40 @@ public partial class MaskWindow : Window
 
     private void LogTextBoxTextChanged(object sender, TextChangedEventArgs e)
     {
-        if (LogTextBox.Document.Blocks.FirstBlock is Paragraph p && p.Inlines.Count > 200)
+        // 重入守卫：裁剪中的 RemoveAt/Clear 会再次触发 TextChanged 并重入本方法，
+        // 正在裁剪时立即返回，根除递归栈溢出（0xc00000fd）。
+        if (_isTrimmingLog)
         {
-            (p.Inlines as System.Collections.IList).RemoveAt(0);
+            return;
         }
 
-        var textRange = new TextRange(LogTextBox.Document.ContentStart, LogTextBox.Document.ContentEnd);
-        if (textRange.Text.Length > 10000)
+        _isTrimmingLog = true;
+        try
         {
-            LogTextBox.Document.Blocks.Clear();
+            // 行数批量裁剪：循环删除最旧行直到行数 <= 上限（替代原"每次只删 1 行"）。
+            if (LogTextBox.Document.Blocks.FirstBlock is Paragraph p)
+            {
+                var removeCount = ComputeTrimCount(p.Inlines.Count, MaxLogParagraphLines);
+                var inlines = (System.Collections.IList)p.Inlines;
+                for (var i = 0; i < removeCount; i++)
+                {
+                    inlines.RemoveAt(0);
+                }
+            }
+
+            // 总长度裁剪：超过上限清空（阈值语义不变；守卫保护下 Clear 触发的 TextChanged 被挡）。
+            var textRange = new TextRange(LogTextBox.Document.ContentStart, LogTextBox.Document.ContentEnd);
+            if (textRange.Text.Length > MaxLogTextLength)
+            {
+                LogTextBox.Document.Blocks.Clear();
+            }
+        }
+        finally
+        {
+            _isTrimmingLog = false;
         }
 
+        // ScrollToEnd 不修改文档、不触发 TextChanged，放守卫块外保证每次都滚动（与原行为一致）。
         LogTextBox.ScrollToEnd();
     }
 
@@ -578,6 +609,24 @@ public partial class MaskWindow : Window
     }
 
     public RichTextBox LogBox => LogTextBox;
+
+    /// <summary>日志框单段落最大行数上限（裁剪阈值，语义不变）。</summary>
+    private const int MaxLogParagraphLines = 200;
+
+    /// <summary>日志框文档最大文本长度上限（裁剪阈值，语义不变）。</summary>
+    private const int MaxLogTextLength = 10000;
+
+    /// <summary>
+    /// 纯函数：计算需删除的最旧行数，使裁剪后行数收敛到上限内。
+    /// removeCount = max(0, currentLineCount - maxLines)。无副作用，供 PBT 验证收敛性与幂等性。
+    /// </summary>
+    /// <param name="currentLineCount">当前段落行数（Inlines.Count）。</param>
+    /// <param name="maxLines">行数上限。</param>
+    /// <returns>应从段落头部删除的行数，恒 >= 0。</returns>
+    public static int ComputeTrimCount(int currentLineCount, int maxLines)
+    {
+        return Math.Max(0, currentLineCount - maxLines);
+    }
 
     /// <summary>
     /// 解析颜色字符串（支持RGB和RGBA的16进制表示）
