@@ -8,4 +8,8 @@
     <RootNamespace>BgiCoordinatorServer</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="BgiCoordinatorServer.UnitTest" />
+  </ItemGroup>
+
 </Project>

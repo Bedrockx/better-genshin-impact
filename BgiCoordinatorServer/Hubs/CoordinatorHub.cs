@@ -175,21 +175,47 @@ public class CoordinatorHub : Hub
             .Select(id => roomReports[id])
             .ToList();
 
-        var diffFiles = ComputeRouteDiff(allReports);
-
-        if (diffFiles.Count == 0)
+        try
         {
-            _logger.LogInformation("房间 {Code} 路线验证通过", roomCode);
-            await Clients.Group(roomCode).SendAsync("RouteVerificationPassed");
-        }
-        else
-        {
-            _logger.LogWarning("房间 {Code} 路线存在差异：{Files}", roomCode, string.Join(", ", diffFiles));
-            await Clients.Group(roomCode).SendAsync("RouteDiffReceived", diffFiles);
-        }
+            var diffFiles = ComputeRouteDiff(allReports);
 
-        // 清理缓存
-        RouteReports.TryRemove(roomCode, out _);
+            if (diffFiles.Count == 0)
+            {
+                _logger.LogInformation("房间 {Code} 路线验证通过", roomCode);
+                await Clients.Group(roomCode).SendAsync("RouteVerificationPassed");
+            }
+            else
+            {
+                _logger.LogWarning("房间 {Code} 路线存在差异：{Files}", roomCode, string.Join(", ", diffFiles));
+                await Clients.Group(roomCode).SendAsync("RouteDiffReceived", diffFiles);
+            }
+
+            // 清理缓存
+            RouteReports.TryRemove(roomCode, out _);
+        }
+        catch (Exception ex)
+        {
+            // 兜底：比对/广播过程出现未预期异常时，绝不让客户端无限等待至 90s 超时。
+            // 复用现有 RouteDiffReceived 事件（不新增协议），携带哨兵差异项，
+            // 让客户端走 verified == false 路径主动停止锄地（比放行更安全）。
+            _logger.LogError(ex, "[ReportRouteList] 房间 {Code} 路线比对/广播发生未预期异常，按校验失败兜底处理", roomCode);
+
+            try
+            {
+                await Clients.Group(roomCode).SendAsync(
+                    "RouteDiffReceived",
+                    new List<string> { "__route_verification_error__" });
+            }
+            catch (Exception broadcastEx)
+            {
+                // 二次异常（兜底广播本身失败，如连接已断）：仅记日志吞掉，
+                // 不再向外抛——此处已是最后防线，逃逸无意义且会再次包成 HubException。
+                _logger.LogError(broadcastEx, "[ReportRouteList] 房间 {Code} 兜底广播 RouteDiffReceived 失败", roomCode);
+            }
+
+            // 始终清理缓存，避免脏数据残留影响下一轮校验。
+            RouteReports.TryRemove(roomCode, out _);
+        }
     }
 
     /// <summary>
@@ -2309,12 +2335,10 @@ public class CoordinatorHub : Hub
     }
 
     /// <summary>计算多份路线清单的差异文件名列表</summary>
-    private static List<string> ComputeRouteDiff(List<List<RouteHash>> allReports)
+    internal static List<string> ComputeRouteDiff(List<List<RouteHash>> allReports)
     {
         if (allReports.Count == 0) return [];
 
-        // 以第一份为基准，找出 MD5 不一致或缺失的文件
-        var baseline = allReports[0].ToDictionary(r => r.FileName, r => r.Md5);
         var diffFiles = new HashSet<string>();
 
         // 收集所有文件名
