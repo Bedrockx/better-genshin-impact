@@ -3211,6 +3211,9 @@ public class AutoFightTask : ISoloTask
                     lastReturnAt = DateTime.UtcNow;
                 }
                 catch (OperationCanceledException) { return; }
+                // NormalEndException（取消自动任务）继承自 System.Exception 而非 OperationCanceledException，
+                // 属任务取消信号，应干净退出循环而非误报为"移动异常本轮跳过"。
+                catch (BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception.NormalEndException) { return; }
                 catch (Exception ex)
                 {
                     TaskControl.Logger.LogError(ex, "[联机][万叶] 持续回点移动异常，本轮跳过");
@@ -3441,6 +3444,9 @@ public class AutoFightTask : ISoloTask
                     LastEnemySeenAt = DateTime.UtcNow;
                 }
                 catch (OperationCanceledException) { return; }
+                // NormalEndException（取消自动任务）继承自 System.Exception 而非 OperationCanceledException，
+                // 属任务取消信号，应干净退出循环而非误报为"MoveTo 异常本轮跳过"。
+                catch (BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception.NormalEndException) { return; }
                 catch (Exception ex)
                 {
                     TaskControl.Logger.LogError(ex, "[AutoFight][回点] MoveTo 异常，本轮跳过");
