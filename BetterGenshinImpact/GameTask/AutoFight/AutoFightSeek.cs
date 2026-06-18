@@ -931,8 +931,9 @@ namespace BetterGenshinImpact.GameTask.AutoFight
                     int numLabels2 = Cv2.ConnectedComponentsWithStats(mask2, labels2, stats2, centroids2,
                         connectivity: PixelConnectivity.Connectivity4, ltype: MatType.CV_32S);
         
-                    if (needLog) logger.LogInformation("技能状态：{Name} - {Skill} 状态 {Text}",
-                        guardianAvatar.Name, skills ? "Q技能" : "E技能", numLabels2 > 1 ? "冷却中" : "就绪");
+                    if (needLog) logger.LogInformation("技能状态：{Name} - {Skill} 状态 {Text} (连通块numLabels2={NumLabels}, 决策阈值>2={InCd})",
+                        guardianAvatar.Name, skills ? "Q技能" : "E技能", numLabels2 > 1 ? "冷却中" : "就绪",
+                        numLabels2, numLabels2 > 2);
         
                     if (numLabels2 > 2)
                     {

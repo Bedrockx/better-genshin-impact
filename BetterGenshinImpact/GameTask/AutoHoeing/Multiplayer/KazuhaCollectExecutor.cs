@@ -2,9 +2,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Simulator;
+using BetterGenshinImpact.Core.Simulator.Extensions;
 using BetterGenshinImpact.GameTask.AutoFight;
 using BetterGenshinImpact.GameTask.AutoFight.Model;
-using BetterGenshinImpact.GameTask.Common.BgiVision;
 using Microsoft.Extensions.Logging;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
 
@@ -40,8 +40,8 @@ public static class KazuhaCollectExecutor
     public sealed record Outcome(bool Success, string? SkipReason);
 
     /// <summary>
-    /// 执行万叶聚物动作序列：选万叶 → 切人 → 等 E 技 CD（带上限超时不算失败）→ 长 E
-    /// → OCR + Bv.IsSkillReady 双重确认 → 6 次下落攻击 → 拾取等待。
+    /// 执行万叶聚物动作序列：选万叶 → 切人 → 等 E 技 CD（带上限超时不算失败）→ 长 E（UseSkill）
+    /// → AvatarSkillAsync 释放确认（未放出走重试三件套）→ 6 次下落攻击 → 拾取等待。
     /// </summary>
     /// <param name="combatScenes">已识别好的队伍场景</param>
     /// <param name="waitSkillCdSeconds">等 E 技 CD 上限秒数（超时按 SkillCdTimeoutForce 直放，由 OCR + 视觉双判决定成败）</param>
@@ -52,7 +52,7 @@ public static class KazuhaCollectExecutor
     /// 必须同时传 <paramref name="preselectedKazuha"/> 非 null，否则 ArgumentException。默认 false 保持单机原行为。
     /// </param>
     /// <param name="preselectedKazuha">
-    /// 预切好的万叶 Avatar 引用，配合 <paramref name="assumeAlreadySwitched"/>=true 使用，用于 WaitSkillCd / AfterUseSkill / Bv.IsSkillReady。
+    /// 预切好的万叶 Avatar 引用，配合 <paramref name="assumeAlreadySwitched"/>=true 使用，用于 WaitSkillCd / AfterUseSkill。
     /// </param>
     /// <param name="ct">取消令牌；触发取消时 finally 仍会释放按键，并向上抛 OperationCanceledException</param>
     public static async Task<Outcome> RunAsync(
@@ -103,7 +103,7 @@ public static class KazuhaCollectExecutor
             // 判 CD 前临场稳定（对齐 AutoFightTask.cs L1820-1827）：
             // 切人 + 等画面稳，避免切人/落地动画期间截帧导致 E 图标连通块偏少被误判"就绪"。
             kazuha!.TrySwitch(20);
-            await Delay(50, ct);
+            await Delay(100, ct);
             using (var raActive = CaptureToRectArea())
             {
                 if (!kazuha.IsActive(raActive))
@@ -119,10 +119,22 @@ public static class KazuhaCollectExecutor
             // 视觉看到 CD（AvatarSkillAsync 返回 true）→ 等到 E 的 CD 真正结束再放。
             // retryCount=1：内部不重试只判一次；isResetCd=false：不动 ManualSkillCd 状态机；
             // needLog=true：日志含 CD 状态。
-            if (await AutoFightSkill.AvatarSkillAsync(
-                    Logger, kazuha!,
-                    skills: false, retryCount: 1, ct: ct,
-                    image: null, needLog: true, isResetCd: false))
+
+            // [诊断] 判 CD 前记录万叶是否真正出战，排查"切人未完成导致连通块检测假阴性"
+            using (var raDiag = CaptureToRectArea())
+            {
+                Logger.LogInformation("[聚物][诊断] 判CD前: 万叶出战 IsActive={IsActive}, Index={Index}",
+                    kazuha!.IsActive(raDiag), kazuha.Index);
+            }
+
+            var cdJudgedInCd = await AutoFightSkill.AvatarSkillAsync(
+                Logger, kazuha!,
+                skills: false, retryCount: 1, ct: ct,
+                image: null, needLog: true, isResetCd: false);
+            Logger.LogInformation("[聚物][诊断] 判CD结果: connectivityInCd={InCd} → 分支={Branch}",
+                cdJudgedInCd, cdJudgedInCd ? "在CD→WaitSkillCd等待" : "就绪→立即放行");
+
+            if (cdJudgedInCd)
             {
                 // 对齐自动战斗：WaitSkillCd(ct) 无本地超时上限，等到 E 的 CD 真正结束再放。
                 // 外层 ct 取消时 WaitSkillCd 自然抛 OperationCanceledException 向上传播
@@ -153,57 +165,52 @@ public static class KazuhaCollectExecutor
             await SimulateHoldElementalSkillAsync(1000, ct);
             await Delay(200, ct);
 
-            // 色块连通性检测 + 视觉双重确认：长 E 是否真的释放
-            // 主判据 connectivityInCd：AvatarSkillAsync 连通性检测（与 CD 等待阶段、原版万叶拾取样板
-            //   AutoFightTask.cs L1829 同一套），返回 true = E 图标区有纯白连通块（倒计时数字）= E 在 CD = 已释放。
-            //   替代原 OCR 识别倒计时数字（OcrFactory.Paddle.OcrWithoutDetector），后者读纯白小数字不稳、偶发误读。
-            // 二次确认 isVisualReady：Bv.IsSkillReady，仅当连通性判"不在 CD"时配合判定，避免连通性假阴性引发不必要重试。
-            // ShouldRetryRelease(connectivityInCd, isVisualReady) 真值表不变（!arg1 && arg2）：
-            //   仅当"连通性判未释放 AND 视觉也判就绪"才重试。
-            bool firstReleaseFailed = false;
-            var connectivityInCd = await AutoFightSkill.AvatarSkillAsync(
+            // 放长 E：对齐 AutoFightTask.cs L1819-1821 万叶拾取样板，用内建 UseSkill(true) +
+            // NormalAttack 触发下落，复用 UseSkill 内建的"放完读 CD 确认 + 自动重试"闭环。
+            kazuha!.UseSkill(true);
+            await Delay(50, ct);
+            Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+
+            // 释放确认①：对齐原版单判（AutoFightTask.cs L1823）——
+            // AvatarSkillAsync 返回 false = E 不在 CD = 没放出 → 重试三件套。
+            var releasedInCd = await AutoFightSkill.AvatarSkillAsync(
                 Logger, kazuha!, skills: false, retryCount: 1, ct: ct,
                 image: null, needLog: true, isResetCd: false);
-            using (var region = CaptureToRectArea())
-            {
-                var isVisualReady = Bv.IsSkillReady(region, kazuha!.Index, false);
+            Logger.LogInformation("[聚物][诊断] 释放确认①: releasedInCd={InCd} → {Branch}",
+                releasedInCd, releasedInCd ? "已放出(E在CD)" : "未放出→重试三件套");
 
-                if (ShouldRetryRelease(connectivityInCd, isVisualReady))
-                {
-                    firstReleaseFailed = true;
-                }
-                else
-                {
-                    kazuha.AfterUseSkill(region);
-                }
-            }
-
-            if (firstReleaseFailed)
+            if (!releasedInCd)
             {
-                // EB2: 长 E 释放失败 → 重试一次（参考 AutoFightTask.cs L1380-1395，Q2 决议）。
+                // 对齐 AutoFightTask.cs L1824-1834：UseSkill + Hold(800) + 6 连点下落攻击。
                 Logger.LogWarning("万叶长E技能未成功释放，尝试再次释放");
                 onProgress?.Invoke(KazuhaCollectStage.SkillReleaseRetried);
 
-                kazuha!.TrySwitch(20);
+                kazuha.TrySwitch(20);
+                await Delay(50, ct);
                 kazuha.UseSkill(true);
                 await Delay(50, ct);
                 await SimulateHoldElementalSkillAsync(800, ct);
-                await Delay(200, ct);
+                await SimulateMouseLeftClickLoopAsync(6, ct);
 
-                var connectivityInCd2 = await AutoFightSkill.AvatarSkillAsync(
+                // 释放确认②（重试后）：联机降级上报路径，原样保留——
+                // 重试仍未放出（单判 AvatarSkillAsync 返回 false）→ return Outcome 联机广播 Skipped。
+                // 注意：此二次确认 + 失败上报是联机协同能力（原版自动战斗没有），逐字节保留，
+                //       仅把判据从自拼 ShouldRetryRelease 双判改回原版单判。
+                var releasedInCd2 = await AutoFightSkill.AvatarSkillAsync(
                     Logger, kazuha, skills: false, retryCount: 1, ct: ct,
                     image: null, needLog: true, isResetCd: false);
-                using var region2 = CaptureToRectArea();
-                var isVisualReady2 = Bv.IsSkillReady(region2, kazuha.Index, false);
+                Logger.LogInformation("[聚物][诊断] 释放确认②(重试后): releasedInCd2={InCd} → {Branch}",
+                    releasedInCd2, releasedInCd2 ? "已放出(E在CD)" : "仍未放出→Outcome(false, e_skill_not_released)");
 
-                if (ShouldRetryRelease(connectivityInCd2, isVisualReady2))
+                if (!releasedInCd2)
                 {
-                    // 重试仍失败 → 保持原 reason 码语义不变
+                    // 重试仍失败 → 保持原 reason 码语义不变（联机广播 Skipped）
                     return new Outcome(false, "e_skill_not_released");
                 }
-
-                kazuha.AfterUseSkill(region2);
             }
+
+            // 标记 E 技 CD（对齐原版 L1846 picker.AfterUseSkill()）。
+            kazuha.AfterUseSkill();
 
             onProgress?.Invoke(KazuhaCollectStage.SkillReleaseConfirmed);
 
@@ -249,21 +256,8 @@ public static class KazuhaCollectExecutor
         if (assumeAlreadySwitched && preselectedKazuha == null)
         {
             throw new ArgumentException(
-                "assumeAlreadySwitched=true 时必须传 preselectedKazuha（联机快速路径需要 kazuha 引用用于 WaitSkillCd / AfterUseSkill / Bv.IsSkillReady）",
+                "assumeAlreadySwitched=true 时必须传 preselectedKazuha（联机快速路径需要 kazuha 引用用于 WaitSkillCd / AfterUseSkill）",
                 nameof(preselectedKazuha));
         }
     }
-
-    /// <summary>
-    /// OCR + 视觉双判后是否需要重试：仅当"OCR 没读到 CD 数字 ∧ 视觉显示就绪"时为 true
-    /// （即"E 没被消耗 = 长 E 没释放成功"）。其他三种组合视为长 E 已释放（含视觉读不到的兜底情况）。
-    /// 抽 public static 纯函数是为了 PBT 可直接覆盖 4 种组合（design.md §6 PBT-1）。
-    ///
-    /// 真值表：
-    ///   hasOcrCd=true  isVisualReady=true   → false（OCR 读到 CD + 视觉就绪：异常状态保守视为已释放）
-    ///   hasOcrCd=true  isVisualReady=false  → false（OCR 读到 CD + 视觉冷却：一致就绪→冷却已释放）
-    ///   hasOcrCd=false isVisualReady=true   → true （OCR 无 CD + 视觉就绪：技能没被消耗 → 重试）
-    ///   hasOcrCd=false isVisualReady=false  → false（OCR 无 CD + 视觉冷却：视觉异常但已用，保守视为已释放）
-    /// </summary>
-    public static bool ShouldRetryRelease(bool hasOcrCd, bool isVisualReady) => !hasOcrCd && isVisualReady;
 }
