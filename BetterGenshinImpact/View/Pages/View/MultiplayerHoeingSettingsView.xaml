@@ -108,6 +108,21 @@
                     <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
                                   Text="联机前自动切换到指定角色，留空则使用当前角色"
                                   TextWrapping="Wrap" />
+
+                    <!--  开锄前换武器配置区（固定2行，code-behind 填充）。
+                          可见性 = 队伍名非空 且 起始角色名非空（hoeing-multiplayer-preswitch-weapon）  -->
+                    <StackPanel x:Name="PreSwitchWeaponArea"
+                                Margin="0,12,0,0"
+                                Visibility="{Binding ShowPreSwitchWeaponArea}">
+                        <ui:TextBlock Margin="0,0,0,2"
+                                      FontTypography="BodyStrong"
+                                      Text="开锄前换武器（最多2个角色）" />
+                        <ui:TextBlock Margin="0,0,0,6"
+                                      Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="首轮开锄前，切队切角色后依次为下列已启用行换武器，完成后切回起始角色"
+                                      TextWrapping="Wrap" />
+                        <ContentControl x:Name="PreSwitchWeaponRowsHost" />
+                    </StackPanel>
                 </StackPanel>
             </ui:CardExpander>
 

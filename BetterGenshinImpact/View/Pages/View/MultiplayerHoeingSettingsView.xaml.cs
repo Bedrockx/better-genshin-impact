@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -41,6 +42,10 @@ public partial class MultiplayerHoeingSettingsView : UserControl
     private readonly List<SoloTaskSettingItem> _settingItems;
     private readonly Dictionary<string, FrameworkElement> _soloControls = new();
 
+    // 开锄前换武器（hoeing-multiplayer-preswitch-weapon）：两行内存态 + 每行只读单元/启用复选框控件引用
+    private readonly List<BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.PreSwitchWeaponRow> _preSwitchRows = new();
+    private readonly List<(TextBlock CharCell, TextBlock WeaponCell, System.Windows.Controls.CheckBox EnableCheck)> _preSwitchRowControls = new();
+
     // 当前对话框会话内的变体偏好编辑缓冲（基名 → 变体文件夹名）。保存时写入 settings。
     private readonly Dictionary<string, string> _variantPrefBuffer = new(StringComparer.Ordinal);
     private Action? _refreshVariantPanel;
@@ -65,6 +70,8 @@ public partial class MultiplayerHoeingSettingsView : UserControl
 
         _settingItems = SoloTaskRegistry.GetSettingItems(item.Name);
         BuildSoloPanel();          // 填充 SoloPanelHost（迁现状 soloPanel 构建）
+        InitPreSwitchRowsBuffer();   // 从 _settings 读取还原换武器两行（无则默认空白）
+        BuildPreSwitchWeaponRows();  // 构建固定2行开锄前换武器 UI
         InitVariantPrefBuffer();   // 迁现状 variantPrefBuffer 预填
         BuildBuiltinRouteHost();   // 迁 RebuildBuiltinButtons + import/openDir 事件
         HookVariantPanel();        // VariantExpander.Expanded += BuildVariantPanelContent; _refreshVariantPanel = ...
@@ -125,6 +132,177 @@ public partial class MultiplayerHoeingSettingsView : UserControl
             }
         }
         SoloPanelHost.Content = soloPanel;
+    }
+
+    // ===== 开锄前换武器（hoeing-multiplayer-preswitch-weapon）=====
+
+    // 读取还原：从 _settings['preSwitchWeaponRows'] 解析两行（缺失/异常 → 两行默认空白）
+    private void InitPreSwitchRowsBuffer()
+    {
+        _preSwitchRows.Clear();
+        object? raw = _settings.TryGetValue("preSwitchWeaponRows", out var v) ? v : null;
+        _preSwitchRows.AddRange(
+            BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.PreSwitchWeaponDecisions.ParseRows(raw));
+    }
+
+    // 构建固定2行 UI：每行4列（角色名只读 / 武器名只读 / 配置按钮 / 启用复选框）
+    private void BuildPreSwitchWeaponRows()
+    {
+        var panel = new System.Windows.Controls.StackPanel();
+        _preSwitchRowControls.Clear();
+        for (int i = 0; i < BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.PreSwitchWeaponDecisions.RowCount; i++)
+        {
+            int idx = i;
+            var row = _preSwitchRows[idx];
+            var grid = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, 6) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // 角色
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // 武器
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // 配置按钮
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                       // 启用复选框
+
+            bool configured = BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.PreSwitchWeaponDecisions.IsRowConfigured(row);
+            var charCell = new TextBlock { Text = configured ? row.Character : "", VerticalAlignment = VerticalAlignment.Center };
+            var weaponCell = new TextBlock { Text = configured ? row.Weapon : "", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+            var cfgBtn = new Button { Content = $"配置第{idx + 1}行", Margin = new Thickness(8, 0, 0, 0) };
+            var enableCheck = new System.Windows.Controls.CheckBox { IsChecked = row.Enabled, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+
+            System.Windows.Controls.Grid.SetColumn(charCell, 0);
+            System.Windows.Controls.Grid.SetColumn(weaponCell, 1);
+            System.Windows.Controls.Grid.SetColumn(cfgBtn, 2);
+            System.Windows.Controls.Grid.SetColumn(enableCheck, 3);
+            grid.Children.Add(charCell);
+            grid.Children.Add(weaponCell);
+            grid.Children.Add(cfgBtn);
+            grid.Children.Add(enableCheck);
+
+            cfgBtn.Click += async (_, _) => await OnConfigurePreSwitchRow(idx);
+            panel.Children.Add(grid);
+            _preSwitchRowControls.Add((charCell, weaponCell, enableCheck));
+        }
+        PreSwitchWeaponRowsHost.Content = panel;
+    }
+
+    // 配置某行：复用「OCR切换武器」设置项（GetSettingDefinitions）动态构建 6 参数子弹窗
+    private async Task OnConfigurePreSwitchRow(int idx)
+    {
+        try
+        {
+            var defs = BetterGenshinImpact.GameTask.OcrSwitchWeapon.OcrSwitchWeaponTask.GetSettingDefinitions();
+            var row = _preSwitchRows[idx];
+            var controls = new Dictionary<string, FrameworkElement>();
+            var panel = new System.Windows.Controls.StackPanel { Margin = new Thickness(8) };
+
+            foreach (var def in defs)
+            {
+                panel.Children.Add(new TextBlock { Text = def.Label, Margin = new Thickness(0, 8, 0, 2), FontSize = 13 });
+                object? init = GetPreSwitchRowParamValue(row, def);
+                if (def.Type == "select" && def.Options != null)
+                {
+                    var combo = new System.Windows.Controls.ComboBox
+                    {
+                        ItemsSource = def.Options,
+                        SelectedItem = init?.ToString() ?? "",
+                        Margin = new Thickness(0, 0, 0, 4)
+                    };
+                    panel.Children.Add(combo);
+                    controls[def.Name] = combo;
+                }
+                else if (def.Type == "bool")
+                {
+                    var check = new System.Windows.Controls.CheckBox
+                    {
+                        IsChecked = init is true or "True" or "true",
+                        Margin = new Thickness(0, 0, 0, 4)
+                    };
+                    panel.Children.Add(check);
+                    controls[def.Name] = check;
+                }
+                else
+                {
+                    var tb = new TextBox { Text = init?.ToString() ?? "", Margin = new Thickness(0, 0, 0, 4) };
+                    panel.Children.Add(tb);
+                    controls[def.Name] = tb;
+                }
+            }
+
+            var dialog = new Wpf.Ui.Controls.MessageBox
+            {
+                Title = $"配置开锄前换武器 - 第{idx + 1}行",
+                Content = panel,
+                PrimaryButtonText = "确定",
+                CloseButtonText = "取消",
+                Owner = Application.Current.MainWindow,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            };
+            var r = await dialog.ShowDialogAsync();
+            if (r != MessageBoxResult.Primary) return;   // 取消不变
+
+            // 读回 6 个值写入该行（保持 Enabled 不变）
+            ReadPreSwitchDialogInto(row, controls);
+
+            // 刷新该行只读展示
+            bool configured = BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.PreSwitchWeaponDecisions.IsRowConfigured(row);
+            _preSwitchRowControls[idx].CharCell.Text = configured ? row.Character : "";
+            _preSwitchRowControls[idx].WeaponCell.Text = configured ? row.Weapon : "";
+        }
+        catch (Exception ex)
+        {
+            // 弹窗构建/读写异常不应让配置弹窗崩溃（可恢复异常）
+            _logger.LogWarning(ex, "[开锄前换武器] 配置第{Idx}行弹窗异常", idx + 1);
+            Toast.Warning("配置换武器行失败，请查看日志");
+        }
+    }
+
+    // 取该行某参数的初值（已存值，无则用定义默认值）
+    private static object? GetPreSwitchRowParamValue(
+        BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.PreSwitchWeaponRow row, SoloTaskSettingItem def)
+    {
+        return def.Name switch
+        {
+            "Character" => string.IsNullOrEmpty(row.Character) ? def.DefaultValue : row.Character,
+            "Weapon" => string.IsNullOrEmpty(row.Weapon) ? def.DefaultValue : row.Weapon,
+            "Element" => string.IsNullOrEmpty(row.Element) ? def.DefaultValue : row.Element,
+            "quickMode" => row.QuickMode,
+            "gridPosition" => string.IsNullOrEmpty(row.GridPosition) ? def.DefaultValue : row.GridPosition,
+            "pageScrollCount" => string.IsNullOrEmpty(row.PageScrollCount) ? def.DefaultValue : row.PageScrollCount,
+            _ => def.DefaultValue
+        };
+    }
+
+    // 从子弹窗控件读回 6 个值写入行（Enabled 不动）
+    private static void ReadPreSwitchDialogInto(
+        BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.PreSwitchWeaponRow row,
+        Dictionary<string, FrameworkElement> controls)
+    {
+        string ReadStr(string key)
+        {
+            if (!controls.TryGetValue(key, out var ctrl)) return "";
+            return ctrl switch
+            {
+                System.Windows.Controls.ComboBox combo => combo.SelectedItem?.ToString() ?? "",
+                TextBox tb => tb.Text ?? "",
+                _ => ""
+            };
+        }
+        bool ReadBool(string key)
+            => controls.TryGetValue(key, out var ctrl) && ctrl is System.Windows.Controls.CheckBox c && (c.IsChecked ?? false);
+
+        row.Character = ReadStr("Character");
+        row.Weapon = ReadStr("Weapon");
+        row.Element = ReadStr("Element");
+        row.QuickMode = ReadBool("quickMode");
+        row.GridPosition = ReadStr("gridPosition");
+        row.PageScrollCount = ReadStr("pageScrollCount");
+    }
+
+    // 保存：从复选框回填 Enabled，序列化两行写入 _settings（随配置组持久化）
+    private void SavePreSwitchWeaponRows()
+    {
+        for (int i = 0; i < _preSwitchRows.Count && i < _preSwitchRowControls.Count; i++)
+            _preSwitchRows[i].Enabled = _preSwitchRowControls[i].EnableCheck.IsChecked ?? false;
+
+        _settings["preSwitchWeaponRows"] =
+            BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.PreSwitchWeaponDecisions.SerializeRows(_preSwitchRows);
     }
 
     // ===== 变体偏好缓冲预填（迁现状）：先全局 gcfg.VariantPreferences，再用 settings 覆盖 =====
@@ -682,6 +860,7 @@ public partial class MultiplayerHoeingSettingsView : UserControl
             {
                 _settings["selectedBuiltinRoute"] = GetStr("selectedBuiltinRoute", _globalCfg.SelectedBuiltinRoute);
             }
+            SavePreSwitchWeaponRows();   // 开锄前换武器两行配置（随配置组持久化）
         }
         else
         {
@@ -740,6 +919,8 @@ public partial class MultiplayerHoeingSettingsView : UserControl
         {
             _settings.Remove(key);
         }
+        // 单机模式清除开锄前换武器配置（与现有联机专属字段处理一致，避免残留值被执行层误读）
+        _settings.Remove("preSwitchWeaponRows");
     }
 
     // 变体偏好写入（迁现状）：不分联机/单机，Save 末尾统一

@@ -82,6 +82,11 @@ public class AutoHoeingTask : ISoloTask
     
     private bool _teamAlreadySwitched = false;
     private bool _worldPermissionSet = false;
+    // 开锄前换武器仅首轮执行一次的标志（hoeing-multiplayer-preswitch-weapon）。
+    // 注意：绝不在多世界轮换重置点（_teamAlreadySwitched = false 处）一起重置，保证仅首轮换武器一次。
+    private bool _preSwitchWeaponDone = false;
+    // 解析后的两行换武器配置（来自配置组 settings['preSwitchWeaponRows']），ApplyPreSwitchWeaponRowsOverride 内填充。
+    private List<Multiplayer.PreSwitchWeaponRow> _preSwitchWeaponRows = new();
 
     /// <summary>
     /// 隐藏服务器地址的前半部分（隐私保护）
@@ -1286,7 +1291,15 @@ public class AutoHoeingTask : ISoloTask
         {
             await SwitchMultiplayerAvatar();
         }
-        
+
+        // 2.5 开锄前换武器（hoeing-multiplayer-preswitch-weapon）：仅首轮、切队+切角色之后执行。
+        // 多世界轮换后续轮次 _preSwitchWeaponDone 已为真 → 跳过（不重复换武器）。
+        if (!_preSwitchWeaponDone)
+        {
+            await ExecutePreSwitchWeaponAsync();
+            _preSwitchWeaponDone = true; // 无论是否有可执行行都置真，避免后续轮次重复判定
+        }
+
         _logger.LogInformation("[联机] 队伍和角色准备完成");
     }
 
@@ -1421,6 +1434,66 @@ public class AutoHoeingTask : ISoloTask
         if (!avatarSwitchSuccess)
         {
             _logger.LogWarning("[联机] 切换角色失败（重试3次后仍失败），将使用当前角色继续联机");
+        }
+    }
+
+    /// <summary>
+    /// 开锄前换武器编排（hoeing-multiplayer-preswitch-weapon）：
+    /// Row1 -> Row2 顺序，仅处理 Row_Enabled 行（勾选且 Character/Weapon 非空，不去重）；
+    /// 每行用其 6 参数作 settings 覆盖构造 OcrSwitchWeaponTask 并 Start(ct)；
+    /// 全部完成后切回 MultiplayerStartAvatarName（仅当至少执行过一行）。
+    /// 单行非取消异常记 LogWarning 不阻断后续行与开锄；OperationCanceledException 透传不吞。
+    /// </summary>
+    private async Task ExecutePreSwitchWeaponAsync()
+    {
+        var enabledRows = _preSwitchWeaponRows
+            .Where(r => Multiplayer.PreSwitchWeaponDecisions.IsRowEnabled(r))
+            .ToList();
+        if (enabledRows.Count == 0)
+        {
+            _logger.LogInformation("[开锄前换武器] 无启用行，跳过");
+            return; // 无行执行 → 不额外切回起始角色
+        }
+
+        bool anyExecuted = false;
+        foreach (var row in enabledRows)
+        {
+            _ct.ThrowIfCancellationRequested(); // 取消透传，停止后续行
+            try
+            {
+                var rowSettings = Multiplayer.PreSwitchWeaponDecisions.BuildRowSettingsDict(row);
+                _logger.LogInformation("[开锄前换武器] 为角色[{Char}]换武器[{Weapon}]", row.Character, row.Weapon);
+                await new OcrSwitchWeapon.OcrSwitchWeaponTask(_partyConfig, rowSettings, _groupName).Start(_ct);
+                anyExecuted = true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw; // 取消异常不吞，透传中断
+            }
+            catch (Exception ex)
+            {
+                // 单行换武器失败记结构化警告日志，不阻断后续行与开锄流程
+                _logger.LogWarning(ex, "[开锄前换武器] 角色[{Char}]换武器失败，跳过该行继续", row.Character);
+            }
+        }
+
+        // 至少执行过一行 → 切回联机起始角色（复用现有联机切角色能力，含重试/兜底）
+        if (anyExecuted && !string.IsNullOrEmpty(_config.MultiplayerStartAvatarName))
+        {
+            try
+            {
+                _ct.ThrowIfCancellationRequested();
+                await SwitchMultiplayerAvatar();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // 切回起始角色非取消异常记日志后继续后续联机流程（开锄阶段本身也有角色识别兜底）
+                _logger.LogWarning(ex, "[开锄前换武器] 切回起始角色失败，继续后续联机流程");
+            }
         }
     }
 
@@ -3586,10 +3659,21 @@ public class AutoHoeingTask : ISoloTask
         // 配置组级变体偏好（key=线路基名, value=变体文件夹名）合并到 _config.VariantPreferences，
         // 配置组键覆盖全局键。_config 已是全局深拷贝，可安全 mutate（不污染全局单例）。
         ApplyVariantPreferencesOverride();
+        ApplyPreSwitchWeaponRowsOverride();
     }
 
     /// <summary>
-    /// 把配置组 settings["variantPreferences"]（STJ 反序列化为 JsonElement object）合并进
+    /// 从配置组 settings['preSwitchWeaponRows'] 解析两行换武器配置（hoeing-multiplayer-preswitch-weapon）。
+    /// 缺失（raw==null）→ 保持空列表（不执行换武器）；否则委托纯函数 ParseRows（内部异常兜底为默认两行）。
+    /// 不写入 OcrSwitchWeaponConfig 全局（每行通过 settings 覆盖在 OcrSwitchWeaponTask 内部深拷贝上应用）。
+    /// </summary>
+    private void ApplyPreSwitchWeaponRowsOverride()
+    {
+        if (_settingsOverride == null) { _preSwitchWeaponRows = new(); return; }
+        object? raw = _settingsOverride.TryGetValue("preSwitchWeaponRows", out var v) ? v : null;
+        if (raw == null) { _preSwitchWeaponRows = new(); return; }
+        _preSwitchWeaponRows = Multiplayer.PreSwitchWeaponDecisions.ParseRows(raw);
+    }
     /// _config.VariantPreferences。配置组键覆盖全局键；缺失或解析失败则保持全局值（可恢复）。
     /// </summary>
     private void ApplyVariantPreferencesOverride()

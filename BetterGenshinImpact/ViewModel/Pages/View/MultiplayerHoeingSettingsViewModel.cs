@@ -32,8 +32,12 @@ public partial class MultiplayerHoeingSettingsViewModel : ObservableObject
     [ObservableProperty] private string _playerName = "";
     [ObservableProperty] private string _playerUid = "";
     [ObservableProperty] private string _pickupMode = "";
-    [ObservableProperty] private string _multiplayerPartyName = "";
-    [ObservableProperty] private string _multiplayerStartAvatarName = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPreSwitchWeaponArea))]
+    private string _multiplayerPartyName = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPreSwitchWeaponArea))]
+    private string _multiplayerStartAvatarName = "";
 
     // ===== C 房间设置（房主本地）=====
     [ObservableProperty] private string _expectedPlayerCount = "";
@@ -112,6 +116,15 @@ public partial class MultiplayerHoeingSettingsViewModel : ObservableObject
     public bool IsHost => RoleSelection != "成员（加入房间）";
     public System.Windows.Visibility ShowHostArea => IsHost ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
     public System.Windows.Visibility ShowMemberArea => IsHost ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+
+    /// <summary>
+    /// 开锄前换武器配置区可见性：仅当联机队伍名与联机起始角色名都非空时显示
+    /// （hoeing-multiplayer-preswitch-weapon，因换武器执行依赖切队+切角色成功）。
+    /// </summary>
+    public System.Windows.Visibility ShowPreSwitchWeaponArea =>
+        !string.IsNullOrWhiteSpace(MultiplayerPartyName) && !string.IsNullOrWhiteSpace(MultiplayerStartAvatarName)
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
     public bool TargetHostEnabled => JoinModeSelection != "随机加入现有房间";
     public bool KazuhaParamsEnabled => EnableKazuhaSync;
     public bool FastSyncParamsEnabled => FastSyncPointEnabled;
