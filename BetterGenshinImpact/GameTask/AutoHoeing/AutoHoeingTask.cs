@@ -2555,12 +2555,49 @@ public class AutoHoeingTask : ISoloTask
                     .Select(name => allRoutesDict[name])
                     .ToList();
 
+                _logger.LogDebug("[联机] 第一处映射: routes {Routes} 条, hostRouteNames {Host} 条, 命中 found {Found} 条",
+                    routes.Count, hostRouteNames.Count, found.Count);
+
                 // 如果有路线在本地找不到，尝试从 pathing 目录重新加载全量路线
                 if (found.Count < hostRouteNames.Count)
                 {
+                    _logger.LogDebug("[联机] 第一处映射命中 {Found}/{Host} 条，进入兜底重载",
+                        found.Count, hostRouteNames.Count);
+
                     var pathingDir = Path.Combine(_dataDir, "pathing");
                     var allRoutes = RouteInfoLoader.LoadRoutes(pathingDir, _monsterRepo, _config.IgnoreRate, new List<string>());
-                    var fullDict = allRoutes.ToDictionary(r => r.FileName);
+
+                    // 甲方案：兜底重载同样按成员变体偏好收敛到单一变体代表，
+                    // 避免 A变体/B变体 同名文件平铺导致 ToDictionary(r => r.FileName) 撞键崩溃。
+                    // 与第一处映射 / LoadFixedDebugRoutes 走同一套收敛逻辑（两处统一）。
+                    var allFullPaths = allRoutes
+                        .Where(r => !string.IsNullOrEmpty(r.FullPath))
+                        .Select(r => r.FullPath!)
+                        .ToArray();
+                    var hasVariantLayout = allFullPaths.Any(f => RouteVariantNaming.TryGetVariantFolder(f) != null);
+
+                    IEnumerable<RouteInfo> convergedRoutes = allRoutes;
+                    if (hasVariantLayout)
+                    {
+                        var repPaths = SelectVariantRepresentatives(pathingDir, allFullPaths, _config.VariantPreferences);
+                        var repSet = new HashSet<string>(repPaths, StringComparer.OrdinalIgnoreCase);
+                        convergedRoutes = allRoutes.Where(r =>
+                            !string.IsNullOrEmpty(r.FullPath) && repSet.Contains(r.FullPath!)).ToList();
+
+                        var dupNames = allRoutes
+                            .GroupBy(r => r.FileName)
+                            .Where(g => g.Count() > 1)
+                            .Select(g => g.Key)
+                            .ToList();
+                        if (dupNames.Count > 0)
+                            _logger.LogInformation("[联机] 兜底重载存在同名多变体 {Count} 项，已按成员变体偏好收敛到单一变体: {Files}",
+                                dupNames.Count, string.Join(", ", dupNames));
+
+                        _logger.LogDebug("[联机] 兜底重载收敛: 原 {Before} 条 → 收敛后 {After} 条（hasVariantLayout={HasVariant}）",
+                            allRoutes.Count, ((List<RouteInfo>)convergedRoutes).Count, hasVariantLayout);
+                    }
+
+                    var fullDict = convergedRoutes.ToDictionary(r => r.FileName);
                     found = hostRouteNames
                         .Where(name => fullDict.ContainsKey(name))
                         .Select(name => fullDict[name])
@@ -3274,7 +3311,8 @@ public class AutoHoeingTask : ISoloTask
         }
         else
         {
-            files = SelectVariantRepresentatives(dirPath, allJson);
+            // 甲方案：成员侧按成员自己的变体偏好收敛到选中变体（缺偏好/单机时 VariantPreferences 为空 → 等价 A→B→C→D 代表）。
+            files = SelectVariantRepresentatives(dirPath, allJson, _config.VariantPreferences);
         }
 
         for (int i = 0; i < files.Length; i++)
@@ -3301,7 +3339,7 @@ public class AutoHoeingTask : ISoloTask
     /// - 不在变体子文件夹里的普通文件：原样保留。
     /// 返回排序后的代表绝对路径数组（确定性，跨玩家一致）。
     /// </summary>
-    private static string[] SelectVariantRepresentatives(string dirPath, string[] allJson)
+    private static string[] SelectVariantRepresentatives(string dirPath, string[] allJson, IReadOnlyDictionary<string, string>? variantPreferences = null)
     {
         // 基名 → (变体文件夹 → 绝对路径)
         var byBase = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
@@ -3331,7 +3369,19 @@ public class AutoHoeingTask : ISoloTask
         var representatives = new List<string>();
         foreach (var (_, folderMap) in byBase)
         {
-            var repFolder = RouteVariantNaming.PickRepresentativeFolder(folderMap.Keys);
+            // 偏好 key = 总文件夹名（从该基名任一变体文件路径派生，folderMap 各路径同属一个总文件夹）
+            string? preferredFolder = null;
+            if (variantPreferences != null)
+            {
+                var anyPath = folderMap.Values.FirstOrDefault();
+                var topFolder = anyPath == null ? null : RouteVariantNaming.TryGetTopFolderName(anyPath);
+                if (!string.IsNullOrEmpty(topFolder)
+                    && variantPreferences.TryGetValue(topFolder, out var pref))
+                {
+                    preferredFolder = pref;
+                }
+            }
+            var repFolder = RouteVariantNaming.PickPreferredFolder(folderMap.Keys, preferredFolder);
             if (repFolder != null && folderMap.TryGetValue(repFolder, out var repPath))
                 representatives.Add(repPath);
         }

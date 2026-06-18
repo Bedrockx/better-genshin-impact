@@ -140,4 +140,19 @@ public static class RouteVariantNaming
             if (set.Contains(f)) return f;
         return null;
     }
+
+    /// <summary>
+    /// 偏好优先的代表选择：给定同一基名下各可用变体文件夹集合 + 该基名所属总文件夹的偏好变体，
+    /// 若偏好变体存在于 availableFolders 则返回它；否则回退到 PickRepresentativeFolder（A→B→C→D 第一个存在）。
+    /// preferredFolder 为 null/空（未配偏好）时逐字节等价于 PickRepresentativeFolder。
+    /// 纯函数，PBT 友好。
+    /// </summary>
+    public static string? PickPreferredFolder(IEnumerable<string> availableFolders, string? preferredFolder)
+    {
+        if (availableFolders == null) return null;
+        var set = new HashSet<string>(availableFolders, StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(preferredFolder) && set.Contains(preferredFolder))
+            return preferredFolder;
+        return PickRepresentativeFolder(availableFolders);
+    }
 }
