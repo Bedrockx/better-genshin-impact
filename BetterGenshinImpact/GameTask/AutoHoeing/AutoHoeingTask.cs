@@ -2567,9 +2567,10 @@ public class AutoHoeingTask : ISoloTask
                     var pathingDir = Path.Combine(_dataDir, "pathing");
                     var allRoutes = RouteInfoLoader.LoadRoutes(pathingDir, _monsterRepo, _config.IgnoreRate, new List<string>());
 
-                    // 甲方案：兜底重载同样按成员变体偏好收敛到单一变体代表，
+                    // 兜底重载按变体「代表」(A→B→C→D) 收敛到单一文件，
                     // 避免 A变体/B变体 同名文件平铺导致 ToDictionary(r => r.FileName) 撞键崩溃。
-                    // 与第一处映射 / LoadFixedDebugRoutes 走同一套收敛逻辑（两处统一）。
+                    // 与 LoadFixedDebugRoutes 一致用代表（不传偏好）：保证此处映射到的文件与一致性校验
+                    // 比对的代表文件相同；成员要跑的变体在校验后由 ResolveAndLoadActualVariant 解析替换。
                     var allFullPaths = allRoutes
                         .Where(r => !string.IsNullOrEmpty(r.FullPath))
                         .Select(r => r.FullPath!)
@@ -2579,7 +2580,7 @@ public class AutoHoeingTask : ISoloTask
                     IEnumerable<RouteInfo> convergedRoutes = allRoutes;
                     if (hasVariantLayout)
                     {
-                        var repPaths = SelectVariantRepresentatives(pathingDir, allFullPaths, _config.VariantPreferences);
+                        var repPaths = SelectVariantRepresentatives(pathingDir, allFullPaths);
                         var repSet = new HashSet<string>(repPaths, StringComparer.OrdinalIgnoreCase);
                         convergedRoutes = allRoutes.Where(r =>
                             !string.IsNullOrEmpty(r.FullPath) && repSet.Contains(r.FullPath!)).ToList();
@@ -2590,7 +2591,7 @@ public class AutoHoeingTask : ISoloTask
                             .Select(g => g.Key)
                             .ToList();
                         if (dupNames.Count > 0)
-                            _logger.LogInformation("[联机] 兜底重载存在同名多变体 {Count} 项，已按成员变体偏好收敛到单一变体: {Files}",
+                            _logger.LogInformation("[联机] 兜底重载存在同名多变体 {Count} 项，已按变体代表(A→B→C→D)收敛到单一文件: {Files}",
                                 dupNames.Count, string.Join(", ", dupNames));
 
                         _logger.LogDebug("[联机] 兜底重载收敛: 原 {Before} 条 → 收敛后 {After} 条（hasVariantLayout={HasVariant}）",
@@ -3311,8 +3312,11 @@ public class AutoHoeingTask : ISoloTask
         }
         else
         {
-            // 甲方案：成员侧按成员自己的变体偏好收敛到选中变体（缺偏好/单机时 VariantPreferences 为空 → 等价 A→B→C→D 代表）。
-            files = SelectVariantRepresentatives(dirPath, allJson, _config.VariantPreferences);
+            // 变体布局：加载阶段统一选「代表」(A→B→C→D 第一个存在)，使房主/成员加载与一致性校验
+            // 比对的都是同一代表文件，MD5 校验照常通过。成员各自要跑的变体在校验之后由
+            // ResolveAndLoadActualVariant 按 _config.VariantPreferences 解析替换（不在此处提前换，
+            // 否则校验阶段会比到不同变体内容导致误判差异）。
+            files = SelectVariantRepresentatives(dirPath, allJson);
         }
 
         for (int i = 0; i < files.Length; i++)
