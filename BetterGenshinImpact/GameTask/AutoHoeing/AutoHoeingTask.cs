@@ -2549,7 +2549,19 @@ public class AutoHoeingTask : ISoloTask
                 }
 
                 // 先从完整路线列表查找（不限于当前 group 过滤后的结果）
-                var allRoutesDict = routes.ToDictionary(r => r.FileName);
+                // 对同名变体（A变体/B变体... 同名 json）按代表 A→B→C→D 收敛到单一份，
+                // 使本行对重复 FileName 绝对安全（不依赖上游是否已去重），避免 ToDictionary 撞键崩溃。
+                // 选代表与房主、与一致性校验比对的文件一致（成员要跑的变体由下游 ResolveAndLoadActualVariant 解析替换）。
+                var allRoutesDict = routes
+                    .GroupBy(r => r.FileName)
+                    .ToDictionary(g => g.Key, g => g
+                        .OrderBy(r =>
+                        {
+                            var folder = RouteVariantNaming.TryGetVariantFolder(r.FullPath);
+                            var idx = folder == null ? -1 : Array.IndexOf(RouteVariantNaming.VariantFolders, folder);
+                            return idx < 0 ? int.MaxValue : idx;
+                        })
+                        .First());
                 var found = hostRouteNames
                     .Where(name => allRoutesDict.ContainsKey(name))
                     .Select(name => allRoutesDict[name])
