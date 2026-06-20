@@ -8,6 +8,11 @@
 莱依拉 e,wait(0.1),keypress(e),wait(0.2),check, keypress(e),keypress(q),attack(0.2),keypress(e),keypress(q),wait(0.2),check,
 尼可 e,wait(0.1),keypress(e),wait(0.2),check, keypress(e),keypress(q),attack(0.2),keypress(e),keypress(q),wait(0.2),check,
 
+仆人 attack(0.1),e, wait(0.1), check, wait(0.1),charge(0.35), j, charge(0.2), check, charge(0.2), keydown(s), attack(1.17),  e, wait(0.1), check, wait(0.1),charge(0.35), j,attack(0.45), keyup(s), keydown(w), attack(0.38), attack(0.6), keyup(w), keypress(q), wait(0.2), keydown(s), attack(1.17), attack(0.45), keyup(s), keydown(w), attack(0.38), attack(0.6), keyup(w), wait(0.1), check,charge(0.35), keypress(q)
+
+温迪 keypress(Q),attack(0.01), keypress(Q),e, wait(0.1), ready, check, e, click(middle), attack(0.2), keypress(Q), wait(0.1), ready, attack(0.22), e, click(middle), dash(0.1), attack(0.3), keypress(Q),attack(0.3), keypress(Q), attack(0.3), keypress(Q), attack(0.3), keypress(Q), e, attack(0.5), click(middle), attack(0.2), dash(0.1), attack(0.3), keypress(Q), attack(0.3), keypress(Q), attack(0.3), keypress(Q), attack(0.3), keypress(Q)
+
+欧洛伦 e, attack(0.3), check, wait(0.3), keypress(q), wait(0.1), keypress(q), wait(0.1), keypress(q), wait(0.1), check, wait(0.3)
 
 
 // 后台、挂元素、副C、奶
@@ -27,7 +32,6 @@
 久岐忍 e,wait(0.1),keypress(q),attack(0.1),keypress(q),e,wait(0.2),check
 白术 e,wait(0.1),keypress(q),attack(0.1),keypress(q),e,wait(0.2),check
 希格雯 e(hold),wait(0.2),attack(0.21),keypress(q),wait(0.2),keypress(q),wait(0.2),check
-琴 attack(0.2),keypress(q),keydown(e),wait(0.34), moveby(0,1300),wait(0.2),keyup(e),attack(0.4),click(middle),check,keypress(q),wait(0.2),check,keypress(q),wait(0.2),check,
 芭芭拉 keypress(q),keypress(e),attack(0.5),check,attack(0.5),check,attack(0.5),check,attack(0.5),check,wait(0.2),check
 珊瑚宫心海 keypress(q),keypress(e),attack(0.5),check,attack(0.5),check,attack(0.5),check,attack(0.5),check,wait(0.2),check
 闲云 keypress(e), wait(0.2),keypress(e), wait(0.2),keypress(e), wait(0.2), keypress(Q), attack(0.2), j, attack(0.2)
@@ -37,8 +41,6 @@
 克洛琳德 attack(0.05), click(middle),keypress(E), wait(0.05), keydown(VK_LBUTTON), wait(0.58),keydown(s),wait(0.555),keyup(s), keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.55),keyup(s), keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.555),keyup(s),keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.55),keyup(s), keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.555),keyup(s),keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.55),keyup(s), keypress(E), keyup(VK_LBUTTON),attack(0.4),wait(0.15),keydown(q), wait(0.05),attack(1.8),click(middle),keyup(q), wait(0.15), attack(0.35), keypress(E), wait(0.43), keypress(E), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.555),keyup(s),keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.55),keyup(s), keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.555),keyup(s),keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.55),keyup(s), keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.555),keyup(s),keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.55),keyup(s),keypress(E), keyup(VK_LBUTTON)wait(0.01), keydown(VK_LBUTTON), wait(0.6),keydown(s),wait(0.555),keyup(s),keypress(E),keyup(VK_LBUTTON),wait(0.01), keydown(VK_LBUTTON),wait(0.6),keydown(s),wait(0.55),keyup(s),keypress(E),keyup(VK_LBUTTON),click(middle),wait(0.3),check,attack(0.3),check,wait(0.3),check,
 
 八重神子 attack, click(middle), keydown(w), wait(0.1), keypress(e), wait(0.1), keyup(w), wait(0.7), keypress(e), wait(0.7), keydown(a), wait(0.1), keypress(e), wait(0.1), keyup(a), wait(0.3), attack(0.1)
-
-温迪 attack(0.05), e,keypress(Q),  click(middle),check, attack(0.2), e,keypress(Q), attack(0.5),check, e,keypress(Q), click(middle), dash(0.5), attack(0.6),check, e,keypress(Q),dash(0.5),check,
 
 雷电将军 e,attack(0.2),keypress(q),attack(0.1),keypress(q),attack(0.1),keypress(q),attack(1.8),charge(0.8),check,attack(0.7),keypress(q),charge(0.8),check,attack(0.7),keypress(q),charge(0.8),check,attack(0.7),keypress(q),charge(0.8),check,attack(0.7),charge(0.8),check,
 
@@ -68,6 +70,7 @@
 哥伦比娅 attack,e,wait(0.15),keypress(e),attack,keypress(q),charge(1),check,keypress(q),charge(1),check,
 //联机锄地万叶是聚物工具人，不要动，可以自己加个Q
 万叶 wait(0.2),check,wait(0.2),check,wait(0.2),check,wait(0.2),check,wait(0.2),check,
+琴 attack(0.01),keypress(q)
 
 
 

@@ -1874,6 +1874,7 @@ public class PathExecutor
                 {
                     if (recoverAvatar != null && recoverAvatar.TrySwitch2())
                     {
+                        Logger.LogWarning("[联机] 直接切换到指定回血角色 {Name}（索引 {Idx}）放 Q", recoverAvatar.Name, recoverIdx);
                         Simulation.SendInput.SimulateAction(GIActions.ElementalBurst);
                         await Delay(2000, ct);
                     }
@@ -1888,6 +1889,7 @@ public class PathExecutor
                     Logger.LogWarning(ex, "[联机] 直接放Q回血异步执行异常");
                 }
             }, ct);
+            await Delay(500, ct);
             return true;
         }
 

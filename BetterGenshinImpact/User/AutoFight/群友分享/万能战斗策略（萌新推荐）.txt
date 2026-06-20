@@ -76,7 +76,7 @@
 玛薇卡  e, wait(0.3), check, wait(0.3), keypress(q), wait(0.1), keypress(q), wait(0.1), ready, check, wait(0.3)
 迪希雅 e, attack(0.3), e, wait(0.3), check, wait(0.3)
 香菱 e, wait(0.3),check, keypress(q), wait(0.1), keypress(q), wait(0.1), keypress(q), wait(0.1), check, wait(0.3)
-仆人 attack(0.3), check, wait(0.3), e, wait(0.3), check, wait(0.3)
+
 
 // 夜兰顺时针
 夜兰 attack(0.2), check, wait(0.3),keydown(VK_W), wait(0.05), keydown(VK_E), wait(0.4), keyup(VK_E), wait(0.1), keydown(VK_D), keyup(VK_W), wait(0.4), keydown(VK_S), keyup(VK_D), wait(0.4), keydown(VK_A), keyup(VK_S), wait(0.4), keydown(VK_W), keyup(VK_A), wait(0.3), keydown(VK_S), keyup(VK_W), wait(0.15), keyup(VK_S), keypress(e), attack(0.2), check, wait(0.3), keypress(Q), wait(0.1), keypress(Q), wait(0.1), keypress(Q), wait(0.1), ready, check, wait(0.3)
@@ -162,7 +162,7 @@
 
 瓦雷莎 e, attack(1.25), click(middle), wait(0.45),check, keydown(s), e, attack(1.25), keyup(s), wait(0.3), keypress(q), click(middle), wait(0.45), check, wait(0.3)
 
-仆人 charge(0.35), j, wait(0.3), check, wait(0.3), keydown(s), attack(1.17), attack(0.45), keyup(s), keydown(w), attack(0.38), attack(0.6), keyup(w), wait(0.2), keydown(s), attack(1.17), attack(0.45), keyup(s), keydown(w), attack(0.38), attack(0.6), keyup(w), wait(0.2), check, wait(0.3)
+仆人 wait(0.1), e, wait(0.1), check, wait(0.1),charge(0.35), j, wait(0.3), check, wait(0.3), keydown(s), attack(1.17),  e, wait(0.1), check, wait(0.1),charge(0.35), j,attack(0.45), keyup(s), keydown(w), attack(0.38), attack(0.6), keyup(w), keypress(q), wait(0.2), keydown(s), attack(1.17), attack(0.45), keyup(s), keydown(w), attack(0.38), attack(0.6), keyup(w), wait(0.2), check, wait(0.3), keypress(q)
 
 // （满命转圈喷5.5秒）希格雯 e(hold),wait(0.3),check, wait(0.3), keypress(q), wait(0.2), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.1), moveby(300, 0), wait(0.2), check, wait(0.3)
 
