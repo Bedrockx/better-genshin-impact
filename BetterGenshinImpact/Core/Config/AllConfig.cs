@@ -27,6 +27,7 @@ using BetterGenshinImpact.GameTask.AutoEat;
 using BetterGenshinImpact.GameTask.AutoLeyLineOutcrop;
 using BetterGenshinImpact.GameTask.AutoCook;
 using BetterGenshinImpact.GameTask.AutoFriendship;
+using BetterGenshinImpact.GameTask.AutoSwitchRoles;
 using BetterGenshinImpact.GameTask.OcrSwitchWeapon;
 using BetterGenshinImpact.GameTask.MapMask;
 using BetterGenshinImpact.GameTask.SkillCd;
@@ -244,6 +245,11 @@ public partial class AllConfig : ObservableObject
     /// OCR切换武器配置
     /// </summary>
     public OcrSwitchWeaponConfig OcrSwitchWeaponConfig { get; set; } = new();
+
+    /// <summary>
+    /// 配对界面切换角色配置
+    /// </summary>
+    public AutoSwitchRolesConfig AutoSwitchRolesConfig { get; set; } = new();
     
     /// <summary>
     ///   地图遮罩
@@ -358,6 +364,7 @@ public partial class AllConfig : ObservableObject
         AutoCookConfig.PropertyChanged += OnAnyPropertyChanged;
         AutoFriendshipConfig.PropertyChanged += OnAnyPropertyChanged;
         OcrSwitchWeaponConfig.PropertyChanged += OnAnyPropertyChanged;
+        AutoSwitchRolesConfig.PropertyChanged += OnAnyPropertyChanged;
         MapMaskConfig.PropertyChanged += OnAnyPropertyChanged;
         AutoMusicGameConfig.PropertyChanged += OnAnyPropertyChanged;
         TpConfig.PropertyChanged += OnAnyPropertyChanged;

@@ -1,6 +1,7 @@
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.GameTask.AutoFriendship;
 using BetterGenshinImpact.GameTask.AutoHoeing;
+using BetterGenshinImpact.GameTask.AutoSwitchRoles;
 using BetterGenshinImpact.GameTask.OcrSwitchWeapon;
 using System.Collections.Generic;
 
@@ -18,7 +19,8 @@ public static class SoloTaskRegistry
     [
         "锄地一条龙",
         "好感任务自动完成",
-        "OCR切换武器"
+        "OCR切换武器",
+        "配对界面切换角色"
     ];
 
     /// <summary>
@@ -32,6 +34,7 @@ public static class SoloTaskRegistry
             "锄地一条龙" => new AutoHoeingTask(partyConfig, settings, groupName),
             "好感任务自动完成" => new AutoFriendshipTask(TaskContext.Instance().Config.AutoFriendshipConfig, partyConfig, settings, partyConfig?.AutoFightConfig),
             "OCR切换武器" => new OcrSwitchWeaponTask(partyConfig, settings, groupName),
+            "配对界面切换角色" => new AutoSwitchRolesTask(partyConfig, settings, groupName),
             _ => null
         };
     }
@@ -46,6 +49,7 @@ public static class SoloTaskRegistry
             "锄地一条龙" => AutoHoeingTask.GetSettingDefinitions(),
             "好感任务自动完成" => AutoFriendshipTask.GetSettingDefinitions(),
             "OCR切换武器" => OcrSwitchWeaponTask.GetSettingDefinitions(),
+            "配对界面切换角色" => AutoSwitchRolesTask.GetSettingDefinitions(),
             _ => new()
         };
     }
