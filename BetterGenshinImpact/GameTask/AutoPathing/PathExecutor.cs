@@ -670,6 +670,8 @@ public class PathExecutor
                                 _perRouteSwitchDone = true;   // 每线路一次性（实例级，R4.3）
                                 // 换角色期间抑制后台拾取输入（滚轮/按F），避免在配队筛选界面误滚动元素图标
                                 BetterGenshinImpact.GameTask.AutoHoeing.Services.TemplatePickupService.SuppressPickupInput = true;
+                                // 换角色期间暂停 WorldStateMonitor 被踢出检测，避免选角界面 IsInMultiGame=false 被误判踢出（回主页/退出）
+                                WorldStateMonitor?.BeginRoleSwitch();
                                 try
                                 {
                                     Logger.LogInformation("[联机][按线路切角色] 本线路首个传送点到达，先切角色再上报到达");
@@ -684,6 +686,7 @@ public class PathExecutor
                                 }
                                 finally
                                 {
+                                    WorldStateMonitor?.EndRoleSwitch();
                                     BetterGenshinImpact.GameTask.AutoHoeing.Services.TemplatePickupService.SuppressPickupInput = false;
                                 }
                             }

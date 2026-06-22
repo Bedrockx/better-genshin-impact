@@ -136,10 +136,12 @@ public static class KazuhaCollectExecutor
 
             if (cdJudgedInCd)
             {
-                // 对齐自动战斗：WaitSkillCd(ct) 无本地超时上限，等到 E 的 CD 真正结束再放。
-                // 外层 ct 取消时 WaitSkillCd 自然抛 OperationCanceledException 向上传播
-                // （由 finally 释放按键，符合 bugfix 3.8）。
-                await kazuha!.WaitSkillCd(ct);
+                // 残留 CD 修复（kazuha-collect-residual-cd-empty-cast-fix）：
+                // 不再用基于时间戳的 WaitSkillCd（残留 CD 场景误判已就绪 → 1ms 返回 → 空放）。
+                // 改为 OCR 读屏残留秒数等待 + 100ms/1s 视觉就绪轮询，等待时长贴合屏幕真实 CD。
+                // 取消透传：WaitForSkillReadyAsync 内 Delay/AvatarSkillAsync 收 ct，
+                // 取消时抛 OperationCanceledException，由 finally 释放按键（bugfix 2.5）。
+                await WaitForSkillReadyAsync(kazuha!, waitSkillCdSeconds, ct);
                 onProgress?.Invoke(KazuhaCollectStage.SkillCdReady);
             }
             else
@@ -258,6 +260,94 @@ public static class KazuhaCollectExecutor
             throw new ArgumentException(
                 "assumeAlreadySwitched=true 时必须传 preselectedKazuha（联机快速路径需要 kazuha 引用用于 WaitSkillCd / AfterUseSkill）",
                 nameof(preselectedKazuha));
+        }
+    }
+
+    /// <summary>
+    /// 视觉就绪轮询的间隔与上限常量（kazuha-collect-residual-cd-empty-cast-fix design §Fix Implementation）。
+    /// </summary>
+    public const int PollIntervalMs = 100;
+    public const int PollTimeoutMs = 1000;
+
+    /// <summary>
+    /// 【纯函数】根据 OCR 读到的残留 CD 秒数与上限封顶，计算秒数等待的毫秒数。
+    /// ocrSeconds &lt;= 0（读不到有效秒数）→ 返回 0，跳过秒数等待直接进视觉轮询（绝不当作无 CD）。
+    /// ocrSeconds &gt; 0 → 返回 min(ocrSeconds, capSeconds) * 1000，防 OCR 读出巨大值死等。
+    /// </summary>
+    /// <param name="ocrSeconds">OCR 读到的剩余 CD 秒数</param>
+    /// <param name="capSeconds">上限封顶秒数（即 waitSkillCdSeconds）</param>
+    public static int ComputeOcrWaitMs(double ocrSeconds, int capSeconds)
+    {
+        if (ocrSeconds <= 0) return 0;
+        var cap = capSeconds < 0 ? 0 : capSeconds;
+        var capped = Math.Min(ocrSeconds, cap);
+        if (capped <= 0) return 0;
+        return (int)Math.Ceiling(capped * 1000);
+    }
+
+    /// <summary>
+    /// 【纯函数】视觉就绪轮询的停止判定：视觉就绪 或 已达超时上限 → 停止。
+    /// </summary>
+    /// <param name="visualReady">最近一次 AvatarSkillAsync 是否返回就绪（false=就绪 → 传入 true）</param>
+    /// <param name="elapsedMs">轮询已耗时毫秒</param>
+    /// <param name="timeoutMs">轮询超时上限毫秒</param>
+    public static bool ShouldStopPolling(bool visualReady, int elapsedMs, int timeoutMs)
+    {
+        return visualReady || elapsedMs >= timeoutMs;
+    }
+
+    /// <summary>
+    /// 残留 CD 等待环节（替代基于时间戳的 Avatar.WaitSkillCd）：
+    /// 1) OCR 读 E 图标剩余秒数 → 等 ComputeOcrWaitMs 决定的时长（封顶 capSeconds）；
+    /// 2) 读不到秒数 → 跳过秒数等待直接进轮询（不当作无 CD）；
+    /// 3) 视觉就绪轮询：PollIntervalMs 间隔、PollTimeoutMs 上限，任一次 AvatarSkillAsync 返回 false（就绪）即停；
+    /// 4) 1s 超时仍未就绪 → 直接放行（兜底）+ LogWarning。
+    /// 取消透传：所有 Delay / AvatarSkillAsync 接收 ct，取消时抛 OperationCanceledException 向上传播。
+    /// kazuha-collect-residual-cd-empty-cast-fix 改动 2。
+    /// </summary>
+    private static async Task WaitForSkillReadyAsync(Avatar kazuha, int capSeconds, CancellationToken ct)
+    {
+        // 1) OCR 读残留秒数（无副作用读屏）
+        double ocrSeconds;
+        using (var raOcr = CaptureToRectArea())
+        {
+            ocrSeconds = kazuha.ReadSkillCdSecondsByOcr(raOcr);
+        }
+
+        var ocrWaitMs = ComputeOcrWaitMs(ocrSeconds, capSeconds);
+        Logger.LogInformation("[聚物][等CD] OCR 读残留 CD={Ocr}s，封顶={Cap}s → 秒数等待 {WaitMs}ms",
+            Math.Round(ocrSeconds, 2), capSeconds, ocrWaitMs);
+
+        if (ocrWaitMs > 0)
+        {
+            await Delay(ocrWaitMs, ct);
+        }
+
+        // 3) 视觉就绪轮询（100ms 间隔 / 1s 上限）
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            var inCd = await AutoFightSkill.AvatarSkillAsync(
+                Logger, kazuha, skills: false, retryCount: 1, ct: ct,
+                image: null, needLog: false, isResetCd: false);
+            var visualReady = !inCd; // AvatarSkillAsync 返回 false = 就绪
+            var elapsedMs = (int)sw.ElapsedMilliseconds;
+
+            if (ShouldStopPolling(visualReady, elapsedMs, PollTimeoutMs))
+            {
+                if (!visualReady)
+                {
+                    // 4) 1s 超时兜底放行（OQ2 已定：直接放 E + LogWarning）
+                    Logger.LogWarning("[聚物][等CD] 视觉就绪轮询 {Timeout}ms 超时仍未就绪，兜底放 E（残留 CD 几乎已走完，空放概率极低）", PollTimeoutMs);
+                }
+                else
+                {
+                    Logger.LogInformation("[聚物][等CD] 视觉就绪（轮询 {Elapsed}ms）→ 放行", elapsedMs);
+                }
+                break;
+            }
+
+            await Delay(PollIntervalMs, ct);
         }
     }
 }

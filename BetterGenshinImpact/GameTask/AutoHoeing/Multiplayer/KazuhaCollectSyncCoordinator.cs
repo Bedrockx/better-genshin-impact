@@ -42,14 +42,6 @@ public sealed class KazuhaCollectSyncCoordinator : IDisposable
     private string? _kazuhaPlayerUid;
     private readonly Action<string> _onKazuhaPlayerUpdated;
 
-    // multiplayer-kazuha-pre-cast-positioning Q3：本地缓存"最近一次本类收到的 Finished/Skipped 事件的 syncKey"。
-    // 由构造函数订阅 _client.KazuhaCollectFinished / KazuhaCollectSkipped 事件维护；
-    // 进入 WaitAsNonKazuhaAsync 时如果 _lastTerminalSyncKey == 当前 syncKey 则视为"本周期终态早已发出、订阅前错过事件"，
-    // 直接跳过等待退出，不让落后玩家空等 KazuhaSyncTimeoutSeconds 超时。
-    private string? _lastTerminalSyncKey;
-    private readonly Action<string, bool, string> _onKazuhaCollectFinishedTerminalCache;
-    private readonly Action<string, string> _onKazuhaCollectSkippedTerminalCache;
-
     // multiplayer-kazuha-collect-point-broadcast: 缓存最近一次本类收到的 KazuhaCollectStarted (syncKey, x, y)。
     // 由构造函数订阅 _client.KazuhaCollectStarted 事件维护；事件回调内仅当 IsValid(x, y) 时更新缓存。
     // TryGetCollectPointForCurrent(syncKey) 在 syncKey 匹配时返回 true，给 PathExecutor 战后非万叶分支
@@ -73,19 +65,6 @@ public sealed class KazuhaCollectSyncCoordinator : IDisposable
             _kazuhaPlayerUid = string.IsNullOrEmpty(playerUid) ? null : playerUid;
         };
         _client.KazuhaPlayerUpdated += _onKazuhaPlayerUpdated;
-
-        // multiplayer-kazuha-pre-cast-positioning Q3：构造函数级订阅 Finished/Skipped 维护 _lastTerminalSyncKey。
-        // 与 WaitAsNonKazuhaAsync 内的局部 onFinished/onSkipped 订阅并存（互不干扰，二者都能独立触发）。
-        _onKazuhaCollectFinishedTerminalCache = (uid, success, syncKey) =>
-        {
-            if (!string.IsNullOrEmpty(syncKey)) _lastTerminalSyncKey = syncKey;
-        };
-        _onKazuhaCollectSkippedTerminalCache = (reason, syncKey) =>
-        {
-            if (!string.IsNullOrEmpty(syncKey)) _lastTerminalSyncKey = syncKey;
-        };
-        _client.KazuhaCollectFinished += _onKazuhaCollectFinishedTerminalCache;
-        _client.KazuhaCollectSkipped += _onKazuhaCollectSkippedTerminalCache;
 
         // multiplayer-kazuha-collect-point-broadcast: 订阅 KazuhaCollectStarted 维护 _lastCollectPoint。
         // IsValid 守卫过滤 NaN / Inf / (0, 0)（与服务端 Hub IsValid 同语义、与 PBT-4 真值表对齐）。
@@ -320,24 +299,21 @@ public sealed class KazuhaCollectSyncCoordinator : IDisposable
     }
 
     /// <summary>
-    /// 万叶玩家分支：到点立刻执行聚物（不等其他成员）→ 按 Outcome 广播 Finished/Skipped。
+    /// 万叶玩家分支：到点立刻执行聚物（不等其他成员）。
     /// 设计变更：
     /// - 删除"先等所有 Peer 到齐"等待，万叶到达战斗点后立即放 E，缩短整组锄地时长。
-    /// - BC2: NotifyKazuhaArrivedAtFightPoint / NotifyKazuhaCollectStarted / Finished / Skipped 全部 fire-and-forget，
-    ///   主流程不等待 SignalR Round Trip；CoordinatorClient 内部已有 try/catch + LogWarning 静默吞，
-    ///   外层 FireAndForget(ContinueWith) 兜底未观察异常。
+    /// - hoeing-kazuha-collect-drop-terminal-signal: 砍终态信号闭环——本分支不再广播
+    ///   Finished/Skipped、不再上报 NotifyKazuhaArrivedAtFightPoint；仅在 onBeforeHoldE 内
+    ///   fire-and-forget 广播 KazuhaCollectStarted（坐标）。成员只认坐标广播，离开时机由
+    ///   "二段完成 + 固定停留 KazuhaSyncWaitSeconds"决定。
     /// - BC3+BC4: 消费 prepTask（已与 MoveCloseTo 并行执行）：成功时走 KazuhaCollectExecutor 快速路径
     ///   (assumeAlreadySwitched=true + preselectedKazuha)；任意失败/兜底回退原"串行 GetCombatScenes + 自切人"路径。
-    /// 非万叶玩家分支仍然先订阅终态事件再到点，因此万叶在他们订阅后才广播也安全。
     /// </summary>
     private async Task RunAsKazuhaAsync(WaypointForTrack fightPointWaypoint, string syncKey, Task<PreparationResult>? prepTask, CancellationToken ct)
     {
         var maskedUid = AutoPartyTask.MaskUid(_client.PlayerUid);
         _logger.LogInformation("[联机][聚物] 万叶玩家 {Uid} 到达战斗点，立即执行聚物 (syncKey={Key})", maskedUid, syncKey);
 
-        // BC2: 上报到点改 fire-and-forget；schedule 顺序仍是 Arrived → 后续 Started（在 onBeforeHoldE hook 闭包内）。
-        // 非万叶玩家"先订阅 Finished/Skipped 再上报到点"时序保持不变。
-        FireAndForget(_client.NotifyKazuhaArrivedAtFightPointAsync(syncKey, ct), "NotifyKazuhaArrivedAtFightPoint");
         CurrentState = KazuhaCollectState.Collecting;
         // multiplayer-kazuha-collect-point-broadcast: 删除原"在此处广播 Started 0-参"调用，
         // 改在 KazuhaCollectExecutor.RunAsync 的 onBeforeHoldE hook 闭包内调 4-参版本（含聚物点坐标）。
@@ -435,8 +411,7 @@ public sealed class KazuhaCollectSyncCoordinator : IDisposable
         // ---- 第 3 层：三层耗尽仍取不到万叶 → 保留原降级语义（终态）----
         if (combatScenes == null)
         {
-            _logger.LogWarning("[联机][聚物] 万叶玩家：第 1 层未命中 + 第 2 层重试耗尽，CombatScenes 不可用，广播 team_no_kazuha");
-            FireAndForget(_client.NotifyKazuhaCollectSkippedAsync("team_no_kazuha"), "NotifyKazuhaCollectSkipped(team_no_kazuha)");
+            _logger.LogWarning("[联机][聚物] 万叶玩家：第 1 层未命中 + 第 2 层重试耗尽，CombatScenes 不可用，本周期不聚物");
             CurrentState = KazuhaCollectState.Skipped;
             return;
         }
@@ -534,22 +509,19 @@ public sealed class KazuhaCollectSyncCoordinator : IDisposable
         }
         catch (RetryException)
         {
-            _logger.LogWarning("[联机][聚物] 万叶玩家在聚物中触发 RetryException，广播 kazuha_anomaly 并向上抛");
-            FireAndForget(_client.NotifyKazuhaCollectSkippedAsync("kazuha_anomaly"), "NotifyKazuhaCollectSkipped(kazuha_anomaly)");
+            _logger.LogWarning("[联机][聚物] 万叶玩家在聚物中触发 RetryException，向上抛");
             CurrentState = KazuhaCollectState.Skipped;
             throw;
         }
 
         if (outcome.Success)
         {
-            FireAndForget(_client.NotifyKazuhaCollectFinishedAsync(true), "NotifyKazuhaCollectFinished(true)");
-            _logger.LogInformation("[联机][聚物] 万叶玩家聚物完成，已广播 Finished");
+            _logger.LogInformation("[联机][聚物] 万叶玩家聚物完成");
             CurrentState = KazuhaCollectState.Finished;
         }
         else
         {
             var reason = outcome.SkipReason ?? "unknown";
-            FireAndForget(_client.NotifyKazuhaCollectSkippedAsync(reason), $"NotifyKazuhaCollectSkipped({reason})");
             _logger.LogWarning("[联机][聚物] 万叶玩家聚物降级，原因={Reason}", reason);
             CurrentState = KazuhaCollectState.Skipped;
         }
@@ -561,78 +533,17 @@ public sealed class KazuhaCollectSyncCoordinator : IDisposable
     /// </summary>
     private async Task WaitAsNonKazuhaAsync(string syncKey, CancellationToken ct)
     {
+        // hoeing-kazuha-collect-drop-terminal-signal: 砍终态信号闭环。
+        // 二段精接近由 PathExecutor 在调用本方法之前完成（依赖 KazuhaCollectStarted 坐标广播，与终态无关）。
+        // 本方法只剩"统一停 KazuhaSyncWaitSeconds 秒"——不再订阅 Finished/Skipped、不构造 terminalTcs、
+        // 不创建 KazuhaSyncTimeoutSeconds 超时 CTS，对终态信号是否到达完全无感（design.md Property 1）。
         CurrentState = KazuhaCollectState.WaitingForKazuha;
         var maskedUid = AutoPartyTask.MaskUid(_client.PlayerUid);
-        _logger.LogInformation("[联机][聚物] 非万叶玩家 {Uid} 到达战斗点，等待万叶完成 (syncKey={Key})", maskedUid, syncKey);
-
-        // multiplayer-kazuha-pre-cast-positioning Q3: 检查"本周期终态是否已收到"——如果 _lastTerminalSyncKey 等于当前 syncKey，
-        // 说明万叶端早就发完 Finished/Skipped、本地构造函数级订阅已记录、但局部订阅尚未建立 → 错过事件。
-        // 直接走 PostFinishedWait + 退出，避免空等 KazuhaSyncTimeoutSeconds 超时。
-        if (!string.IsNullOrEmpty(_lastTerminalSyncKey) && _lastTerminalSyncKey == syncKey)
-        {
-            _logger.LogInformation("[联机][聚物] 非万叶玩家 {Uid}：本周期终态已收到（syncKey 匹配），跳过等待直接退出", maskedUid);
-            CurrentState = KazuhaCollectState.Finished;
-            return;
-        }
-
-        // subscribe-before-action：先订阅终态事件再上报到达，避免事件丢失
-        var terminalTcs = new TaskCompletionSource<TerminalEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Action<string, bool, string> onFinished = (uid, success, evSyncKey) =>
-            terminalTcs.TrySetResult(new TerminalEvent(IsFinished: true, Success: success, Reason: null));
-        Action<string, string> onSkipped = (reason, evSyncKey) =>
-            terminalTcs.TrySetResult(new TerminalEvent(IsFinished: false, Success: false, Reason: reason));
-
-        _client.KazuhaCollectFinished += onFinished;
-        _client.KazuhaCollectSkipped += onSkipped;
-
-        TerminalEvent? ev = null;
-        try
-        {
-            await _client.NotifyKazuhaArrivedAtFightPointAsync(syncKey, ct);
-
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_config.KazuhaSyncTimeoutSeconds));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-
-            try
-            {
-                ev = await terminalTcs.Task.WaitAsync(linked.Token);
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
-            {
-                _logger.LogWarning("[联机][聚物] 非万叶玩家：等待万叶完成超时 {Sec}s，按 KazuhaSyncWaitSeconds 兜底",
-                    _config.KazuhaSyncTimeoutSeconds);
-            }
-        }
-        finally
-        {
-            _client.KazuhaCollectFinished -= onFinished;
-            _client.KazuhaCollectSkipped -= onSkipped;
-        }
-
-        if (ev != null && ev.IsFinished && ev.Success)
-        {
-            // 收到 Finished(true)：再停 KazuhaSyncWaitSeconds
-            CurrentState = KazuhaCollectState.PostFinishedWait;
-            _logger.LogInformation("[联机][聚物] 非万叶玩家：收到聚物完成，再停留 {Sec}s",
-                _config.KazuhaSyncWaitSeconds);
-            await Task.Delay(KazuhaCollectSyncDecisions.ComputePostTerminalWaitMs(_config, TerminalKind.FinishedSuccess), ct);
-            CurrentState = KazuhaCollectState.Finished;
-        }
-        else
-        {
-            // Finished(false) / Skipped / 超时：统一停 KazuhaSyncWaitSeconds 秒后离开
-            // （删除原 Math.Max(0, ReturnToFightPointStaySeconds*1000 - elapsedMs) 剩余时间补足分支）
-            CurrentState = KazuhaCollectState.PostFinishedWait;
-            var kind = ev == null
-                ? TerminalKind.Timeout
-                : (ev.IsFinished
-                    ? TerminalKind.FinishedFailure
-                    : TerminalKind.Skipped);
-            _logger.LogInformation("[联机][聚物] 非万叶玩家：未收到 Finished(true)，kind={Kind}，按统一等待 {Sec}s 后离开",
-                kind, _config.KazuhaSyncWaitSeconds);
-            await Task.Delay(KazuhaCollectSyncDecisions.ComputePostTerminalWaitMs(_config, kind), ct);
-            CurrentState = KazuhaCollectState.Skipped;
-        }
+        var waitMs = KazuhaCollectSyncDecisions.ComputePostSecondApproachWaitMs(_config);
+        _logger.LogInformation("[联机][聚物] 非万叶玩家 {Uid} 二段完成，统一停留 {Ms}ms 后离开 (syncKey={Key})",
+            maskedUid, waitMs, syncKey);
+        await Task.Delay(waitMs, ct);
+        CurrentState = KazuhaCollectState.Finished;
     }
 
     /// <summary>每次进入新一段战后回点前调用，重置状态机。</summary>
@@ -656,16 +567,10 @@ public sealed class KazuhaCollectSyncCoordinator : IDisposable
     /// <summary>
     /// 取消事件订阅。kazuha-player-auto-detection: KazuhaPlayerUpdated 订阅在构造函数中建立，
     /// 这里释放避免重复订阅触发或 _client 生命周期残留引用。
-    /// multiplayer-kazuha-pre-cast-positioning Q3: KazuhaCollectFinished/Skipped 终态缓存订阅同样在构造函数中建立，这里释放。
     /// </summary>
     public void Dispose()
     {
         _client.KazuhaPlayerUpdated -= _onKazuhaPlayerUpdated;
-        _client.KazuhaCollectFinished -= _onKazuhaCollectFinishedTerminalCache;
-        _client.KazuhaCollectSkipped -= _onKazuhaCollectSkippedTerminalCache;
         _client.KazuhaCollectStarted -= _onKazuhaCollectStartedCache;
     }
-
-    /// <summary>非万叶分支等待结果的内部承载类型。</summary>
-    private sealed record TerminalEvent(bool IsFinished, bool Success, string? Reason);
 }

@@ -5,18 +5,6 @@ using BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer.Models;
 namespace BetterGenshinImpact.GameTask.AutoHoeing.Multiplayer;
 
 /// <summary>
-/// 非万叶玩家分支等待终态的种类，用于 PBT 建模"终态发生后统一等待时长"性质。
-/// 合并后所有终态都触发同一段 KazuhaSyncWaitSeconds 等待，与 kind 无关（design.md PBT-5）。
-/// </summary>
-public enum TerminalKind
-{
-    FinishedSuccess,
-    FinishedFailure,
-    Skipped,
-    Timeout
-}
-
-/// <summary>
 /// 万叶聚物同步功能的纯决策函数集合。
 /// 抽离成 static class 是为了 PBT 友好（无外部依赖、可重复调用）。
 /// 由 <see cref="KazuhaCollectSyncCoordinator"/> 使用。
@@ -53,11 +41,11 @@ public static class KazuhaCollectSyncDecisions
     }
 
     /// <summary>
-    /// 非万叶玩家收到任意终态（Finished true / Finished false / Skipped / Timeout）后应停留的毫秒数。
-    /// 合并后统一返回 <c>Math.Max(0, KazuhaSyncWaitSeconds) * 1000</c>，与 kind 无关。
-    /// 是 PBT-5 "Unified Wait Duration On Terminal" 的载体（design.md "Property-Based Testing Plan"）。
+    /// 非万叶玩家二段精接近完成后应停留的毫秒数，统一返回 <c>Math.Max(0, KazuhaSyncWaitSeconds) * 1000</c>。
+    /// hoeing-kazuha-collect-drop-terminal-signal: 砍终态信号闭环后取代死重的 ComputePostTerminalWaitMs，
+    /// 不再吃 TerminalKind 参数——离开时机仅由"二段完成 + 固定停留"决定，与终态无关（design.md Property 1）。
     /// </summary>
-    public static int ComputePostTerminalWaitMs(AutoHoeingConfig config, TerminalKind kind)
+    public static int ComputePostSecondApproachWaitMs(AutoHoeingConfig config)
     {
         if (config == null) return 0;
         return Math.Max(0, config.KazuhaSyncWaitSeconds) * 1000;

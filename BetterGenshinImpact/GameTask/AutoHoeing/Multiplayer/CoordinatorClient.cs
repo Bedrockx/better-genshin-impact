@@ -100,12 +100,6 @@ public class CoordinatorClient : IAsyncDisposable
     ///     （multiplayer-kazuha-collect-point-broadcast）。
     /// </summary>
     public event Action<string, string, double, double>? KazuhaCollectStarted;
-    /// <summary>万叶聚物动作完成时触发，载荷为发起者 PlayerUid + 成功标志 + 当前周期 syncKey。</summary>
-    public event Action<string, bool, string>? KazuhaCollectFinished;
-    /// <summary>万叶聚物因任意降级原因被跳过时触发，载荷为原因码（team_no_kazuha / switch_failed / e_skill_not_released / kazuha_offline / kazuha_disconnected / kazuha_anomaly / timeout）+ 当前周期 syncKey。</summary>
-    public event Action<string, string>? KazuhaCollectSkipped;
-    /// <summary>当前同步周期内所有玩家都到达战斗点时触发，载荷为 syncKey（routeId:segmentIndex）。</summary>
-    public event Action<string>? AllArrivedAtFightPoint;
 
     // === 路线变体一致性校验事件（route-variant-sync-by-logical-id spec / R6 / R8）===
     /// <summary>服务端按 LogicalRouteId 分组比对全部通过时触发（无参）。</summary>
@@ -226,15 +220,6 @@ public class CoordinatorClient : IAsyncDisposable
             _connection.On<string, string, double, double>("KazuhaCollectStarted",
                 (playerUid, syncKey, collectX, collectY) =>
                     KazuhaCollectStarted?.Invoke(playerUid, syncKey, collectX, collectY));
-
-            _connection.On<string, bool, string>("KazuhaCollectFinished",
-                (playerUid, success, syncKey) => KazuhaCollectFinished?.Invoke(playerUid, success, syncKey));
-
-            _connection.On<string, string>("KazuhaCollectSkipped",
-                (reason, syncKey) => KazuhaCollectSkipped?.Invoke(reason, syncKey));
-
-            _connection.On<string>("AllArrivedAtFightPoint",
-                syncKey => AllArrivedAtFightPoint?.Invoke(syncKey));
 
             _connection.On("AllWorldJoined",
                 () => AllWorldJoined?.Invoke());
@@ -705,24 +690,6 @@ public class CoordinatorClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// 上报当前玩家已到达战斗点（万叶聚物同步流程的"到点"信号）。
-    /// syncKey 形如 "{routeId}:{segmentIndex}"，幂等，重复上报无副作用。
-    /// 失败静默忽略，不阻塞主任务。
-    /// </summary>
-    public async Task NotifyKazuhaArrivedAtFightPointAsync(string syncKey, CancellationToken ct = default)
-    {
-        if (_connection == null || !IsConnected) return;
-        try
-        {
-            await _connection.InvokeAsync("NotifyKazuhaArrivedAtFightPoint", syncKey, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[联机][聚物] NotifyKazuhaArrivedAtFightPointAsync 失败（静默忽略）");
-        }
-    }
-
-    /// <summary>
     /// 上报战斗参与者（按 syncKey 分组）。multiplayer-shared-fight-end-quorum-sync spec。
     /// 失败静默忽略，不阻塞战斗。旧服务端无此 Hub 方法 → HubException 被吞，行为退化。
     /// </summary>
@@ -789,41 +756,6 @@ public class CoordinatorClient : IAsyncDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[联机][聚物] NotifyKazuhaCollectStartedAsync 失败（静默忽略）syncKey={Key}", syncKey);
-        }
-    }
-
-    /// <summary>
-    /// 万叶玩家广播"聚物动作已完成"，含成功标志。
-    /// 服务端会做 TerminalBroadcasted 守卫，同周期重复调用会被忽略（保证 Property 8）。
-    /// </summary>
-    public async Task NotifyKazuhaCollectFinishedAsync(bool success)
-    {
-        if (_connection == null || !IsConnected) return;
-        try
-        {
-            await _connection.InvokeAsync("NotifyKazuhaCollectFinished", success);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[联机][聚物] NotifyKazuhaCollectFinishedAsync 失败（静默忽略）");
-        }
-    }
-
-    /// <summary>
-    /// 万叶玩家或房主广播"聚物因任意原因被跳过"。
-    /// reason 为短码：team_no_kazuha / switch_failed / e_skill_not_released / kazuha_offline / kazuha_disconnected / kazuha_anomaly。
-    /// 服务端 TerminalBroadcasted 守卫保证一周期内 Skipped 与 Finished 至多一个被广播。
-    /// </summary>
-    public async Task NotifyKazuhaCollectSkippedAsync(string reason)
-    {
-        if (_connection == null || !IsConnected) return;
-        try
-        {
-            await _connection.InvokeAsync("NotifyKazuhaCollectSkipped", reason);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[联机][聚物] NotifyKazuhaCollectSkippedAsync 失败（静默忽略），原因={Reason}", reason);
         }
     }
 

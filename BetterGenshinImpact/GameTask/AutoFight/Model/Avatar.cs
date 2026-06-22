@@ -956,6 +956,24 @@ public class Avatar
         return cd;
     }
 
+    /// <summary>
+    /// 【纯读屏，无副作用】OCR 读取 E 图标当前剩余 CD 秒数，读不到返回 0。
+    /// 与 <see cref="GetSkillCurrentCd"/> 共用同一识别管线（同 region/HSV/OCR），
+    /// 但不写 OcrSkillCd / LastSkillTime，专供 KazuhaCollectExecutor 残留 CD 等待环节使用，
+    /// 避免污染时间戳状态（不影响 GetSkillCdSeconds / WaitSkillCd / IsSkillReady）。
+    /// kazuha-collect-residual-cd-empty-cast-fix 改动 1。
+    /// </summary>
+    /// <param name="imageRegion">当前帧截图</param>
+    /// <returns>OCR 识别到的 E 技能剩余 CD 秒数；无法识别为有效正数时返回 0</returns>
+    public double ReadSkillCdSecondsByOcr(ImageRegion imageRegion)
+    {
+        var eRa = imageRegion.DeriveCrop(AutoFightAssets.Instance.ECooldownRect);
+        var eRaWhite = OpenCvCommonHelper.InRangeHsv(eRa.SrcMat, new Scalar(0, 0, 235), new Scalar(0, 25, 255));
+        var text = OcrFactory.Paddle.OcrWithoutDetector(eRaWhite);
+        var cd = StringUtils.TryParseDouble(text);
+        return cd > 0 ? cd : 0;
+    }
+
 
     /// <summary>
     /// 使用元素爆发 Q

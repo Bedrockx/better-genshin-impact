@@ -605,60 +605,10 @@ public class CoordinatorHub : Hub
     // ====== 万叶聚物同步（multiplayer-kazuha-collect-sync）======
 
     /// <summary>
-    /// 上报当前玩家已到达战斗点（万叶聚物同步流程的"到点"信号）。
-    /// 当所有在线玩家都已上报时，广播 AllArrivedAtFightPoint(syncKey)。
-    /// 周期管理：若上一周期 TerminalBroadcasted=true，则首个新到点者触发周期 ID 递增 + 状态清空。
-    /// </summary>
-    public async Task NotifyKazuhaArrivedAtFightPoint(string syncKey)
-    {
-        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null) return;
-
-        bool allArrived;
-        lock (room)
-        {
-            // 周期 ID 递增 / 状态复位（design §5）
-            if (room.KazuhaCollect.TerminalBroadcasted)
-            {
-                room.KazuhaCollect.CurrentCycleId++;
-                room.KazuhaCollect.ArrivedAtFightPoint.Clear();
-                room.KazuhaCollect.TerminalBroadcasted = false;
-                room.KazuhaCollect.TerminalKind = null;
-                room.KazuhaCollect.CurrentSyncKey = null;
-                // multiplayer-kazuha-collect-point-broadcast: 周期复位时一并清空聚物点缓存
-                room.KazuhaCollect.CurrentCollectPoint = null;
-            }
-
-            // multiplayer-kazuha-pre-cast-positioning Q3: 记录首个到点者传入的 syncKey；
-            // 后续 Started / Finished / Skipped 广播都携带此 syncKey，让落后客户端能精确匹配。
-            if (room.KazuhaCollect.CurrentSyncKey == null)
-            {
-                room.KazuhaCollect.CurrentSyncKey = syncKey;
-            }
-
-            room.KazuhaCollect.ArrivedAtFightPoint.Add(Context.ConnectionId);
-
-            // 计算"是否全员都已上报"
-            var onlinePlayers = room.Players
-                .Where(p => DateTime.UtcNow - p.LastHeartbeat < TimeSpan.FromMinutes(2))
-                .Select(p => p.ConnectionId)
-                .ToHashSet();
-            allArrived = onlinePlayers.Count > 0
-                && onlinePlayers.All(id => room.KazuhaCollect.ArrivedAtFightPoint.Contains(id));
-        }
-
-        if (allArrived)
-        {
-            _logger.LogInformation("[KazuhaCollect] 房间 {Code} 全员已到战斗点，广播 AllArrivedAtFightPoint syncKey={Key}", roomCode, syncKey);
-            await Clients.Group(roomCode).SendAsync("AllArrivedAtFightPoint", syncKey);
-        }
-    }
-
-    /// <summary>
     /// 万叶玩家广播"开始执行聚物动作"。仅记录 + 广播，不做终态守卫。
     /// multiplayer-kazuha-collect-point-broadcast: 增加 syncKey + 聚物点 (collectX, collectY) 三参。
-    /// 仅当 IsValid(collectX, collectY) 时把 (X, Y) 写入 room.KazuhaCollect.CurrentCollectPoint，
-    /// 否则保持 null；广播始终携带 4 参，无效坐标用 NaN 透传，由客户端 IsValid 守卫过滤。
+    /// hoeing-kazuha-collect-drop-terminal-signal: 不再写 room.KazuhaCollect.CurrentCollectPoint（字段已删）；
+    /// 广播始终携带 4 参，无效坐标用 NaN 透传，由客户端 IsValid 守卫过滤。
     /// 注意：SignalR 不支持 hub 方法重载，老客户端调 0-参 InvokeAsync 会因 routing 失败
     /// 抛 HubException → 客户端 try/catch 静默 → 走退化路径（不上报聚物点）。
     /// 部署顺序：先服务端、后客户端，最大化平滑过渡。
@@ -685,106 +635,20 @@ public class CoordinatorHub : Hub
                               && !(collectX == 0.0 && collectY == 0.0);
 
         var playerUid = "";
-        string? broadcastSyncKey;
         lock (room)
         {
             playerUid = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId)?.PlayerUid ?? "";
-            // 优先用客户端传入的 syncKey（与原作 CurrentSyncKey 应当一致）；
-            // 空则 fallback 到 CurrentSyncKey（兼容客户端传空 syncKey 的极端场景）
-            broadcastSyncKey = string.IsNullOrEmpty(syncKey) ? room.KazuhaCollect.CurrentSyncKey : syncKey;
-
-            if (collectPointValid)
-            {
-                room.KazuhaCollect.CurrentCollectPoint = (collectX, collectY);
-            }
-            else
-            {
-                room.KazuhaCollect.CurrentCollectPoint = null;
-            }
         }
 
+        // hoeing-kazuha-collect-drop-terminal-signal: 删 CurrentSyncKey fallback 与 CurrentCollectPoint 写入
+        // （这两个字段随终态状态机一并删除）。syncKey 由万叶客户端直接传入，恒非空（design.md Property 2 守住）。
         _logger.LogInformation(
             "[KazuhaCollect] 房间 {Code} 万叶 {Uid} 开始聚物 syncKey={Key} collectPoint=({X},{Y}) valid={Valid}",
-            roomCode, playerUid, broadcastSyncKey, collectX, collectY, collectPointValid);
+            roomCode, playerUid, syncKey, collectX, collectY, collectPointValid);
 
         // 始终广播 4-参（无效坐标用 NaN 透传给客户端，客户端 IsValid 守卫会过滤）
         await Clients.Group(roomCode).SendAsync(
-            "KazuhaCollectStarted", playerUid, broadcastSyncKey ?? "", collectX, collectY);
-    }
-
-    /// <summary>万叶玩家广播"聚物动作完成"。同周期 TerminalBroadcasted 守卫保证至多触发一次（Property 8）。</summary>
-    public async Task NotifyKazuhaCollectFinished(bool success)
-    {
-        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null) return;
-
-        string playerUid;
-        bool shouldBroadcast;
-        string? syncKey;
-        lock (room)
-        {
-            if (room.KazuhaCollect.KazuhaConnectionId != Context.ConnectionId)
-            {
-                _logger.LogWarning("[KazuhaCollect] NotifyKazuhaCollectFinished 鉴权失败：调用方 {ConnId} 不是万叶 {KazuhaId}",
-                    Context.ConnectionId, room.KazuhaCollect.KazuhaConnectionId);
-                return;
-            }
-            if (room.KazuhaCollect.TerminalBroadcasted)
-            {
-                _logger.LogInformation("[KazuhaCollect] NotifyKazuhaCollectFinished 守卫命中（周期内已广播 {Kind}），忽略", room.KazuhaCollect.TerminalKind);
-                return;
-            }
-            room.KazuhaCollect.TerminalBroadcasted = true;
-            room.KazuhaCollect.TerminalKind = "Finished";
-            playerUid = room.Players.FirstOrDefault(p => p.ConnectionId == Context.ConnectionId)?.PlayerUid ?? "";
-            syncKey = room.KazuhaCollect.CurrentSyncKey;
-            shouldBroadcast = true;
-        }
-
-        if (shouldBroadcast)
-        {
-            _logger.LogInformation("[KazuhaCollect] 房间 {Code} 万叶 {Uid} 聚物完成 success={Success} syncKey={Key}", roomCode, playerUid, success, syncKey);
-            await Clients.Group(roomCode).SendAsync("KazuhaCollectFinished", playerUid, success, syncKey ?? "");
-        }
-    }
-
-    /// <summary>
-    /// 万叶玩家或房主广播"聚物因某原因被跳过"。
-    /// 同周期 TerminalBroadcasted 守卫保证 Skipped 与 Finished 至多一个被广播，且 Skipped 后不会再 Finished（Property 8 / Bug Condition 6）。
-    /// </summary>
-    public async Task NotifyKazuhaCollectSkipped(string reason)
-    {
-        var (room, roomCode) = _roomManager.GetRoomByConnectionId(Context.ConnectionId);
-        if (room == null || roomCode == null) return;
-
-        bool shouldBroadcast;
-        string? syncKey;
-        lock (room)
-        {
-            // 鉴权：万叶玩家 或 房主 都可调用（design §降级决策表 - kazuha_offline 由房主触发）
-            var isKazuha = room.KazuhaCollect.KazuhaConnectionId == Context.ConnectionId;
-            var isHost = room.HostConnectionId == Context.ConnectionId;
-            if (!isKazuha && !isHost)
-            {
-                _logger.LogWarning("[KazuhaCollect] NotifyKazuhaCollectSkipped 鉴权失败：调用方 {ConnId} 既非万叶也非房主", Context.ConnectionId);
-                return;
-            }
-            if (room.KazuhaCollect.TerminalBroadcasted)
-            {
-                _logger.LogInformation("[KazuhaCollect] NotifyKazuhaCollectSkipped 守卫命中（周期内已广播 {Kind}），忽略", room.KazuhaCollect.TerminalKind);
-                return;
-            }
-            room.KazuhaCollect.TerminalBroadcasted = true;
-            room.KazuhaCollect.TerminalKind = "Skipped";
-            syncKey = room.KazuhaCollect.CurrentSyncKey;
-            shouldBroadcast = true;
-        }
-
-        if (shouldBroadcast)
-        {
-            _logger.LogInformation("[KazuhaCollect] 房间 {Code} 聚物被跳过，原因={Reason} syncKey={Key}", roomCode, reason, syncKey);
-            await Clients.Group(roomCode).SendAsync("KazuhaCollectSkipped", reason, syncKey ?? "");
-        }
+            "KazuhaCollectStarted", playerUid, syncKey ?? "", collectX, collectY);
     }
 
     /// <summary>上报路线验证完成，全员完成时广播 RouteVerificationAllDone</summary>
@@ -1092,7 +956,6 @@ public class CoordinatorHub : Hub
 
                 // 万叶聚物同步：候选切换 + 兜底（kazuha-player-auto-detection requirements 5.5 / Property 10）
                 bool shouldBroadcastSwitch = false;
-                bool shouldBroadcastKazuhaSkipped = false;
                 string switchedToUid = "";
                 lock (disconnectedRoom)
                 {
@@ -1113,13 +976,6 @@ public class CoordinatorHub : Hub
                         else
                         {
                             disconnectedRoom.KazuhaCollect.KazuhaConnectionId = null;
-                            if (disconnectedRoom.KazuhaCollect.ArrivedAtFightPoint.Count > 0
-                                && !disconnectedRoom.KazuhaCollect.TerminalBroadcasted)
-                            {
-                                disconnectedRoom.KazuhaCollect.TerminalBroadcasted = true;
-                                disconnectedRoom.KazuhaCollect.TerminalKind = "Skipped";
-                                shouldBroadcastKazuhaSkipped = true;
-                            }
                         }
                     }
                 }
@@ -1128,16 +984,6 @@ public class CoordinatorHub : Hub
                     _logger.LogInformation("[OnDisconnectedAsync] 万叶玩家断线，切换到下一候选 {Uid}，房间={RoomCode}",
                         switchedToUid, disconnectedRoomCode);
                     await Clients.Group(disconnectedRoomCode).SendAsync("KazuhaPlayerUpdated", switchedToUid);
-                }
-                if (shouldBroadcastKazuhaSkipped)
-                {
-                    _logger.LogWarning("[OnDisconnectedAsync] 万叶玩家断线且候选耗尽，广播 KazuhaCollectSkipped(kazuha_disconnected)，房间={RoomCode}", disconnectedRoomCode);
-                    string? syncKey;
-                    lock (disconnectedRoom)
-                    {
-                        syncKey = disconnectedRoom.KazuhaCollect.CurrentSyncKey;
-                    }
-                    await Clients.Group(disconnectedRoomCode).SendAsync("KazuhaCollectSkipped", "kazuha_disconnected", syncKey ?? "");
                 }
             }
         }
@@ -1340,12 +1186,6 @@ public class CoordinatorHub : Hub
             // 清理万叶聚物候选 + 状态（kazuha-player-auto-detection: 多世界轮换重置）
             room.KazuhaCandidates.Clear();
             room.KazuhaCollect.KazuhaConnectionId = null;
-            room.KazuhaCollect.ArrivedAtFightPoint.Clear();
-            room.KazuhaCollect.TerminalBroadcasted = false;
-            room.KazuhaCollect.TerminalKind = null;
-            room.KazuhaCollect.CurrentSyncKey = null;
-            // multiplayer-kazuha-collect-point-broadcast: 多轮世界新轮次开始时一并清空聚物点缓存
-            room.KazuhaCollect.CurrentCollectPoint = null;
 
             // === 集体卡死监测字段重置（multiplayer-mutual-wait-collective-skip §3.10 / §8.4 改动 4）===
             room.ConsecutiveCollectiveSkipCount = 0;

@@ -68,6 +68,17 @@ public class WorldStateMonitor : IAsyncDisposable
     /// </summary>
     public bool IsRoundSwitching => _isRoundSwitching;
 
+    // === 换角色抑制（hoeing-perroute-switchroles-worldmonitor-falsekick-fix）===
+    // 按线路切换角色期间会打开配对/队伍/角色选择界面，IsInMultiGame=false 但 SignalR 正常，
+    // 属合法窗口。与轮次切换同模式：抑制期忽略 IsInMultiGame=false，墙钟兜底防卡死。
+    private volatile bool _isRoleSwitching;
+    private DateTime _roleSwitchStart;
+    private const int RoleSwitchSafeFloorSeconds = 120; // OQ-1：固定兜底 120s
+    private int _roleSwitchTimeoutSeconds = RoleSwitchSafeFloorSeconds;
+
+    /// <summary>是否正在按线路换角色中（公开只读，供诊断/未来事件处理器使用）。</summary>
+    public bool IsRoleSwitching => _isRoleSwitching;
+
     // === 心跳失败独立退出路径（EC-03）===
     private int _consecutiveHeartbeatFailures;
     private const int HeartbeatFailureExitThreshold = 6; // 6次 × 5秒 = 30秒
@@ -176,6 +187,30 @@ public class WorldStateMonitor : IAsyncDisposable
         _isRoundSwitching = false;
         ResetInternalState();
         _logger.LogInformation("[WorldStateMonitor] 轮次切换完成，已重置内部状态");
+    }
+
+    /// <summary>
+    /// 按线路换角色开始，暂停被踢出（connected-but-not-in-game）检测。
+    /// 换角色界面下 IsInMultiGame=false 但 SignalR 正常，属合法窗口，不应被判被踢出。
+    /// </summary>
+    /// <param name="suppressionTimeoutSeconds">墙钟兜底超时（秒）；&lt;=0 时回落安全下限 120s。</param>
+    public void BeginRoleSwitch(int suppressionTimeoutSeconds = RoleSwitchSafeFloorSeconds)
+    {
+        _roleSwitchStart = DateTime.UtcNow;
+        _roleSwitchTimeoutSeconds = suppressionTimeoutSeconds > 0
+            ? suppressionTimeoutSeconds
+            : RoleSwitchSafeFloorSeconds;
+        _isRoleSwitching = true;
+        _logger.LogInformation("[WorldStateMonitor] 进入换角色抑制状态（墙钟兜底 {Timeout}s）",
+            _roleSwitchTimeoutSeconds);
+    }
+
+    /// <summary>按线路换角色完成，恢复检测并重置内部累计状态。</summary>
+    public void EndRoleSwitch()
+    {
+        _isRoleSwitching = false;
+        ResetInternalState();
+        _logger.LogInformation("[WorldStateMonitor] 换角色完成，已重置内部状态");
     }
 
     /// <summary>心跳连续失败时由 CoordinatorClient 调用。</summary>
@@ -287,6 +322,17 @@ public class WorldStateMonitor : IAsyncDisposable
             return;
         }
 
+        // 0c. 换角色抑制超时自动解除（兜底防换角色卡死永久关闭被踢检测）
+        if (_isRoleSwitching &&
+            (DateTime.UtcNow - _roleSwitchStart).TotalSeconds > _roleSwitchTimeoutSeconds)
+        {
+            _isRoleSwitching = false;
+            _logger.LogError("[WorldStateMonitor] 换角色超过 {Timeout}s 未解除，触发协调停止",
+                _roleSwitchTimeoutSeconds);
+            await ConfirmExitAsync("换角色超时");
+            return;
+        }
+
         // 1. 截图检测 IsInMultiGame
         bool isInMultiGame;
         try
@@ -346,6 +392,13 @@ public class WorldStateMonitor : IAsyncDisposable
         if (_isRoundSwitching)
         {
             _logger.LogDebug("[WorldStateMonitor] 轮次切换中，忽略 IsInMultiGame=false");
+            return;
+        }
+
+        // 3d. 换角色中忽略（hoeing-perroute-switchroles-worldmonitor-falsekick-fix，与轮次切换同语义）
+        if (_isRoleSwitching)
+        {
+            _logger.LogDebug("[WorldStateMonitor] 换角色中，忽略 IsInMultiGame=false");
             return;
         }
 

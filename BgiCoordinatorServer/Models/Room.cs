@@ -207,47 +207,20 @@ public class KazuhaCandidate
 }
 
 /// <summary>
-/// 单个房间内"万叶聚物同步"的服务端状态聚合。
-/// 通过 TerminalBroadcasted 守卫保证同一周期内 KazuhaCollectFinished / KazuhaCollectSkipped 至多广播一次（Property 8）。
+/// 单个房间内"万叶聚物同步"的服务端状态。
+/// hoeing-kazuha-collect-drop-terminal-signal: 砍终态信号闭环后，本类只剩 KazuhaConnectionId 一个字段——
+/// 用于 NotifyKazuhaCollectStarted 坐标广播鉴权（仅当前万叶可广播聚物点）。
+/// 原终态守卫字段（CurrentCycleId / ArrivedAtFightPoint / TerminalBroadcasted / TerminalKind /
+/// CurrentSyncKey / CurrentCollectPoint）已随 NotifyKazuhaArrivedAtFightPoint / Finished / Skipped 一并删除。
 /// </summary>
 public class KazuhaCollectRoomState
 {
-    /// <summary>当前周期 ID。每收到首个 NotifyKazuhaArrivedAtFightPoint 且上一周期 TerminalBroadcasted=true 时递增。</summary>
-    public long CurrentCycleId { get; set; } = 0;
-
-    /// <summary>当前周期已上报 AtFightPoint 的玩家 ConnectionId 集合。</summary>
-    public HashSet<string> ArrivedAtFightPoint { get; set; } = new();
-
-    /// <summary>当前周期是否已广播终态事件（Finished / Skipped 二选一）。</summary>
-    public bool TerminalBroadcasted { get; set; } = false;
-
-    /// <summary>当前周期终态类型："Finished" / "Skipped" / null（未广播）。</summary>
-    public string? TerminalKind { get; set; }
-
     /// <summary>
     /// 当前周期"万叶玩家"的 ConnectionId。
     /// kazuha-player-auto-detection: 由 KazuhaCandidates 按声明先后顺序选第一个在线者填充；
     /// 当前 Kazuha 断线时切换到下一个在线候选；候选耗尽时置 null。
-    /// 用于 OnDisconnectedAsync 检测万叶离线时的自动 Skipped 广播。
+    /// hoeing-kazuha-collect-drop-terminal-signal: 砍终态信号闭环后，本类只剩此字段——
+    /// 用于 NotifyKazuhaCollectStarted 坐标广播鉴权（仅当前万叶可广播聚物点）。
     /// </summary>
     public string? KazuhaConnectionId { get; set; }
-
-    /// <summary>
-    /// 当前周期的 syncKey（由首个 NotifyKazuhaArrivedAtFightPoint 调用方传入）。
-    /// 在 KazuhaCollectStarted / KazuhaCollectFinished / KazuhaCollectSkipped 三个广播中携带，
-    /// 让落后客户端进入 WaitAsNonKazuhaAsync 时能精确判断"上次终态广播是不是当前 syncKey"，
-    /// 避免错过事件后空等 KazuhaSyncTimeoutSeconds 超时（multiplayer-kazuha-pre-cast-positioning Q3）。
-    /// </summary>
-    public string? CurrentSyncKey { get; set; }
-
-    /// <summary>
-    /// 当前周期的聚物点小地图坐标 (collectX, collectY)，由万叶玩家在 HoldE 起手前
-    /// 通过 NotifyKazuhaCollectStarted(syncKey, x, y) 上报；仅当客户端传入有效坐标
-    /// (非 NaN / 非 Inf / 非 (0,0)) 时写入，否则保持 null。
-    /// 周期复位时（NotifyKazuhaArrivedAtFightPoint 检测 TerminalBroadcasted == true 时）一并清空，
-    /// 生命期与 CurrentSyncKey 完全对齐。客户端监听 KazuhaCollectStarted 广播时携带此坐标
-    /// （无效则用 NaN 透传），非万叶玩家用于二段 MoveCloseTo 精接近聚物落点
-    /// （multiplayer-kazuha-collect-point-broadcast）。
-    /// </summary>
-    public (double X, double Y)? CurrentCollectPoint { get; set; }
 }

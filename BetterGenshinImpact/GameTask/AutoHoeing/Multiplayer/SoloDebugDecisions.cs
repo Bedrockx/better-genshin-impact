@@ -17,4 +17,16 @@ public static class SoloDebugDecisions
     {
         return soloDebugMode;
     }
+
+    /// <summary>
+    /// 是否应在线路完整完成时记录 CD（hoeing-multiplayer-solo-debug-mode Req5）。
+    /// 规则：单人调试模式（soloDebugMode=true）恒不记 CD（返回 false），避免调试跑污染当天正常锄地；
+    /// 否则沿用原逻辑：单机（!multiplayerEnabled）或联机房主（isHost）记 CD，联机成员不记。
+    /// 等价于 (!multiplayerEnabled || isHost) &amp;&amp; !soloDebugMode。
+    /// soloDebugMode=false 时与改动前 shouldRecordCd 逐字节等价（见 §Preservation UB9）。
+    /// </summary>
+    public static bool ShouldRecordCd(bool multiplayerEnabled, bool isHost, bool soloDebugMode)
+    {
+        return (!multiplayerEnabled || isHost) && !soloDebugMode;
+    }
 }

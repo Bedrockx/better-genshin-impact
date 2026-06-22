@@ -40,7 +40,8 @@ public readonly record struct MonitorState(
     bool IsRoundSwitching,          // _isRoundSwitching
     bool IsPartyPhase,              // IsPartyPhase
     bool IsSuspend,                 // RunnerContext.Instance.IsSuspend
-    bool ScreenshotThrew);          // 截图/识别抛异常
+    bool ScreenshotThrew,           // 截图/识别抛异常
+    bool IsRoleSwitching);          // _isRoleSwitching（按线路换角色抑制中）
 
 /// <summary>
 /// 决策结果：分类 + 是否应清零 _connectedButNotInGame。
@@ -54,7 +55,7 @@ public readonly record struct WorldStateDecision(
 /// 便于 FsCheck PBT 直接撒 MonitorState 真值表验证 Fix / Preservation 双向性质。
 /// 决策优先级严格对齐 CheckOnceAsync 早返回链：
 ///   Suspend > ScreenshotThrew > ForceClearSuppression(墙钟超时) > NormalInGame
-///   > PartyPhase > 抑制期 > 轮次切换 > 信号融合(累计/被踢出) > 恢复窗口
+///   > PartyPhase > 抑制期 > 轮次切换/换角色 > 信号融合(累计/被踢出) > 恢复窗口
 /// 详见 .kiro/specs/world-state-monitor-teleport-suppression-premature-expiry-fix/design.md §Correctness Properties。
 /// </summary>
 public static class WorldStateMonitorDecisions
@@ -90,8 +91,8 @@ public static class WorldStateMonitorDecisions
         if (suppressed)
             return new WorldStateDecision(WorldStateDecisionKind.Ignore, ResetConnectedCount: false);
 
-        // 7) 轮次切换（step 3c）
-        if (x.IsRoundSwitching)
+        // 7) 轮次切换 / 换角色（step 3c）——两者语义一致：忽略本帧、不累计不重置
+        if (x.IsRoundSwitching || x.IsRoleSwitching)
             return new WorldStateDecision(WorldStateDecisionKind.Ignore, ResetConnectedCount: false);
 
         // 8) 信号融合（step 4）：IsInMultiGame=false + SignalR
