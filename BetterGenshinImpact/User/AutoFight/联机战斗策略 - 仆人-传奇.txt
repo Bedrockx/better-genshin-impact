@@ -1,5 +1,7 @@
-//仆人传奇
+//仆人传奇（不打开特化自动EQ）
 //仆人 attack(0.01),e, wait(0.1), check, wait(0.05),charge(0.35), j, keydown(s), attack(0.3), keypress(e), attack(0.3),keypress(q),attack(0.57),e,wait(0.07),attack(0.45),wait(0.07),charge(0.35), keyup(s), keydown(w), attack(0.38),  attack(0.3), keypress(e), attack(0.3), keyup(w), keypress(q),  e,wait(0.07),attack(0.45),wait(0.07),charge(0.35), keydown(s), attack(0.6), keypress(e), attack(0.57), attack(0.45), attack(0.45), keyup(s), keydown(w), attack(0.38),  attack(0.3), keypress(e), attack(0.3), keyup(w), wait(0.1), check,charge(0.35), keypress(q)
 
-//仆人传奇（特化自动EQ）
-仆人 attack(2.1),wait(0.05),attack(2.1),wait(0.05),attack(2.1),wait(0.05)
+//仆人传奇（打开特化自动EQ）3A1Z，特化检测下不要改，建议传奇等持续输出使用
+仆人 attack(0.8),wait(0.05),check,attack(0.01)
+
+

@@ -738,52 +738,172 @@ public class Avatar
     /// <param name="ms">攻击时长，建议是200的倍数</param>
     public void Attack(int ms = 0)
 {
-    Avatar? alqn = CombatScenes.SelectAvatar("阿蕾奇诺");
     var isTimes = 0;
 
-    // 新增：5秒计时变量
+    // 新增：计时变量
     var lastChargeTime = DateTime.Now;
 
     while (ms >= 0)
     {
-        if (Ct is { IsCancellationRequested: true })
+        if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
         {
             return;
         }
 
         if (ArlecchinoAutoEnabled && Name == "阿蕾奇诺")
         {
-            Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+            Avatar? alqn = CombatScenes.SelectAvatar("阿蕾奇诺");
             using var region1 = CaptureToRectArea();
-            var aa = CombatHealthDetector.IsRedBlood(region1);
-            var bb = IsQi(region1);
-            if (!bb || aa)
+            // 每隔5秒执行一次 Charge(350)
+            if ((DateTime.Now - lastChargeTime).TotalMilliseconds >= 1080)
             {
-                if (isTimes > 5)
+                // Logger.LogWarning("闪A");
+                Simulation.SendInput.SimulateAction(GIActions.SprintMouse, KeyType.KeyDown);
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyDown);
+                Simulation.SendInput.SimulateAction(GIActions.MoveBackward,KeyType.KeyDown);
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyUp);
+                Sleep(35); // 冲刺不能被cts取消
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                Sleep(20); // 冲刺不能被cts取消
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                Sleep(15); // 冲刺不能被cts取消
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                Simulation.SendInput.SimulateAction(GIActions.SprintMouse, KeyType.KeyUp);
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                Simulation.SendInput.SimulateAction(GIActions.MoveBackward,KeyType.KeyUp);
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                Simulation.SendInput.SimulateAction(GIActions.MoveForward);
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
                 {
-                    Simulation.SendInput.SimulateAction(GIActions.ElementalBurst);
-                    Sleep(100, Ct);
-                    using var imageAfterBurst = CaptureToRectArea();
-                    if (imageAfterBurst.Find(ElementAssets.Instance.PaimonMenuRo).IsEmpty())
+                    return;
+                }
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                lastChargeTime = DateTime.Now; // 重置计时
+                return;
+            }
+            else
+            {
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+            }
+            
+            if (!AutoFightSkill.AvatarSkillAsync(Logger, alqn, false, 1, Ct, region1, false).Result)
+            {
+                if (!IsQi(region1) && region1.Find(ElementAssets.Instance.PaimonMenuRo).IsExist())
+                {
+                    Logger.LogInformation("特化检测：阿蕾奇诺->空契放E");
+                    if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
                     {
-                        // Logger.LogWarning("1113 {t1} {t2}", bb, aa);
-                        Sleep(2000, Ct);
-                        Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                        Sleep(50, Ct);
-                        Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                        Sleep(795, Ct);
-                        if (Ct is { IsCancellationRequested: true })
-                        {
-                            return;
-                        }
+                        return;
+                    }
+                    Sleep(50, Ct);
+                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                    Sleep(50, Ct);
+                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                    Sleep(50, Ct);
+                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                    Sleep(50, Ct);
+                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                    Sleep(50, Ct);
+                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                    Sleep(50, Ct);
+                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                    Sleep(695, Ct);
+                    if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
+                    {
+                        return;
+                    }
+
+                    for (int i = 0; i < 3; i++)
+                    {
                         Charge(450);
+                        Sleep(150, Ct);
+                        using var region13 = CaptureToRectArea();
+                        var bb = IsQi(region13);
+                        if (bb)
+                        {
+                            Logger.LogInformation("特化检测：阿蕾奇诺->回收契成功..");
+                            break;
+                        }
+                        Logger.LogInformation("特化检测：阿蕾奇诺->回收契失败，重试..");
+                    }
+                    
+                    return;
+                }
+            }
+
+            if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
+            {
+                return;
+            }
+            
+            using var region99 = CaptureToRectArea();
+            var aa = CombatHealthDetector.IsRedBlood(region99);
+            var cc = alqn.GetSkillCurrentCd(region99);
+            var bb22 = (!IsQi(region99)) && (cc > 5);
+            if (bb22 || aa)
+            {
+                // Logger.LogError("E-CD:{t}", cc);
+                if (isTimes > 2)
+                {
+                    isTimes = 0;
+                    // Logger.LogError("放Q情况 {t1} {t2}", bb22, aa);
+                    using var region999 = CaptureToRectArea();
+                    var bb222 = !IsQi(region999);
+                    if (bb222 || aa)
+                    {
+                        Logger.LogInformation("特化检测：阿蕾奇诺->红血放Q..");
+                        Simulation.SendInput.SimulateAction(GIActions.ElementalBurst);
                         Sleep(100, Ct);
+                        using var imageAfterBurst = CaptureToRectArea();
+                        if (imageAfterBurst.Find(ElementAssets.Instance.PaimonMenuRo).IsEmpty())
+                        {
+                            Sleep(1995, Ct);
+                            if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
+                            {
+                                return;
+                            }
+
+                            Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                            Sleep(50, Ct);
+                            Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                            Sleep(795, Ct);
+                            if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
+                            {
+                                return;
+                            }
+
+                            for (int i = 0; i < 3; i++)
+                            {
+                                Charge(450);
+                                Sleep(150, Ct);
+                                using var region13 = CaptureToRectArea();
+                                var bb2 = IsQi(region13);
+                                if (bb2)
+                                {
+                                    Logger.LogInformation("特化检测：阿蕾奇诺->回收契成功..");
+                                    break;
+                                }
+
+                                Logger.LogInformation("特化检测：阿蕾奇诺->回收契失败，重试..");
+                            }
+                        }
                     }
                 }
-                if (aa) isTimes += 1;
-                if (!bb) isTimes += 5;
-                // Logger.LogWarning("112 {t}", isTimes);
-                if (Ct is { IsCancellationRequested: true })
+
+                if (aa)
+                {
+                    // Logger.LogWarning("红血1 {isTimes}",isTimes);
+                    isTimes += 2;
+                }
+
+                if (bb22)
+                {
+                    // Logger.LogWarning("契空1 {isTimes}",isTimes);
+                    isTimes += 2;
+                }
+                
+                if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
                 {
                     return;
                 }
@@ -792,45 +912,17 @@ public class Avatar
             {
                 isTimes = 0;
                 Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
-                Sleep(50, Ct);
+                Sleep(100, Ct);
             }
             
-            if (Ct is { IsCancellationRequested: true })
+            
+            if (Ct is { IsCancellationRequested: true } || AutoFightTask.FightEndTotoly)
             {
                 return;
             }
-
-            if (!AutoFightSkill.AvatarSkillAsync(Logger, alqn, false, 1, Ct, region1, false).Result)
-            {
-                if (!IsQi(region1) && region1.Find(ElementAssets.Instance.PaimonMenuRo).IsExist())
-                {
-                    // Logger.LogWarning("222");
-                    Sleep(50, Ct);
-                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                    Sleep(50, Ct);
-                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                    Sleep(795, Ct);
-                    if (Ct is { IsCancellationRequested: true })
-                    {
-                        return;
-                    }
-                    Charge(450);
-                    Sleep(150, Ct);
-                }
-            }
-            else
-            {
-                // 每隔5秒执行一次 Charge(350)
-                if ((DateTime.Now - lastChargeTime).TotalMilliseconds >= 2000)
-                {
-                    Charge(280);
-                    Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
-                    lastChargeTime = DateTime.Now; // 重置计时
-                }
-            }
-
-            ms -= 200;
-            Sleep(100, Ct);
+            
+            ms -= 50;
+            Sleep(50, Ct);
         }
         else
         {
@@ -842,14 +934,14 @@ public class Avatar
 }
     
     // 阿蕾奇诺契检测区域
-    private const int QiX = 1000;
+    private const int QiX = 1030;
     private const int QiY = 1000;
-    private const int QiW = 25;
+    private const int QiW = 30;
     private const int QiH = 20;
 
     // 阿蕾奇诺契 BGR: (255, 144, 140) ±12
-    private static readonly Scalar QiLower = new Scalar(245, 132, 128);
-    private static readonly Scalar QiUpper = new Scalar(255, 155, 151);
+    private static readonly Scalar QiLower = new Scalar(252, 120, 120);
+    private static readonly Scalar QiUpper = new Scalar(255, 160, 160);
     public static bool IsQi(ImageRegion ra)
     {
         using var bloodRect = ra.DeriveCrop(QiX, QiY, QiW, QiH);
@@ -860,7 +952,7 @@ public class Avatar
         var numLabels = Cv2.ConnectedComponentsWithStats(mask, labels, stats, centroids,
             connectivity: PixelConnectivity.Connectivity4, ltype: MatType.CV_32S);
         // Logger.LogWarning("numLabelsQ : {t}", numLabels);
-        return numLabels > 2;
+        return numLabels >= 3;
     }
 
     /// <summary>
