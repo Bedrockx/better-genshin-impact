@@ -52,6 +52,16 @@ public partial class PathingConditionConfig : ObservableObject
         get => _autoEatCount;
         set => _autoEatCount = value;
     }
+
+    // 本轮恢复"已放弃嗑小道具、去神像中"的抑制态（autoeat-count-overloaded-sentinel-fix spec）。
+    // 与 AutoEatCount 计数职责分离：取代 Avatar.cs 原第 189 行的反语义清零 AutoEatCount=0。
+    // 严禁与 AutoFightTask.IsTpForRecover（吃药作用域）/ IsTeleportingToStatue（回点循环 gate）混用。
+    private static volatile bool _recoverSuppressed = false;
+    public static bool RecoverSuppressed
+    {
+        get => _recoverSuppressed;
+        set => _recoverSuppressed = value;
+    }
     // 最后吃药时间记录
     private static DateTime _lastEatTime = DateTime.MinValue;
     public static DateTime LastEatTime

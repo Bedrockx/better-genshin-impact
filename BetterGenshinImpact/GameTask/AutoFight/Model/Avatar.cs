@@ -181,16 +181,18 @@ public class Avatar
     {
         if (!AutoFightTask.IsTpForRecover && Bv.IsInRevivePrompt(region))
         {
-            // AutoEatCount >= 2 表示吃药超额，直接去七天神像
-            if (PathingConditionConfig.AutoEatCount >= 2)
+            // AutoEatCount >= MaxRecoverAttempts 表示吃药超额，直接去七天神像
+            if (AutoEatRecoveryDecisions.ShouldGoStatue(PathingConditionConfig.AutoEatCount))
             {
                 Logger.LogWarning("检测到复苏界面，吃药已超额(AutoEatCount={t})，前往七天神像", PathingConditionConfig.AutoEatCount);
-                PathingConditionConfig.AutoEatCount = 0;
+                // 维持"已放弃嗑药、去神像中"的抑制态，取代原反语义清零 AutoEatCount = 0。
+                // 抑制态确保去神像未完成期间再次命中复苏/采集确认界面时不会重新 QuickUseGadget（误触化种匣）。
+                PathingConditionConfig.RecoverSuppressed = true;
                 TpForRecover(ct, new RetryException("检测到复苏界面，存在角色被击败，前往七天神像复活"));
             }
-            else
+            else if (AutoEatRecoveryDecisions.ShouldUseGadget(PathingConditionConfig.RecoverSuppressed, PathingConditionConfig.AutoEatCount))
             {
-                // 还有吃药次数，尝试点击确认使用小道具
+                // 还有吃药次数且未被抑制，尝试点击确认使用小道具
                 if (DateTime.UtcNow > PathingConditionConfig.LastEatTime.AddSeconds(1.5))
                 {
                     PathingConditionConfig.LastEatTime = DateTime.UtcNow;
@@ -448,7 +450,8 @@ public class Avatar
                                 try
                                 {
 
-                                    if (!AutoFightSkill.MedicinalCdAsync(Logger, false, 1, Ct).Result)
+                                    if (AutoEatRecoveryDecisions.ShouldUseGadget(PathingConditionConfig.RecoverSuppressed, PathingConditionConfig.AutoEatCount)
+                                        && !AutoFightSkill.MedicinalCdAsync(Logger, false, 1, Ct).Result)
                                     {
                                         Simulation.SendInput.SimulateAction(GIActions.QuickUseGadget); //1800,816 1838,835
                                         Simulation.ReleaseAllKey();

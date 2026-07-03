@@ -454,7 +454,7 @@ public class PathExecutor
             {
                 try
                 {
-                    if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3) PathingConditionConfig.AutoEatCount = 0;
+                    ResetRecoveryStateForNewAttempt();
                     
                     await ResolveAnomalies(); // 异常场景处理
 
@@ -901,10 +901,7 @@ public class PathExecutor
 
                                     if(!string.IsNullOrEmpty(PartyConfig.MainAvatarIndex)) PartyConfig.MainAvatarIndex = PathingConditionConfig.InitialMainAvatarIndex;
                                     PathingConditionConfig.CombatScenesGoBackUp = null;
-                                    if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3)
-                                    {
-                                        PathingConditionConfig.AutoEatCount = 0;
-                                    }
+                                    ResetRecoveryStateForNewAttempt();
 
                                     // 联机模式：战斗完成后走回战斗点集合
                                     if (MultiplayerCoordinator != null)
@@ -1324,14 +1321,14 @@ public class PathExecutor
                         StartSkipOtherOperations();
                         Logger.LogWarning("[联机] 同步点前异常，重试（{N}/{Max}），目标进度={Target}（本段重跑），原因: {Msg}",
                             i + 1, RetryTimes, progressForReport, retryException.Message);
-                        if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3) PathingConditionConfig.AutoEatCount = 0;
+                        ResetRecoveryStateForNewAttempt();
                         continue; // 继续 for 循环重试
                     }
 
                     // 单机模式：保持原有重试行为
                     StartSkipOtherOperations();
                     Logger.LogWarning(retryException.Message);
-                    if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3)  PathingConditionConfig.AutoEatCount = 0;
+                    ResetRecoveryStateForNewAttempt();
                 }
                 catch (RetryNoCountException retryException)
                 {
@@ -1382,6 +1379,19 @@ public class PathExecutor
         }
     }
     
+    // 恢复状态集中收口（autoeat-count-overloaded-sentinel-fix spec）：
+    // 取代原散落 4 处 if(AutoEatCount<3) AutoEatCount=0 补丁（457/904-908/1327/1334）。
+    // 仅在"进入新一轮寻路重试、恢复流程确已结束"时调用，防止计数残值 + 抑制态跨路径泄漏。
+    // 保留 <3 门控：count==3 是"用户关吃药 / 未发现营养袋"的禁用哨兵，禁用态不得被本收口清成启用态。
+    private void ResetRecoveryStateForNewAttempt()
+    {
+        if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 3)
+        {
+            PathingConditionConfig.AutoEatCount = 0;
+        }
+        PathingConditionConfig.RecoverSuppressed = false;
+    }
+
     private async Task InitializeAutoEat()
     {
         if (!PartyConfig.AutoEatEnabled)
@@ -2178,7 +2188,7 @@ public class PathExecutor
             // 联机模式：低血量去七天神像，由后续 RetryException 处理 Reviving 上报（带 targetProgress）
             // 这里不上报，避免覆盖 targetProgress 为 -1
             await TpStatueOfTheSeven(switchOnly, requireLoadingScreen: MultiplayerCoordinator != null);
-            if (PathingConditionConfig.AutoEatCount < 2) return;
+            if (!AutoEatRecoveryDecisions.ShouldRetryRoute(PathingConditionConfig.AutoEatCount)) return;
             throw new RetryException("回血完成后重试路线-1");
         }
         else if (Bv.ClickIfInReviveModal(region))
@@ -2188,7 +2198,7 @@ public class PathExecutor
             await Delay(4000, ct);
             // 联机模式：复苏后去七天神像，由后续 RetryException 处理 Reviving 上报
             await TpStatueOfTheSeven(requireLoadingScreen: MultiplayerCoordinator != null);
-            if (PathingConditionConfig.AutoEatCount < 2) return;
+            if (!AutoEatRecoveryDecisions.ShouldRetryRoute(PathingConditionConfig.AutoEatCount)) return;
             throw new RetryException("回血完成后重试路线-2");
         }
     }
@@ -2215,7 +2225,7 @@ public class PathExecutor
     private async Task TpStatueOfTheSevenCore(bool switchOnly = false, bool requireLoadingScreen = false)
     {
         // Logger.LogInformation("AutoEatCount111 {text}",PathingConditionConfig.AutoEatCount);
-        if (PartyConfig.AutoEatEnabled && PathingConditionConfig.AutoEatCount < 2)
+        if (AutoEatRecoveryDecisions.ShouldEnterGadgetPhase(PartyConfig.AutoEatEnabled, PathingConditionConfig.AutoEatCount))
         {
             if (DateTime.UtcNow > PathingConditionConfig.LastEatTime.AddSeconds(1.5))
             {
@@ -2225,7 +2235,7 @@ public class PathExecutor
                 {
                     PathingConditionConfig.LastEatTime = DateTime.UtcNow;
                     Logger.LogWarning("自动吃药：尝试使用小道具恢复-2");
-                    if(PathingConditionConfig.AutoEatCount < 1)Simulation.SendInput.SimulateAction(GIActions.QuickUseGadget);
+                    if(AutoEatRecoveryDecisions.ShouldFireGadgetThisTick(PathingConditionConfig.AutoEatCount))Simulation.SendInput.SimulateAction(GIActions.QuickUseGadget);
                     PathingConditionConfig.AutoEatCount++;
                 } 
                 
@@ -2259,7 +2269,7 @@ public class PathExecutor
                 }
                 Logger.LogWarning("自动吃药：距离上次吃药时间过小，等待重试-3");
             }
-            if(PathingConditionConfig.AutoEatCount < 2)return;
+            if(!AutoEatRecoveryDecisions.ShouldRetryRoute(PathingConditionConfig.AutoEatCount))return;
         }
 
         using (var bitmap = CaptureToRectArea())
