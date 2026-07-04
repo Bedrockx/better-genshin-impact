@@ -39,9 +39,25 @@ public class TaskControl
     private static DateTime _lastCheckTimeEnter = DateTime.MinValue;
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(TaskContext.Instance().Config.OtherConfig.NetworkDetectionInterval);
     private static readonly TimeSpan CheckIntervalWin = TimeSpan.FromSeconds(30);
-    private static readonly Ping PingSender = new Ping();
+    // 网络检查门控（spec network-check-ping-concurrent-reuse-crash-fix）：
+    // Wait(0) 非阻塞抢门，保证同一时刻只有一个 CheckNetworkStatusAsync 执行者，
+    // 消除对 Ping 实例的并发重入以及 _lastCheckTime/_networkFailureCount/IsSuspendedByNetwork 的并发竞态。
+    private static readonly SemaphoreSlim _networkCheckGate = new(1, 1);
+    // 恢复单飞门控（spec network-recovery-statemachine-never-exits-suspend-fix / D-2）：
+    // 与 _networkCheckGate（5s 检查门控）区分。Wait(0) 抢门标记"恢复进行中"，
+    // 抢不到说明已有一个 NetworkRecovery.Start 在跑 → 本次跳过，不重启、不重置 RecoveryNetworkDone。
+    private static readonly SemaphoreSlim _networkRecoveryGate = new(1, 1);
     private static readonly bool NetworkDetectionConfig = TaskContext.Instance().Config.OtherConfig.NetworkDetectionConfig;
     private static int _networkFailureCount = 0;
+
+    // 网络恢复自锁修复（spec network-recovery-statemachine-never-exits-suspend-fix）：
+    // NetworkRecovery.Start 通过 WaitForElement* → TaskControl.Delay → NewRetry.Do(() => TrySuspend())
+    // 重入 TrySuspend；此时 IsSuspendedByNetwork 仍为 true，重入的 TrySuspend 会在 while 循环里
+    // 无限 Thread.Sleep 空转不返回，导致 Delay 不返回、Start 永远走不到结尾清除标志 => 死锁。
+    // 用 AsyncLocal 标记"当前执行栈正处于网络恢复中"（能随 await 流转到 Start 内部所有 Delay），
+    // 恢复栈内的 TrySuspend 不因 IsSuspendedByNetwork 阻塞，使恢复得以跑到终点解除暂停。
+    // 顶层任务循环不设此标志，继续等待直到恢复真正完成。
+    private static readonly AsyncLocal<bool> _inNetworkRecovery = new();
 
     // 焦点恢复跨调用状态（spec focus-recovery-no-budget-limit / bugfix.md §4 EB-5）
     // 仅追踪"焦点持续丢失期间是否已打首次 Warning"和"上次进度日志时刻"，
@@ -78,129 +94,181 @@ public class TaskControl
     
     private static bool _isBless = false;
 
-    private static Task CheckNetworkStatusAsync()
+    private static async Task CheckNetworkStatusAsync()
     {
-        if (DateTime.UtcNow - _lastCheckTime < CheckInterval)
+        // 门控：非阻塞抢门。抢不到说明已有一个检查在跑，本次立即返回（等价于被节流跳过，
+        // 符合 §3.2 preservation：同一时刻只跑一个，其余跳过）。
+        if (!_networkCheckGate.Wait(0))
         {
-            if (DateTime.UtcNow - _lastCheckTimeEnter > CheckIntervalWin)
-            { 
-                _lastCheckTimeEnter = DateTime.UtcNow;
-                using var qq = CaptureToRectArea();
-                using var okRa = qq.Find(AutoFightAssets.Instance.ConfirmRaZ);
-                using var enterRa = qq.Find(AutoWoodAssets.Instance.ExitSwitchRo);
-                //如果现在是4点到4点5分内
-                if (DateTime.UtcNow.Hour == 4 && DateTime.UtcNow.Minute >= 0 && DateTime.UtcNow.Minute < 3)
+            return;
+        }
+
+        try
+        {
+            if (DateTime.UtcNow - _lastCheckTime < CheckInterval)
+            {
+                if (DateTime.UtcNow - _lastCheckTimeEnter > CheckIntervalWin)
+                { 
+                    _lastCheckTimeEnter = DateTime.UtcNow;
+                    using var qq = CaptureToRectArea();
+                    using var okRa = qq.Find(AutoFightAssets.Instance.ConfirmRaZ);
+                    using var enterRa = qq.Find(AutoWoodAssets.Instance.ExitSwitchRo);
+                    //如果现在是4点到4点5分内
+                    if (DateTime.UtcNow.Hour == 4 && DateTime.UtcNow.Minute >= 0 && DateTime.UtcNow.Minute < 3)
+                    {
+                        if ((Bv.IsInBlessingOfTheWelkinMoon(qq)) && !_isBless)   
+                        {
+                            try
+                            {
+                                Logger.LogInformation("空月任务4点检测执行");
+                                _isBless = true;
+                                new BlessingOfTheWelkinMoonTask().Start(CancellationToken.None).Wait(10000);
+                            }
+                            catch (TaskCanceledException)
+                            {
+                                Logger.LogWarning("空月任务执行取消");
+                            }
+                            catch (TimeoutException)
+                            {
+                                Logger.LogWarning("空月任务执行超时");
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.LogError(ex, "空月任务执行失败");
+                            }
+                            finally
+                            {
+                                Logger.LogDebug("空月任务4点检测执行完毕");
+                            }
+                        }
+                    }
+                    
+                    if (okRa.IsExist()|| enterRa.IsExist())
+                    {
+                        var enter = qq.FindMulti(GetConfirmRa());
+                        using var enterDone = enter.FirstOrDefault(t =>
+                            Regex.IsMatch(t.Text, "连接已断开") || Regex.IsMatch(t.Text, "点击进入") || Regex.IsMatch(t.Text, "更新通知"));
+                        if (enterDone != null)
+                        {
+                            IsSuspendedByWindow = true;
+                            Logger.LogWarning("点击: {enterDone.Text}",enterDone.Text);
+                            if(enterRa.IsExist())enterDone.Click();
+                        }
+                        else
+                        {
+                            return;
+                        }
+                    }
+                    
+                }
+                else
                 {
-                    if ((Bv.IsInBlessingOfTheWelkinMoon(qq)) && !_isBless)   
+                    return;
+                }
+            }
+            
+            _lastCheckTime = DateTime.UtcNow;
+
+            var isSuspend = false; 
+            try
+            {
+                using var ping = new Ping();
+                var reply = ping.Send(TaskContext.Instance().Config.OtherConfig.NetworkDetectionUrl);
+                isSuspend = reply.Status != IPStatus.Success;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "网络状态检查：错误");
+                isSuspend = true;
+            }
+
+            // 恢复触发逻辑移出 ping 的 try/catch：无论 ping.Send 成功还是抛异常（如 DNS 解析失败），
+            // 只要处于挂起态就驱动 NetworkRecovery.Start，使真实网络恢复后能自愈解除挂起。
+            // spec network-recovery-skipped-on-ping-dns-exception-fix
+            // 用独立 try/catch/finally 包裹，保持原语义：
+            //  - 恢复块自身抛出的异常同样被吞并记为失败（原来恢复块在 ping 的 try 内，异常由同一 catch(Exception) 捕获）；
+            //  - 失败计数/归零逻辑放在 finally，保证无论恢复块是否抛异常都执行（等价原内层 finally）。
+            var enteredRecovery = false;
+            var recoverySucceeded = false;
+            try
+            {
+                if (NetworkRecoveryDecisions.ShouldEnterRecovery(IsSuspendedByNetwork, IsSuspendedByWindow))
+                {
+                    enteredRecovery = true;
+                    Logger.LogWarning(IsSuspendedByWindow ? "窗口弹窗状态恢复中..." : "网络恢复中...");
+
+                    // 单飞门控（D-2）：Wait(0) 抢恢复门。抢不到 => 已有一个 Start 在跑 => 本次跳过，
+                    // 绝不重复启动、绝不触发 Start 开头的 RecoveryNetworkDone=false 重置。
+                    if (NetworkRecoveryDecisions.ShouldStartNewRecovery(recoveryInProgress: !_networkRecoveryGate.Wait(0)))
                     {
                         try
                         {
-                            Logger.LogInformation("空月任务4点检测执行");
-                            _isBless = true;
-                            new BlessingOfTheWelkinMoonTask().Start(CancellationToken.None).Wait(10000);
-                        }
-                        catch (TaskCanceledException)
-                        {
-                            Logger.LogWarning("空月任务执行取消");
-                        }
-                        catch (TimeoutException)
-                        {
-                            Logger.LogWarning("空月任务执行超时");
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.LogError(ex, "空月任务执行失败");
+                            // D-1：不再 .Wait(10000) 截断，await 让 Start 跑到自身终点
+                            // （内部 WaitForElementAppear(PaimonMenuRo, ..., 60, 1000) 60s 上限兜底）。
+                            // 关键：置 AsyncLocal 标志，使 Start 内部所有经 Delay 重入的 TrySuspend
+                            // 不因 IsSuspendedByNetwork 阻塞（否则恢复流程自锁，永远走不到结尾清除标志）。
+                            _inNetworkRecovery.Value = true;
+                            await NetworkRecovery.Start(CancellationToken.None);
                         }
                         finally
                         {
-                            Logger.LogDebug("空月任务4点检测执行完毕");
+                            _inNetworkRecovery.Value = false;
+                            _networkRecoveryGate.Release();
                         }
-                    }
-                }
-                
-                if (okRa.IsExist()|| enterRa.IsExist())
-                {
-                    var enter = qq.FindMulti(GetConfirmRa());
-                    using var enterDone = enter.FirstOrDefault(t =>
-                        Regex.IsMatch(t.Text, "连接已断开") || Regex.IsMatch(t.Text, "点击进入") || Regex.IsMatch(t.Text, "更新通知"));
-                    if (enterDone != null)
-                    {
-                        IsSuspendedByWindow = true;
-                        Logger.LogWarning("点击: {enterDone.Text}",enterDone.Text);
-                        if(enterRa.IsExist())enterDone.Click();
                     }
                     else
                     {
-                        return Task.CompletedTask;
+                        Logger.LogDebug("网络恢复已在进行中，跳过重复启动");
                     }
-                }
-                
-            }
-            else
-            {
-                return Task.CompletedTask;
-            }
-        }
-        
-        _lastCheckTime = DateTime.UtcNow;
 
-        var isSuspend = false; 
-        try
-        {
-            var reply = PingSender.Send(TaskContext.Instance().Config.OtherConfig.NetworkDetectionUrl);
-            isSuspend = reply.Status != IPStatus.Success;
-            if (IsSuspendedByNetwork || IsSuspendedByWindow)
-            {
-                Logger.LogWarning(IsSuspendedByWindow ? "窗口弹窗状态恢复中..." : "网络恢复中...");
-                if (NetworkRecovery.Start(CancellationToken.None).Wait(10000))
-                {
-                    isSuspend = false;
+                    // D-3：解除权威信号来自恢复流程成功（RecoveryNetworkDone），与 ping 解耦。
+                    recoverySucceeded = NetworkRecovery.RecoveryNetworkDone;
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "网络状态检查：错误");
-            isSuspend = true;
-        }
-        finally
-        {
-            if (isSuspend)
+            catch (Exception ex)
             {
-                _networkFailureCount++;
-                if (_networkFailureCount >= 3)
+                Logger.LogError(ex, "网络状态检查：错误");
+            }
+            finally
+            {
+                var pingFailed = isSuspend; // isSuspend 此时即首个 ping(www.baidu.com) 是否失败/抛异常
+
+                if (NetworkRecoveryDecisions.ShouldClearNetworkSuspend(recoverySucceeded, enteredRecovery, pingFailed))
                 {
-                    try
+                    _networkFailureCount = 0;
+                    IsSuspendedByNetwork = false;
+                }
+                else if (NetworkRecoveryDecisions.ShouldCountPingFailure(recoverySucceeded, enteredRecovery, pingFailed))
+                {
+                    _networkFailureCount++;
+                    if (_networkFailureCount >= 3)
                     {
-                        var reply2 = PingSender.Send("www.qq.com");
-                        if (reply2.Status != IPStatus.Success)
+                        try
                         {
+                            using var ping2 = new Ping();
+                            var reply2 = ping2.Send("www.qq.com");
+                            if (reply2.Status != IPStatus.Success)
+                            {
+                                IsSuspendedByNetwork = true;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError(ex, "网络状态检查：错误");
                             IsSuspendedByNetwork = true;
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        Logger.LogError(ex, "网络状态检查：错误");
-                        IsSuspendedByNetwork = true;
-                    }
                 }
+                // 其余情形（进入恢复但未成功且非"未进入+ping失败"）：静默保持现状，
+                // 不清除也不累加，等下一轮单飞恢复继续推进。
             }
-            else
-            {
-                _networkFailureCount = 0;
-                IsSuspendedByNetwork = false;
-                // var now = DateTime.UtcNow; // 声明并初始化 now 变量
-                //
-                // var targetStartTime = new DateTime(now.Year, now.Month, now.Day, 3, 59, 0); // 设置为当天的凌晨3点59分
-                // var targetEndTime = new DateTime(now.Year, now.Month, now.Day, 4, 0, 0); // 设置为当天的凌晨4点
-                //
-                // if (now - _startTime > TimeSpan.FromDays(1) || (now >= targetStartTime && now < targetEndTime))
-                // {
-                //     throw new RetryException("超过1天未启动游戏，尝试重启游戏");
-                // }
-            }
+            return;
         }
-        return Task.CompletedTask;
+        finally
+        {
+            // 无论走哪个 return（节流跳过 / 窗口分支 / 正常完成 / 异常），都保证释放门控，绝不死锁。
+            _networkCheckGate.Release();
+        }
     }
 
     public static void CheckAndSleep(int millisecondsTimeout)
@@ -232,12 +300,24 @@ public class TaskControl
     public static void TrySuspend()
     {
         if (NetworkDetectionConfig)Task.Run(CheckNetworkStatusAsync);
+        // 恢复自锁修复：若当前执行栈正处于网络恢复中（AsyncLocal 标志），本次 TrySuspend
+        // 不把"网络暂停"计入阻塞条件——否则恢复流程的 Delay 会在此永久空转，导致恢复自锁。
+        // 手动暂停（RunnerContext.Instance.IsSuspend）仍然生效。
+        var networkBlocking = IsSuspendedByNetwork && !_inNetworkRecovery.Value;
         var first = true;
         //此处为了记录最开始的暂停状态
-        var isSuspend = RunnerContext.Instance.IsSuspend || IsSuspendedByNetwork;
-        while (RunnerContext.Instance.IsSuspend || IsSuspendedByNetwork)
+        var isSuspend = RunnerContext.Instance.IsSuspend || networkBlocking;
+        while (RunnerContext.Instance.IsSuspend || (IsSuspendedByNetwork && !_inNetworkRecovery.Value))
         {
-            if (RunnerContext.Instance.IsSuspend) IsSuspendedByNetwork = false; NetworkRecovery.RecoveryNetworkDone = true;
+            // 仅在用户手动暂停时清除网络暂停标志并置 RecoveryNetworkDone=true（手动暂停无需走网络恢复流程）。
+            // 修复前此行缺大括号，导致 NetworkRecovery.RecoveryNetworkDone = true 每秒无条件执行，
+            // 短路了 NetworkRecovery.Start 的实际恢复动作，使网络恢复后无法解除暂停。
+            // spec network-recovery-done-flag-prematurely-set-fix
+            if (RunnerContext.Instance.IsSuspend)
+            {
+                IsSuspendedByNetwork = false;
+                NetworkRecovery.RecoveryNetworkDone = true;
+            }
             if (first)
             {
                 RunnerContext.Instance.StopAutoPick();
