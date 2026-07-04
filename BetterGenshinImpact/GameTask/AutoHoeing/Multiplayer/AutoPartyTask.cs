@@ -383,7 +383,7 @@ public class AutoPartyTask
                         case HostPartyDecisionKind.KickStrangers:
                             // 满员触发逐行成分校验。防误踢由名字校验 + 连续 2 次确认接管，
                             // 不再受时间保护期 / 扫描节流门控（组队放人阶段不需等待）。
-                            var kickResult = await KickStrangersAsync(client, consecutiveMissByIdentity, expectedCount, f2Count, ct);
+                            var kickResult = await KickStrangersAsync(client, consecutiveMissByIdentity, expectedCount, f2Count, whitelist, ct);
                             if (kickResult == StrangerKickScanResult.AllAllowed)
                             {
                                 // 满员且逐行校验全为名单成员 ⇒ 开锄收敛出口
@@ -454,7 +454,7 @@ public class AutoPartyTask
                 // 满员触发 + 逐行名字校验 + 连续 2 次确认在 KickStrangersAsync 内部完成。
                 if (isInF2Screen)
                 {
-                    if (await KickStrangersAsync(client, consecutiveMissByIdentity, expectedCount, lastF2Count, ct) == StrangerKickScanResult.Kicked)
+                    if (await KickStrangersAsync(client, consecutiveMissByIdentity, expectedCount, lastF2Count, whitelist, ct) == StrangerKickScanResult.Kicked)
                     {
                         // 踢人会触发弹窗 / UI 变化，下一轮重新评估
                         continue;
@@ -799,18 +799,25 @@ public class AutoPartyTask
         Dictionary<string, int> consecutiveMissByIdentity,
         int expectedCount,
         int worldCount,
+        string[]? whitelist,
         CancellationToken ct)
     {
         try
         {
             // 1. 截图并定位所有踢出按钮
             using var ra = CaptureToRectArea();
-            // 房主自己 = 当前 UID；BGI 房间内其他成员的名字
-            var allowedNames = client.CurrentPlayerList?
+            // 合法名单 = 成员加入 BGI 房间上报名单 ∪ 房间白名单（命中任一即保留）。
+            // 成员可能用"思"加入房间（上报名），但游戏世界显示备注名"思姐姐"（OCR 名），
+            // 若白名单同时含"思"和"思姐姐"，仅比上报名单会误踢——故并入白名单一起比。
+            // 白名单为空时退回只用上报名单（现状不变）。
+            var reportedNames = client.CurrentPlayerList?
                 .Where(p => !string.IsNullOrEmpty(p?.PlayerName))
-                .Select(p => p.PlayerName)
+                .Select(p => p.PlayerName) ?? Enumerable.Empty<string>();
+            var allowedNames = reportedNames
+                .Concat(whitelist ?? Array.Empty<string>())
+                .Where(n => !string.IsNullOrEmpty(n))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray() ?? Array.Empty<string>();
+                .ToArray();
 
             // FindMulti 定位所有踢出按钮（ROI 已在 §改动 3/4 治本消除污染，天然覆盖完整右半屏 1P~4P 行）。
             var kickRegions = ra.FindMulti(AutoFightAssets.Instance.KickBtnRa);
