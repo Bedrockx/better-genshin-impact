@@ -375,11 +375,22 @@ namespace BetterGenshinImpact.ViewModel
                 _ = User32.GetWindowThreadProcessId(targetHWnd, out var pid);
                 Task.Run(async () =>
                 {
-                    await FpsInspector.StartForeverAsync(new FpsRequest(pid), result =>
+                    try
                     {
-                        Fps = $"{result.Fps:0}";
-                        _overlayMetricsService?.UpdateGameFps(result.Fps);
-                    });
+                        await FpsInspector.StartForeverAsync(new FpsRequest(pid), result =>
+                        {
+                            Fps = $"{result.Fps:0}";
+                            _overlayMetricsService?.UpdateGameFps(result.Fps);
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        // FPS 采样仅服务于遮罩窗口帧率显示，属非关键辅助信息。PresentMon/FpsInspector 底层
+                        // 失败（如 0x800700B7 文件已存在）不应作为未观察任务异常冒泡至全局处理器弹窗、
+                        // 打断正在运行的自动化任务。此处捕获任意异常并结构化告警，静默降级（FPS 保持默认值）。
+                        // 不复位 _fpsStarted：一次失败本会话不再重试，避免反复触发同一底层错误刷屏日志。
+                        _logger.LogWarning(ex, "游戏帧率采样(FpsInspector)失败，已停止本次会话的 FPS 采样并降级显示");
+                    }
                 });
             }
 

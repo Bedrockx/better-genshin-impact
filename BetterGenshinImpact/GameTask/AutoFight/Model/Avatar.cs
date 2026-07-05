@@ -850,7 +850,7 @@ public class Avatar
             using var region99 = CaptureToRectArea();
             var aa = CombatHealthDetector.IsRedBlood(region99);
             var cc = alqn.GetSkillCurrentCd(region99);
-            var bb22 = (!IsQi(region99)) && (cc > 5);
+            var bb22 = (!IsQi(region99)) && ArlecchinoAutoEqDecisions.ShouldReleaseQByCd(cc, TaskContext.Instance().Config.AutoFightConfig.SkillCdForQ);
             if (bb22 || aa)
             {
                 // Logger.LogError("E-CD:{t}", cc);
@@ -925,7 +925,7 @@ public class Avatar
                     if ((DateTime.Now - redTime).TotalMilliseconds >= 100)
                     {
                         redTime = DateTime.Now;
-                        isTimes += 2; 
+                        isTimes += 1; 
                     }
                     else
                     {

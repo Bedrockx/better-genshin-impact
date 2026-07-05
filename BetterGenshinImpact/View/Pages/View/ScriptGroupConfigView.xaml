@@ -1268,6 +1268,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <ui:TextBlock Grid.Row="0"
                                               Grid.Column="0"
@@ -1277,7 +1278,7 @@
                                 <ui:TextBlock Grid.Row="1"
                                               Grid.Column="0"
                                               Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                              Text="开启后阿蕾奇诺的策略只需要attack(10)就可以普攻/没契/红血就自动识别EQ"
+                                              Text="开启后阿蕾奇诺的策略只需要attack(10)就可以普攻/没契/红血就自动识别EQ；右侧CD框：契空放Q时E技能CD值大于这个值才放（红血不受限制）"
                                               TextWrapping="Wrap" />
                                 
                                 <ui:TextBox Grid.Row="0"
@@ -1287,9 +1288,16 @@
                                             IsEnabled="{Binding PathingConfig.AutoFightConfig.ArlecchinoAutoEnabled, Mode=TwoWay}"
                                             Text="{Binding PathingConfig.AutoFightConfig.QiKong, Mode=TwoWay}" />
                                 
+                                <ui:TextBox Grid.Row="0"
+                                            Grid.RowSpan="2"
+                                            Grid.Column="2"
+                                            Margin="0,0,10,0"
+                                            IsEnabled="{Binding PathingConfig.AutoFightConfig.ArlecchinoAutoEnabled, Mode=TwoWay}"
+                                            Text="{Binding PathingConfig.AutoFightConfig.SkillCdForQ, Mode=TwoWay}" />
+                                
                                 <ui:ToggleSwitch Grid.Row="0"
                                                  Grid.RowSpan="2"
-                                                 Grid.Column="2"
+                                                 Grid.Column="3"
                                                  Margin="0,0,12,0"
                                                  IsChecked="{Binding PathingConfig.AutoFightConfig.ArlecchinoAutoEnabled, Mode=TwoWay}" />
                             </Grid>
