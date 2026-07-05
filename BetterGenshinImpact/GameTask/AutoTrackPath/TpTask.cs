@@ -322,6 +322,10 @@ public class TpTask
         else
         {
             await Delay(500, ct);
+            if (!await WaitForBigMapUiOrTimeoutAsync(2000))
+            {
+                Logger.LogWarning("等待大地图界面超时（2000ms），可能地图尚未打开，继续按原逻辑读取缩放级别2");
+            }
         }
 
         Rect bigMapInAllMapRect;
@@ -717,6 +721,10 @@ public class TpTask
         else
         {
             await Delay(500, ct);
+            if (!await WaitForBigMapUiOrTimeoutAsync(2000))
+            {
+                Logger.LogWarning("等待大地图界面超时（2000ms），可能地图尚未打开，继续按原逻辑读取缩放级别");
+            }
         }
 
         // 旧行为：固定 1000ms 后再 3 次 500ms 重试

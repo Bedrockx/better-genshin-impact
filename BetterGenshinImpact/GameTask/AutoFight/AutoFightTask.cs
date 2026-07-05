@@ -572,6 +572,12 @@ public class AutoFightTask : ISoloTask
         {
             Logger.LogInformation("自动战斗：继承地图追踪队伍Cd信息...");
             combatScenes = PathingConditionConfig.CombatScenesGoBackUp;
+            // foreach (var avatar in combatScenes.GetAvatars())
+            // {
+            //     Logger.LogInformation("队伍角色 {Name} 当前剩余E技能CD：{Cd} 秒",
+            //         avatar.Name,
+            //         Math.Round(avatar.GetSkillCdSeconds(), 2));
+            // }
         }
         
         /*var combatScenes = new CombatScenes().InitializeTeam(CaptureToRectArea());
@@ -2028,7 +2034,8 @@ public class AutoFightTask : ISoloTask
             }
             
             await EndBloodCheck(ct,combatScenes);
-            
+
+            PathingConditionConfig.CombatScenesGoBackUp = combatScenes;
             Simulation.ReleaseAllKey(); 
             
         }

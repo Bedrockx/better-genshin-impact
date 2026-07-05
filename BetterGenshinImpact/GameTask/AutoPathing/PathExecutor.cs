@@ -877,6 +877,22 @@ public class PathExecutor
                                 
                                 if (waypoint.Action == ActionEnum.Fight.Code)
                                 {
+                                    if (PathingConditionConfig.CombatScenesGoBackUp is not null)
+                                    {
+                                        if (PathingConditionConfig.CombatScenesGoBackUp.Avatars.Select(avatar => avatar.Name).ToArray()
+                                            .SequenceEqual(_combatScenes.Avatars.Select(a => a.Name).ToArray()))
+                                        {
+                                            Logger.LogInformation("地图追踪：继承自动战斗队伍Cd信息...");
+                                            _combatScenes = PathingConditionConfig.CombatScenesGoBackUp;
+
+                                            // foreach (var avatar in _combatScenes.GetAvatars())
+                                            // {
+                                            //     Logger.LogInformation("队伍角色 {Name} 当前剩余E技能CD：{Cd} 秒",
+                                            //         avatar.Name,
+                                            //         Math.Round(avatar.GetSkillCdSeconds(), 2));
+                                            // }
+                                        }
+                                    }
                                     // === 联机模式：战斗中触发复苏的统一处理 ===
                                     // 优先级：先消费复苏信号 → 去神像 → 抛 RetryException 跳到下一段汇合
                                     // 设计参考 design.md §3 / bugfix.md 2.1 / 2.2 / 2.9
@@ -1739,7 +1755,7 @@ public class PathExecutor
                 return false;
             }
         }
-
+        
         return true;
     }
 
