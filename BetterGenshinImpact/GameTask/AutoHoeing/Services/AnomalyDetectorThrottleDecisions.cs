@@ -28,4 +28,19 @@ public static class AnomalyDetectorThrottleDecisions
         if (!revivalHit) return false;          // 未命中：根本不进入分支，无需 continue
         return !suppressAutoRevivalClick;       // 仅非抑制 + 命中才 continue
     }
+
+    /// <summary>
+    /// 联机"已倒下"色块检测二次确认决策：给定首帧与二次确认帧（重新捕获）的检测结果，
+    /// 决定是否应执行后续复苏处理（点击 / 信号 / 回调）。
+    /// 连续两帧都命中才执行；任一帧未命中都不执行（未命中或瞬时误触发）。
+    /// 详见 .kiro/specs/hoeing-multiplayer-defeated-colorblock-false-trigger-recheck-fix
+    /// /design.md §决策函数纯化。
+    /// </summary>
+    /// <param name="firstHit">首帧 IsMultiplayerDefeated 结果。</param>
+    /// <param name="recheckHit">等待 400ms 后重新捕获帧的 IsMultiplayerDefeated 结果。</param>
+    /// <returns>true：两帧都命中，应执行复苏处理；false：不执行。</returns>
+    public static bool ShouldProcessMultiplayerDefeated(bool firstHit, bool recheckHit)
+    {
+        return firstHit && recheckHit;
+    }
 }

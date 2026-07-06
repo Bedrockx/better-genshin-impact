@@ -744,10 +744,12 @@ public class Avatar
     public void Attack(int ms = 0)
 {
     var isTimes = 0;
+    var qiTimes = 0;
 
     // 新增：计时变量
     var lastChargeTime = DateTime.Now;
     var redTime = DateTime.Now;
+    var qiTime = DateTime.Now;
 
     while (ms >= 0)
     {
@@ -854,9 +856,10 @@ public class Avatar
             if (bb22 || aa)
             {
                 // Logger.LogError("E-CD:{t}", cc);
-                if (isTimes > 2)
+                if (isTimes > 2 || qiTimes > 2)
                 {
                     isTimes = 0;
+                    qiTimes = 0;
                     // Logger.LogError("放Q情况 {t1} {t2}", bb22, aa);
                     using var region999 = CaptureToRectArea();
                     var bb222 = !IsQi(region999);
@@ -906,12 +909,10 @@ public class Avatar
 
                 if (aa)
                 {
-                    // Logger.LogWarning("红血1 {isTimes}",isTimes);
-
                     if ((DateTime.Now - redTime).TotalMilliseconds >= 100)
                     {
                         redTime = DateTime.Now;
-                        isTimes += 1; 
+                        isTimes += 2; 
                     }
                     else
                     {
@@ -921,15 +922,14 @@ public class Avatar
 
                 if (bb22)
                 {
-                    // Logger.LogWarning("契空1 {isTimes}",isTimes);
-                    if ((DateTime.Now - redTime).TotalMilliseconds >= 100)
+                    if ((DateTime.Now - qiTime).TotalMilliseconds >= 100)
                     {
-                        redTime = DateTime.Now;
-                        isTimes += 1; 
+                        qiTime = DateTime.Now;
+                        qiTimes += 1; 
                     }
                     else
                     {
-                        isTimes = 0;
+                        qiTimes = 0;
                     }
                 }
                 
@@ -940,7 +940,8 @@ public class Avatar
             }
             else
             {
-                isTimes = 0;
+                if(!aa)isTimes = 0;
+                if(!bb22)qiTimes = 0;
                 Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
                 Sleep(100, Ct);
             }
