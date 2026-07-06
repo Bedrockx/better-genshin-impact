@@ -43,18 +43,40 @@ public partial class AutoFightViewModel : ObservableObject, IViewModel
         var files = Directory.GetFiles(folder, "*.*",
             SearchOption.AllDirectories);
 
-        var strategyList = new string[files.Length];
-        for (var i = 0; i < files.Length; i++)
+        // 同时扫描 TXT 与 JSON 策略，均去扩展名显示；路径解析由 AutoFightParam.ResolveStrategyPath 按文件存在性判断
+        var count = 0;
+        foreach (var file in files)
         {
-            if (files[i].EndsWith(".txt"))
+            var extLower = Path.GetExtension(file).ToLowerInvariant();
+            if (extLower == ".txt" || extLower == ".json")
+                count++;
+        }
+
+        var strategyList = new string[count];
+        var idx = 0;
+        foreach (var file in files)
+        {
+            string? ext = null;
+            var extLower = Path.GetExtension(file).ToLowerInvariant();
+            if (extLower == ".txt")
             {
-                var strategyName = files[i].Replace(folder, "").Replace(".txt", "");
-                if (strategyName.StartsWith('\\'))
+                ext = ".txt";
+            }
+            else if (extLower == ".json")
+            {
+                ext = ".json";
+            }
+
+            if (ext != null)
+            {
+                var relativePath = Path.GetRelativePath(folder, file);
+                var strategyName = Path.ChangeExtension(relativePath, null);
+                if (strategyName.StartsWith('\\') || strategyName.StartsWith('/'))
                 {
                     strategyName = strategyName[1..];
                 }
 
-                strategyList[i] = strategyName;
+                strategyList[idx++] = strategyName;
             }
         }
 

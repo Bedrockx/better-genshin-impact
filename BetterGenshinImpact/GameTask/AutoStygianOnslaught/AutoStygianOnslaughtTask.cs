@@ -80,14 +80,26 @@ public class AutoStygianOnslaughtTask : StateMachineBase<StygianState, BvPage>, 
     protected override ILogger Logger => TaskControl.Logger;
 
     private readonly AutoStygianOnslaughtParam _taskParam;
-    private readonly CombatScriptBag _combatScriptBag;
+    private readonly CombatScriptBag? _combatScriptBag;
+    // JSON 战斗策略路径（非空表示走 AutoFightJsonTask，TXT 脚本包不解析）
+    private readonly string? _jsonCombatStrategyPath;
     private List<ResinUseRecord> _resinPriorityListWhenSpecifyUse;
     private LowerHeadThenWalkToTask? _lowerHeadThenWalkToTask;
     public AutoStygianOnslaughtTask(AutoStygianOnslaughtParam taskParam)
     {
         AutoFightAssets.DestroyInstance();
         _taskParam = taskParam;
-        _combatScriptBag = CombatScriptParser.ReadAndParse(taskParam.CombatScriptBagPath);
+        // JSON 策略：跳过 TXT 脚本包解析，改由 AutoFightJsonTask 处理
+        if (taskParam.CombatScriptBagPath != null
+            && taskParam.CombatScriptBagPath.EndsWith(".json", System.StringComparison.OrdinalIgnoreCase))
+        {
+            _jsonCombatStrategyPath = taskParam.CombatScriptBagPath;
+            _combatScriptBag = null;
+        }
+        else
+        {
+            _combatScriptBag = CombatScriptParser.ReadAndParse(taskParam.CombatScriptBagPath);
+        }
         _resinPriorityListWhenSpecifyUse = ResinUseRecord.BuildFromDomainParam(taskParam);
 
         // 注册所有状态处理器
@@ -97,7 +109,16 @@ public class AutoStygianOnslaughtTask : StateMachineBase<StygianState, BvPage>, 
     {
         AutoFightAssets.DestroyInstance();
         _taskParam = taskParam;
-        _combatScriptBag = CombatScriptParser.ReadAndParse(path);
+        // JSON 策略：跳过 TXT 脚本包解析，改由 AutoFightJsonTask 处理
+        if (path != null && path.EndsWith(".json", System.StringComparison.OrdinalIgnoreCase))
+        {
+            _jsonCombatStrategyPath = path;
+            _combatScriptBag = null;
+        }
+        else
+        {
+            _combatScriptBag = CombatScriptParser.ReadAndParse(path);
+        }
         _resinPriorityListWhenSpecifyUse = ResinUseRecord.BuildFromDomainParam(taskParam);
 
         // 注册所有状态处理器
@@ -764,7 +785,10 @@ public class AutoStygianOnslaughtTask : StateMachineBase<StygianState, BvPage>, 
 
     private async Task<List<CombatCommand>> PrepareForBattleLoop(CombatScenes combatScenes)
     {
-        var combatCommands = FindCombatScriptAndSwitchAvatar(combatScenes);
+        // JSON 策略由 AutoFightJsonTask 自行识别与切换，跳过 TXT 脚本包匹配
+        var combatCommands = _jsonCombatStrategyPath != null
+            ? new List<CombatCommand>()
+            : FindCombatScriptAndSwitchAvatar(combatScenes);
         await Delay(1500, _ct);
 
         Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
@@ -894,19 +918,36 @@ public class AutoStygianOnslaughtTask : StateMachineBase<StygianState, BvPage>, 
             try
             {
                 AutoFightTask.FightStatusFlag = true;
-                while (!cts.Token.IsCancellationRequested)
+
+                // JSON 策略：委托给 AutoFightJsonTask（幽境结束检测仍由 domainEndTask 接管，故关闭其内部结束检测）
+                if (_jsonCombatStrategyPath != null)
                 {
-                    for (var i = 0; i < combatCommands.Count; i++)
+                    var jsonParam = new AutoFightParam(_jsonCombatStrategyPath, TaskContext.Instance().Config.AutoFightConfig)
                     {
-                        var command = combatCommands[i];
-                        var lastCommand = i == 0 ? command : combatCommands[i - 1];
-                        command.Execute(combatScenes, lastCommand);
+                        FightFinishDetectEnabled = false
+                    };
+                    new AutoFightJsonTask(jsonParam).Start(cts.Token).Wait(cts.Token);
+                }
+                else
+                {
+                    while (!cts.Token.IsCancellationRequested)
+                    {
+                        for (var i = 0; i < combatCommands.Count; i++)
+                        {
+                            var command = combatCommands[i];
+                            var lastCommand = i == 0 ? command : combatCommands[i - 1];
+                            command.Execute(combatScenes, lastCommand);
+                        }
                     }
                 }
             }
             catch (NormalEndException e)
             {
                 Logger.LogInformation("战斗操作中断：{Msg}", e.Message);
+            }
+            catch (OperationCanceledException)
+            {
+                // 幽境结束检测触发的正常取消，静默处理
             }
             catch (Exception e)
             {

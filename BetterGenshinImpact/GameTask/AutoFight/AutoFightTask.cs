@@ -467,7 +467,7 @@ public class AutoFightTask : ISoloTask
     /// 联机锄地双采样稳定性缓冲：与 _lastRecognizedAvatarFingerprint 比较，不一致则再识别一次。
     /// 详见 .kiro/specs/combat-scenes-recognition-stability-buffer/design.md §2.2 决策表。
     /// </summary>
-    private CombatScenes ApplyStabilityBuffer(CombatScenes first, CancellationToken ct)
+    internal static CombatScenes ApplyStabilityBuffer(CombatScenes first, CancellationToken ct)
     {
         var firstFp = ComputeAvatarFingerprint(first);
         var prev = _lastRecognizedAvatarFingerprint;

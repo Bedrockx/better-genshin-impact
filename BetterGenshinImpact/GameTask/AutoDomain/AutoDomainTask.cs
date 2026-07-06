@@ -106,7 +106,9 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
     private readonly AutoDomainConfig _config;
 
-    private readonly CombatScriptBag _combatScriptBag;
+    private readonly CombatScriptBag? _combatScriptBag;
+    // JSON 战斗策略路径（非空表示走 AutoFightJsonTask，TXT 脚本包不解析）
+    private readonly string? _jsonCombatStrategyPath;
     private readonly Dictionary<string, int> _rewardSummary = new();
 
     private CancellationToken _ct;
@@ -143,7 +145,17 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
         _config = TaskContext.Instance().Config.AutoDomainConfig;
 
-        _combatScriptBag = CombatScriptParser.ReadAndParse(_taskParam.CombatStrategyPath);
+        // JSON 策略：跳过 TXT 脚本包解析，改由 AutoFightJsonTask 处理
+        if (_taskParam.CombatStrategyPath != null
+            && _taskParam.CombatStrategyPath.EndsWith(".json", System.StringComparison.OrdinalIgnoreCase))
+        {
+            _jsonCombatStrategyPath = _taskParam.CombatStrategyPath;
+            _combatScriptBag = null;
+        }
+        else
+        {
+            _combatScriptBag = CombatScriptParser.ReadAndParse(_taskParam.CombatStrategyPath);
+        }
 
         _resinPriorityListWhenSpecifyUse = ResinUseRecord.BuildFromDomainParam(taskParam);
 
@@ -282,8 +294,10 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
             RetryTeamInit(combatScenes); // 队伍没初始化成功则重试
 
-            // 0. 切换到第一个角色
-            var combatCommands = FindCombatScriptAndSwitchAvatar(combatScenes);
+            // 0. 切换到第一个角色（JSON 策略由 AutoFightJsonTask 自行识别与切换）
+            var combatCommands = _jsonCombatStrategyPath != null
+                ? new List<CombatCommand>()
+                : FindCombatScriptAndSwitchAvatar(combatScenes);
 
             // 1. 走到钥匙处启动
             Logger.LogInformation("自动秘境：{Text}", "1. 走到钥匙处启动");
@@ -798,18 +812,35 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             try
             {
                 AutoFightTask.FightStatusFlag = true;
-                while (!cts.Token.IsCancellationRequested)
+
+                // JSON 策略：委托给 AutoFightJsonTask（秘境结束检测仍由 domainEndTask 接管，故关闭其内部结束检测）
+                if (_jsonCombatStrategyPath != null)
                 {
-                    // 通用化战斗策略
-                    foreach (var command in combatCommands)
+                    var jsonParam = new AutoFightParam(_jsonCombatStrategyPath, TaskContext.Instance().Config.AutoFightConfig)
                     {
-                        command.Execute(combatScenes);
+                        FightFinishDetectEnabled = false
+                    };
+                    new AutoFightJsonTask(jsonParam).Start(cts.Token).Wait(cts.Token);
+                }
+                else
+                {
+                    while (!cts.Token.IsCancellationRequested)
+                    {
+                        // 通用化战斗策略
+                        foreach (var command in combatCommands)
+                        {
+                            command.Execute(combatScenes);
+                        }
                     }
                 }
             }
             catch (NormalEndException e)
             {
                 Logger.LogInformation("战斗操作中断：{Msg}", e.Message);
+            }
+            catch (OperationCanceledException)
+            {
+                // 秘境结束检测触发的正常取消，静默处理
             }
             catch (Exception e)
             {

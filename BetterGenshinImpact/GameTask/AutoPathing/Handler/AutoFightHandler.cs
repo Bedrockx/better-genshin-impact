@@ -180,11 +180,8 @@ internal class AutoFightHandler : IActionHandler
 
     private string GetFightStrategy(AutoFightConfig config)
     {
-        var path = Global.Absolute(@"User\AutoFight\" + config.StrategyName + ".txt");
-        if ("根据队伍自动选择".Equals(config.StrategyName) || string.IsNullOrEmpty(config.StrategyName))
-        {
-            path = Global.Absolute(@"User\AutoFight\");
-        }
+        // 按文件存在性解析 .txt / .json 路径（支持 JSON 战斗策略）
+        var path = AutoFightParam.ResolveStrategyPath(config.StrategyName);
 
         if (!File.Exists(path) && !Directory.Exists(path))
         {

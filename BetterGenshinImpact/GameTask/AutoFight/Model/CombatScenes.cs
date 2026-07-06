@@ -346,8 +346,46 @@ public class CombatScenes : IDisposable
             costumeName = className[(i + 7)..];
         }
 
-        var avatar = DefaultAutoFightConfig.CombatAvatarNameEnMap[nameEn];
-        return (avatar.Name, costumeName);
+        if (DefaultAutoFightConfig.CombatAvatarNameEnMap.TryGetValue(nameEn, out var avatar))
+        {
+            return (avatar.Name, costumeName);
+        }
+
+        // YOLO识别结果不在角色字典中（如NPC类别）
+        // 若开启了假装识别，尝试使用自定义假装名称作为角色名返回
+        if (Config.CustomAvatarConfigOut.CustomAvatarEnabled)
+        {
+            foreach (var displayName in new[]
+                     {
+                         Config.CustomAvatarConfigOut.CustomAvatar1DisplayName,
+                         Config.CustomAvatarConfigOut.CustomAvatar2DisplayName,
+                     })
+            {
+                if (!string.IsNullOrEmpty(displayName))
+                {
+                    // 如果假装名称在角色库中有定义，则取其中文名返回
+                    if (DefaultAutoFightConfig.CombatAvatarMap.TryGetValue(displayName, out var displayAvatar))
+                    {
+                        Logger.LogInformation("未知角色 {NameEn}，假装识别为 {DisplayName}", nameEn, displayName);
+                        return (displayAvatar.Name, costumeName);
+                    }
+
+                    // 假装名称不在角色库中 → 临时加入字典，确保下游 Avatar 构造等环节不崩溃
+                    var tempAvatar = new CombatAvatar
+                    {
+                        Name = displayName,
+                        NameEn = nameEn,
+                    };
+                    DefaultAutoFightConfig.CombatAvatarMap[displayName] = tempAvatar;
+                    DefaultAutoFightConfig.CombatAvatarNameEnMap[nameEn] = tempAvatar;
+                    Logger.LogInformation("未知角色 {NameEn}，假装识别为新角色 {DisplayName}（已临时加入字典）", nameEn, displayName);
+                    return (displayName, costumeName);
+                }
+            }
+        }
+
+        Logger.LogWarning("未知角色英文名 {NameEn}，不在角色库中，请检查角色识别配置", nameEn);
+        return (nameEn, costumeName);
     }
 
     public static Mat ConvertRgb24ToMat(Image<Rgb24> img)
@@ -442,21 +480,33 @@ public class CombatScenes : IDisposable
                          (Config.CustomAvatarConfigOut.CustomAvatar2Name3, Config.CustomAvatarConfigOut.CustomAvatar2DisplayName, Config.CustomAvatarConfigOut.CustomAvatar2Confidence),
                      })
             {
-                if (!string.IsNullOrEmpty(customAvatarName))
+                if (!string.IsNullOrEmpty(customAvatarName) && !string.IsNullOrEmpty(customAvatarDisplayName))
                 {
-                    var customAvatarNameEn = DefaultAutoFightConfig.CombatAvatarMap[customAvatarName].NameEn;
-                    var customAvatarEn = DefaultAutoFightConfig.CombatAvatarMap[customAvatarDisplayName].NameEn;
-                    
-                    if (topClass.Name.Name.Contains(customAvatarNameEn))
+                    // 尝试从角色库获取英文名（新角色可能不在库中，不强求）
+                    DefaultAutoFightConfig.CombatAvatarMap.TryGetValue(customAvatarName, out var customAvatar);
+                    DefaultAutoFightConfig.CombatAvatarMap.TryGetValue(customAvatarDisplayName, out var displayAvatar);
+                    var customAvatarNameEn = customAvatar?.NameEn;
+                    var customAvatarEn = displayAvatar?.NameEn;
+
+                    // 条件A：YOLO输出名称包含配置的英文名（如"QinCostume"含"Qin"）
+                    if (customAvatarNameEn != null && topClass.Name.Name.Contains(customAvatarNameEn))
                     {
                         Logger.LogInformation("{Text1} 假装识别为 {Text2}", customAvatarName, customAvatarDisplayName);
-                        return customAvatarEn;
+                        return customAvatarEn ?? topClass.Name.Name;
                     }
 
+                    // 条件B：置信度低于用户设定的阈值
                     if (topClass.Confidence < customAvatarConfidence)
                     {
                         Logger.LogInformation("置信度 {Text1} 低于设置的阈值 {Text2} 假装识别为 {Text3}", topClass.Confidence, customAvatarConfidence, customAvatarDisplayName);
-                        return customAvatarEn;
+                        return customAvatarEn ?? topClass.Name.Name;
+                    }
+
+                    // 条件C：YOLO输出的类别名不在角色字典中（如NPC类别"MarionetteNPC"），也应用假装映射
+                    if (!DefaultAutoFightConfig.CombatAvatarNameEnMap.ContainsKey(topClass.Name.Name))
+                    {
+                        Logger.LogInformation("未知YOLO类别 {NameEn}，假装识别为 {DisplayName}", topClass.Name.Name, customAvatarDisplayName);
+                        return customAvatarEn ?? topClass.Name.Name;
                     }
                 }
             }

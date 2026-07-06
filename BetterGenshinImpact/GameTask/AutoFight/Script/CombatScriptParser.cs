@@ -51,6 +51,12 @@ public class CombatScriptParser
 
     public static CombatScript Parse(string path)
     {
+        // JSON 策略文件应由 AutoFightJsonTask 处理，TXT 解析器不应误解析
+        if (path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Exception("JSON 策略文件请使用 AutoFightJsonTask，请检查策略选择逻辑");
+        }
+
         var script = File.ReadAllText(path);
         var combatScript = ParseContext(script);
         combatScript.Path = path;

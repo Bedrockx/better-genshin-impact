@@ -151,6 +151,8 @@ public class AutoFightAssets : BaseAssets<AutoFightAssets>
             { "Floral", "纱中幽兰" },
             { "Summertime", "闪耀协奏" },
             { "Sea", "海风之梦" },
+            { "NightWhisper", "星与烟帷的夜语" },
+            { "Holmes", "赫尔洛克变奏曲" },
         };
 
         // 联机

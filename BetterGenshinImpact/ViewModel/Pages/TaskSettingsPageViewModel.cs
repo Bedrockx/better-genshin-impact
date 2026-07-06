@@ -902,8 +902,11 @@ public partial class TaskSettingsPageViewModel : ViewModel
         var param = new AutoFightParam(path, Config.AutoFightConfig);
 
         SwitchAutoFightEnabled = true;
+        // 按策略文件扩展名路由到 JSON 或 TXT 战斗任务
+        var fightTask = BetterGenshinImpact.GameTask.AutoFight.Factory.CombatTaskFactoryProvider
+            .GetFactory(path).CreateTask(param);
         await new TaskRunner()
-            .RunSoloTaskAsync(new AutoFightTask(param));
+            .RunSoloTaskAsync(fightTask);
         SwitchAutoFightEnabled = false;
     }
 
@@ -943,11 +946,8 @@ public partial class TaskSettingsPageViewModel : ViewModel
             return true;
         }
 
-        path = Global.Absolute(@"User\AutoFight\" + strategyName + ".txt");
-        if ("根据队伍自动选择".Equals(strategyName))
-        {
-            path = Global.Absolute(@"User\AutoFight\");
-        }
+        // 按文件存在性解析 .txt / .json 路径（支持 JSON 战斗策略）
+        path = BetterGenshinImpact.GameTask.AutoFight.AutoFightParam.ResolveStrategyPath(strategyName);
 
         if (!File.Exists(path) && !Directory.Exists(path))
         {

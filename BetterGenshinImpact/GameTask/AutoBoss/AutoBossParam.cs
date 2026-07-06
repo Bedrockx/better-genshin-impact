@@ -168,8 +168,7 @@ public class AutoBossParam : BaseTaskParam<AutoBossTask>
     /// <returns>策略文件路径；“根据队伍自动选择”返回自动战斗策略目录。</returns>
     private static string BuildCombatStrategyPath(string strategyName)
     {
-        return AutoStrategyName.Equals(strategyName)
-            ? Global.Absolute(@"User\AutoFight\")
-            : Global.Absolute(@"User\AutoFight\" + strategyName + ".txt");
+        // 按文件存在性解析 .txt / .json 路径（支持 JSON 战斗策略）
+        return BetterGenshinImpact.GameTask.AutoFight.AutoFightParam.ResolveStrategyPath(strategyName);
     }
 }

@@ -107,6 +107,25 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
 
     public string CombatStrategyPath { get; set; }
 
+    /// <summary>
+    /// 根据策略名称解析完整路径（支持 .txt 和 .json）
+    /// 优先返回存在的文件，都不存在时返回 .txt 路径
+    /// </summary>
+    public static string ResolveStrategyPath(string strategyName)
+    {
+        if ("根据队伍自动选择".Equals(strategyName) || string.IsNullOrEmpty(strategyName))
+        {
+            return Global.Absolute(@"User\AutoFight\");
+        }
+        var txtPath = Global.Absolute(@"User\AutoFight\" + strategyName + ".txt");
+        if (System.IO.File.Exists(txtPath))
+            return txtPath;
+        var jsonPath = Global.Absolute(@"User\AutoFight\" + strategyName + ".json");
+        if (System.IO.File.Exists(jsonPath))
+            return jsonPath;
+        return txtPath;
+    }
+
     public bool FightFinishDetectEnabled { get; set; } = false;
     public bool PickDropsAfterFightEnabled { get; set; } = false;
     public int PickDropsAfterFightSeconds { get; set; } = 15;
@@ -197,14 +216,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
             strategyName = TaskContext.Instance().Config.AutoFightConfig.StrategyName;
         }
 
-        if ("根据队伍自动选择".Equals(strategyName))
-        {
-            CombatStrategyPath =  Global.Absolute(@"User\AutoFight\");
-        }
-        else
-        {
-            CombatStrategyPath =  Global.Absolute(@"User\AutoFight\" + strategyName + ".txt");
-        }
+        CombatStrategyPath = ResolveStrategyPath(strategyName);
     }
 
     public void SetDefault()

@@ -4,6 +4,7 @@ using BetterGenshinImpact.Core.Script.Dependence;
 using BetterGenshinImpact.Core.Simulator;
 using BetterGenshinImpact.Core.Simulator.Extensions;
 using BetterGenshinImpact.GameTask.AutoFight.Config;
+using BetterGenshinImpact.GameTask.AutoFight.Script;
 using BetterGenshinImpact.GameTask.Model.Area;
 using BetterGenshinImpact.Helpers;
 using Microsoft.Extensions.Logging;
@@ -1208,6 +1209,12 @@ public class Avatar
                     Thread.Sleep(Name == "茜特菈莉"? 200:100);
                 }
                 region.Dispose();
+                
+                var recordedCd = ESkillCdTracker.Record(Name, cd);
+                if (recordedCd <= 0)
+                {
+                    recordedCd = ESkillCdTracker.ApplyFallback(Name);
+                }
             
                 if (cd > 0)
                 {

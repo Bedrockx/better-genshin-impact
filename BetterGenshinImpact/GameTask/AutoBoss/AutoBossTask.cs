@@ -44,7 +44,9 @@ public class AutoBossTask : ISoloTask<Dictionary<string, int>>
 
     private readonly ILogger<AutoBossTask> _logger = App.GetLogger<AutoBossTask>();
     private readonly AutoBossParam _taskParam;
-    private readonly CombatScriptBag _combatScriptBag;
+    private readonly CombatScriptBag? _combatScriptBag;
+    // JSON 战斗策略路径（非空表示走 AutoFightJsonTask，TXT 脚本包不解析）
+    private readonly string? _jsonCombatStrategyPath;
     private readonly ReturnMainUiTask _returnMainUiTask = new();
     private readonly Dictionary<string, int> _rewardSummary = new();
     private SwitchPartyTask? _switchPartyTask;
@@ -73,7 +75,17 @@ public class AutoBossTask : ISoloTask<Dictionary<string, int>>
             _taskParam.SetCombatStrategyPath(_taskParam.StrategyName);
         }
 
-        _combatScriptBag = CombatScriptParser.ReadAndParse(_taskParam.CombatStrategyPath);
+        // JSON 策略：跳过 TXT 脚本包解析，改由 AutoFightJsonTask 处理
+        if (_taskParam.CombatStrategyPath != null
+            && _taskParam.CombatStrategyPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            _jsonCombatStrategyPath = _taskParam.CombatStrategyPath;
+            _combatScriptBag = null;
+        }
+        else
+        {
+            _combatScriptBag = CombatScriptParser.ReadAndParse(_taskParam.CombatStrategyPath);
+        }
     }
 
     /// <summary>
@@ -883,6 +895,13 @@ public class AutoBossTask : ISoloTask<Dictionary<string, int>>
     {
         _logger.LogInformation("{Name}：执行战斗策略", Name);
 
+        // JSON 策略：走 AutoFightJsonTask（自身完成队伍识别与角色切换，不依赖 TXT 脚本包）
+        if (_jsonCombatStrategyPath != null)
+        {
+            await StartJsonFight();
+            return;
+        }
+
         // 保留原 AutoBoss 行为：战斗开始前先切到策略首个角色。
         var combatScenes = GetCombatScenesWithRetry();
         FindCombatScriptAndSwitchAvatar(combatScenes);
@@ -899,6 +918,26 @@ public class AutoBossTask : ISoloTask<Dictionary<string, int>>
         finally
         {
             combatScenes.AfterTask();
+        }
+    }
+
+    /// <summary>
+    /// 使用 JSON 战斗策略执行首领战斗（AutoFightJsonTask 自行识别队伍、切换角色、检测结束）。
+    /// </summary>
+    private async Task StartJsonFight()
+    {
+        var taskParam = BuildAutoFightParamForBoss();
+        try
+        {
+            await new AutoFightJsonTask(taskParam).Start(_ct);
+        }
+        catch (NormalEndException e)
+        {
+            _logger.LogInformation("战斗操作中断：{Msg}", e.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Boss JSON 战斗异常");
         }
     }
 

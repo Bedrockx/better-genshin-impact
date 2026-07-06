@@ -82,6 +82,7 @@ public class AutoStygianOnslaughtParam:BaseTaskParam<AutoStygianOnslaughtTask>
             return;
         }
 
-        CombatScriptBagPath= Global.Absolute(@"User\AutoFight\" + strategyName + ".txt");
+        // 统一按文件存在性解析 .txt / .json 路径（与 AutoFightParam 一致）
+        CombatScriptBagPath = BetterGenshinImpact.GameTask.AutoFight.AutoFightParam.ResolveStrategyPath(strategyName);
     }
 }

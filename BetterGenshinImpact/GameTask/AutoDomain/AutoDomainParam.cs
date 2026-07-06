@@ -110,12 +110,8 @@ public class AutoDomainParam : BaseTaskParam<AutoDomainTask>
             strategyName = TaskContext.Instance().Config.AutoFightConfig.StrategyName;
         }
 
-        if ("根据队伍自动选择".Equals(strategyName))
-        {
-            return Global.Absolute(@"User\AutoFight\");
-        }
-
-        return Global.Absolute(@"User\AutoFight\" + strategyName + ".txt");
+        // 按文件存在性解析 .txt / .json 路径（支持 JSON 战斗策略）
+        return BetterGenshinImpact.GameTask.AutoFight.AutoFightParam.ResolveStrategyPath(strategyName);
     }
 
     public void SetResinPriorityList(params string[] priorities)
