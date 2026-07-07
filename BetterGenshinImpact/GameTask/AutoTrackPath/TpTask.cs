@@ -635,22 +635,10 @@ public class TpTask
         }
 
         var (clickX, clickY) = ConvertToGameRegionPosition(mapName, bigMapInAllMapRect, x, y);
-        // 屏蔽左上角360x400区域
-        if (clickX < 360 * _zoomOutMax1080PRatio && clickY < 400 * _zoomOutMax1080PRatio)
-        {
-            return false;
-        }
-
-        // 屏蔽周围 115 一圈的区域
-        if (clickX < 115 * _zoomOutMax1080PRatio
-            || clickY < 115 * _zoomOutMax1080PRatio
-            || clickX > _captureRect.Width - 115 * _zoomOutMax1080PRatio
-            || clickY > _captureRect.Height - 115 * _zoomOutMax1080PRatio)
-        {
-            return false;
-        }
-
-        return true;
+        // 用五个精确 UI 危险区矩形替换旧的"左上 360×400 + 四周 115 圈"粗糙屏蔽。
+        // 命中任一 UI 矩形 → 危险（继续 MoveMapTo 避让）；否则可点击（含边缘中段）。
+        // 详见 .kiro/specs/teleport-drag-corner-ui-safezone-clamp/。
+        return TeleportClickSafeZone.IsClickable(clickX, clickY, _zoomOutMax1080PRatio);
     }
 
     /// <summary>
@@ -957,23 +945,50 @@ public class TpTask
         // 开始移动并放大地图
         for (var iteration = 0; iteration < _tpConfig.MaxIterations; iteration++)
         {
-            if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
+            // 放大决策抽为纯函数 TeleportZoomDecisions.ShouldZoomInThisIteration（便于 PBT）。
+            // 修复：快速拖动模式下 mouseDistance 已进入收工区间(<收工阈值) 且 缩放已在传送点可见档时
+            // 不再触发对定位无意义的放大；缩放仍大于显示档(普通点不渲染)时即使到位也继续放大，避免点空。
+            // 详见 .kiro/specs/teleport-fastmode-drag-redundant-zoom-before-click-fix/。
+            if (TeleportZoomDecisions.ShouldZoomInThisIteration(
+                    _tpConfig.MapMoveStepDivisor,
+                    _tpConfig.MapZoomEnabled,
+                    mouseDistance,
+                    currentZoomLevel,
+                    minZoomLevel,
+                    _tpConfig.PrecisionThreshold,
+                    retryTimes,
+                    _tpConfig.MapZoomInDistance,
+                    DisplayTpPointZoomLevel))
             {
-                if (mouseDistance < (_tpConfig.MapMoveStepDivisor ? 600 : _tpConfig.MapZoomInDistance))
-                {
-                    double targetZoomLevel = currentZoomLevel * mouseDistance / (_tpConfig.MapMoveStepDivisor ? 600 : _tpConfig.MapZoomInDistance);
-                    targetZoomLevel = Math.Max(targetZoomLevel, minZoomLevel);
-                    if (currentZoomLevel > minZoomLevel + _tpConfig.PrecisionThreshold)
-                    {
-                        await AdjustMapZoomLevel(currentZoomLevel, targetZoomLevel);
-                        using var ra4 = CaptureToRectArea();
-                        double nextZoomLevel = GetBigMapZoomLevel(ra4);
-                        totalMoveMouseX *= currentZoomLevel / nextZoomLevel;
-                        totalMoveMouseY *= currentZoomLevel / nextZoomLevel;
-                        mouseDistance *= currentZoomLevel / nextZoomLevel;
-                        currentZoomLevel = nextZoomLevel;
-                    }
-                }
+                double targetZoomLevel = currentZoomLevel * mouseDistance / (_tpConfig.MapMoveStepDivisor ? 600 : _tpConfig.MapZoomInDistance);
+                targetZoomLevel = Math.Max(targetZoomLevel, minZoomLevel);
+                await AdjustMapZoomLevel(currentZoomLevel, targetZoomLevel);
+                using var ra4 = CaptureToRectArea();
+                double nextZoomLevel = GetBigMapZoomLevel(ra4);
+                totalMoveMouseX *= currentZoomLevel / nextZoomLevel;
+                totalMoveMouseY *= currentZoomLevel / nextZoomLevel;
+                mouseDistance *= currentZoomLevel / nextZoomLevel;
+                currentZoomLevel = nextZoomLevel;
+            }
+
+            // 早停：快速拖动模式下传送点已落在含 margin 可点击安全区，提前 break（不必拖到正中心）。
+            // 复用当轮已刷新的 mapCenterPoint 推算屏幕坐标，减少冗余拖动轮数。
+            // 最终点击仍由 TpOnce 步骤5 的 IsPointInBigMapWindow 二次守门复核，早停不决定点击位置。
+            //
+            // iteration > 0 前置条件（关键）：MoveMapTo 仅在外层 do-while 的 IsPointInBigMapWindow
+            // 刚判定"不可点击"后才被调用，故 iteration==0（尚未拖动任何一次）时的早停必为假阳性——
+            // 它与刚做过的权威判据矛盾，且零拖动会导致外层反复重入、地图不动而 livelock 直至重试耗尽
+            // （旧日之海中心点识别不稳时的实测失败）。"0 次拖动即可点击"本就由外层在调用 MoveMapTo 前
+            // 用 IsPointInBigMapWindow 处理，故此门控不损失任何合法早停；提瓦特/层岩等均在拖动后
+            // （iteration>=1）才触发早停，行为不受影响。
+            // 详见 .kiro/specs/teleport-drag-early-stop-when-clickable/。
+            if (iteration > 0
+                && TeleportClickSafeZone.ShouldEarlyStopClick(
+                    _tpConfig.MapMoveStepDivisor, x, y, mapCenterPoint.X, mapCenterPoint.Y,
+                    _tpConfig.MapScaleFactor, currentZoomLevel, TeleportClickSafeZone.DefaultEarlyStopMargin))
+            {
+                TaskControl.Logger.LogDebug("传送点已进入可点击安全区，提前结束拖动（第 {I} 次）", iteration + 1);
+                break;
             }
 
             // 非常接近目标点，不再进一步调整
@@ -1119,17 +1134,17 @@ public class TpTask
                 using var ra = CaptureToRectArea().SrcMat;
                 double brightness = Cv2.Mean(ra).Val0;
                 TaskControl.Logger.LogDebug("地图亮度:{brightness}", brightness);
-                if (brightness < (mapName=="SeaOfBygoneEras" ? 35:48))
+                if (brightness < (mapName=="SeaOfBygoneEras" ? 35:50))
                 {
                     falseCount++;
                 
-                    if (falseCount > 2)
+                    if (falseCount > 1)
                     {
                         if (_tpConfig.MapMoveStepDivisor)Simulation.SendInput.Mouse.LeftButtonUp();
                         throw new Exception("地图亮度过低，重新传送");
                     }
 
-                    if (falseCount > 1)
+                    if (falseCount > 0)
                     {
                         Simulation.SendInput.Mouse.LeftButtonUp();
                         TaskControl.Logger.LogWarning("地图亮度过低");
