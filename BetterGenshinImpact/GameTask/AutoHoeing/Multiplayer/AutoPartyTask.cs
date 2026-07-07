@@ -987,36 +987,10 @@ public class AutoPartyTask
     /// </summary>
     private static bool IsInWhitelist(string ocrText, string[] whitelist)
     {
-        if (whitelist.Length == 0) return true;
-
-        // 提取原始名和备注名
-        // 格式如: "叶宝 (BGI红姐)" → 原始名="叶宝", 备注名="BGI红姐"
-        var names = new System.Collections.Generic.List<string>();
-        var bracketIdx = ocrText.IndexOfAny(new[] { '(', '（' });
-        if (bracketIdx > 0)
-        {
-            names.Add(ocrText[..bracketIdx].Trim());
-            var endIdx = ocrText.IndexOfAny(new[] { ')', '）' });
-            if (endIdx > bracketIdx)
-                names.Add(ocrText[(bracketIdx + 1)..endIdx].Trim());
-        }
-        else
-        {
-            names.Add(ocrText.Trim());
-        }
-
-        foreach (var wlName in whitelist)
-        {
-            var wl = wlName.Trim();
-            if (string.IsNullOrEmpty(wl)) continue;
-            foreach (var name in names)
-            {
-                if (string.IsNullOrEmpty(name)) continue;
-                if (FuzzyMatch(name, wl, 0.7))
-                    return true;
-            }
-        }
-        return false;
+        // 白名单条目侧与 OCR 文本侧对称拆括号，候选 × 候选笛卡尔积匹配。
+        // 纯逻辑抽到 WhitelistMatchDecisions 便于单测直接引用
+        // （feature: hoeing-whitelist-entry-bracket-remark-not-split-fix）。
+        return WhitelistMatchDecisions.IsInWhitelist(ocrText, whitelist);
     }
 
     /// <summary>
