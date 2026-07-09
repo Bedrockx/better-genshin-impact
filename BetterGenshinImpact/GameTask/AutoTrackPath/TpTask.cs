@@ -489,7 +489,7 @@ public class TpTask
         var (clickX, clickY) = ConvertToGameRegionPosition(mapName, bigMapInAllMapRect, x, y);
         TaskControl.Logger.LogInformation("点击传送点");
         using var ra4 = CaptureToRectArea();
-        ra4.ClickTo((int)clickX, (int)clickY);
+        ra4.ClickTo((int)clickX, (int)clickY-12);
 
         // 7. 触发一次快速传送功能
         if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
