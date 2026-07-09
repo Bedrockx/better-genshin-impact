@@ -285,7 +285,7 @@ public class TpTask
     /// <param name="mapName">独立地图名称</param>
     /// <param name="force">强制以当前的tpX,tpY坐标进行自动传送</param>
     /// <param name="retryTimes">重试次数</param>
-    private async Task<(double, double)> TpOnce(double tpX, double tpY, string mapName = "Teyvat", bool force = false, int retryTimes = 0, bool requireLoadingScreen = false, string? fastSyncId = null)
+    private async Task<(double, double)> TpOnce(double tpX, double tpY, string mapName = "Teyvat", bool force = false, int retryTimes = 0, bool requireLoadingScreen = false, string? fastSyncId = null, bool pullZoomForEdgeRecognition = false)
     {
         // 1. 确认在地图界面
         await OpenBigMapUi(1);
@@ -386,6 +386,33 @@ public class TpTask
         
         // 5. 判断传送点是否在当前界面，若否则移动地图
         // await WaitMapStableOrTimeoutAsync(1000,20,5); // fast-drag-recognition-acceleration spec
+
+        // 5.0 点击一次未出现传送点(TpPointNotActivate)后的重试：进入定位循环【之前】就把缩放拉到 5.5，
+        //     稳住纳塔↔须弥沙漠边沿"黑色区域"下的大地图位置识别（缩放越大→画面越缩小→单帧特征越多→
+        //     GetBigMapRect / IsPointInBigMapWindow 位置匹配越稳）。
+        //     必须放在这里而非 MoveMapTo 内：定位循环第一件事是 IsPointInBigMapWindow，若它直接判可点击就
+        //     break、根本不调 MoveMapTo，埋在 MoveMapTo 里的拉升会被跳过。
+        //     普通传送点在 5.5 下不渲染，但位置判据 IsPointInBigMapWindow 不依赖图标渲染，故定位有效；
+        //     点击前(步骤 6 之前)再降回 4.4 恢复渲染。
+        // edgeZoomApplied：本次是否为稳定边沿识别把缩放拉到了 5.5。两个触发路径共用：
+        //   (A) pullZoomForEdgeRecognition（点击未出现传送点重试，见下方 5.0）；
+        //   (B) 定位循环内连续两次"传送点不在当前大地图范围内"（见 do-while 内）。
+        // 只要任一路径拉过 5.5，点击前(5.6)就必须降回 4.4 恢复普通传送点渲染，否则会点在不渲染的空位。
+        bool edgeZoomApplied = false;
+
+        if (pullZoomForEdgeRecognition && _tpConfig.MapMoveStepDivisor)
+        {
+            using var raEdge = CaptureToRectArea();
+            double zoomNow = GetBigMapZoomLevel(raEdge);
+            if (Math.Abs(zoomNow - 5.5) > _tpConfig.PrecisionThreshold)
+            {
+                await AdjustMapZoomLevel(zoomNow, 5.5);
+                await Delay(200, ct);
+                TaskControl.Logger.LogInformation("点击未出现传送点重试：缩放拉到 5.5 稳定地图边沿位置识别");
+            }
+            edgeZoomApplied = true;
+        }
+
         bigMapInAllMapRect = GetBigMapRect(mapName);
         var retryCount = 0;
         do
@@ -398,6 +425,7 @@ public class TpTask
             }
             
             TaskControl.Logger.LogInformation("传送点不在当前大地图范围内，重新调整地图位置-1");
+
             await MoveMapTo(x, y, mapName,2,country, retryTimes);
             if (_tpConfig.MapMoveStepDivisor)
             {
@@ -438,6 +466,22 @@ public class TpTask
         //         bigMapInAllMapRect = GetBigMapRect(mapName);
         //     }
         // }
+
+        // 5.6 若本次任一路径(A 点击未出现传送点重试 / B 连续两次不在范围内)把缩放拉到了 5.5，
+        //     点击前降回可点击可见档(4.4)：普通传送点仅在 ≤4.4 渲染，5.5 下点击会点在不渲染的空位。
+        //     降档后重算 bigMapInAllMapRect 以得到 4.4 下的点击坐标。
+        if (edgeZoomApplied && _tpConfig.MapMoveStepDivisor)
+        {
+            using var raBack = CaptureToRectArea();
+            double zoomBack = GetBigMapZoomLevel(raBack);
+            if (Math.Abs(zoomBack - DisplayTpPointZoomLevel) > _tpConfig.PrecisionThreshold)
+            {
+                await AdjustMapZoomLevel(zoomBack, DisplayTpPointZoomLevel);
+                await Delay(200, ct);
+                TaskControl.Logger.LogInformation("边沿重试：点击前缩放降回 {Z:0.0} 恢复传送点渲染", DisplayTpPointZoomLevel);
+                bigMapInAllMapRect = GetBigMapRect(mapName);
+            }
+        }
 
         // 6. 计算传送点位置并点击
         // Debug.WriteLine($"({x},{y}) 在 {bigMapInAllMapRect} 内，计算它在窗体内的位置");
@@ -799,14 +843,19 @@ public class TpTask
 
     public async Task<(double, double)> Tp(double tpX, double tpY, string mapName = "Teyvat", bool force = false, bool requireLoadingScreen = false, string? fastSyncId = null)
     {
+        // 仅当"点击后选项列表没有传送点(TpPointNotActivate)"时，下一次重试才把缩放拉到 5.5 稳定边沿识别。
+        // 用专门标志而非笼统的 retryTimes>=1：后者会把"地图识别失败/亮度过低"等根本没点击过的失败也误判为
+        // "点击后没出现传送点"，导致无关失败也拉 5.5。
+        bool lastWasTpPointNotActivate = false;
         for (var i = 0; i < 3; i++)
         {
             try
             {
-                return await TpOnce(tpX, tpY, mapName, force, i, requireLoadingScreen, fastSyncId);
+                return await TpOnce(tpX, tpY, mapName, force, i, requireLoadingScreen, fastSyncId, lastWasTpPointNotActivate);
             }
             catch (TpPointNotActivate e)
             {
+                lastWasTpPointNotActivate = true;
                 // 传送点未激活或不存在 按ESC回到大地图界面
                 Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
                 await Delay(300, ct);
@@ -823,6 +872,7 @@ public class TpTask
             }
             catch (Exception e)
             {
+                lastWasTpPointNotActivate = false; // 非"点击后没传送点"的失败，下次重试不拉 5.5
                 TaskControl.Logger.LogError("传送失败，重试 {I} 次", i + 1);
                 // TaskControl.Logger.LogDebug(e, "传送失败，重试 {I} 次", i + 1);
                 if (_tpConfig.MapMoveStepDivisor)Simulation.SendInput.Mouse.LeftButtonUp();
@@ -1157,6 +1207,25 @@ public class TpTask
                         {
                             // 直接切换地区
                             await SwitchArea(MapTypesExtensions.ParseFromName(mapName).GetDescription());
+                        }
+                        // 切换地图/地区后画面完全变化，旧 mapCenterPoint 已失效。若直接 continue，下一轮会先
+                        // 用切换前的旧中心点算拖动方向/距离（真正的重新识别要等下一轮拖动后才发生），导致拖错方向。
+                        // 故此处等地图稳定后立即重新识别中心点并重算 offset/mouseDistance；识别失败则维持旧行为，
+                        // 交由下一轮拖动后识别兜底。
+                        await WaitMapStableOrTimeoutAsync(1000);
+                        try
+                        {
+                            mapCenterPoint = GetPositionFromBigMap(mapName);
+                            (xOffset, yOffset) = (x - mapCenterPoint.X, y - mapCenterPoint.Y);
+                            totalMoveMouseX = _tpConfig.MapScaleFactor * Math.Abs(xOffset) / currentZoomLevel;
+                            totalMoveMouseY = _tpConfig.MapScaleFactor * Math.Abs(yOffset) / currentZoomLevel;
+                            mouseDistance = Math.Sqrt(totalMoveMouseX * totalMoveMouseX + totalMoveMouseY * totalMoveMouseY);
+                            TaskControl.Logger.LogDebug("亮度过低切换地图后重新识别中心点成功");
+                        }
+                        catch (MapPositionNotRecognizedException)
+                        {
+                            // 切换后地图尚未完全就绪、识别失败：不更新坐标，交给下一轮循环拖动后识别兜底。
+                            TaskControl.Logger.LogDebug("亮度过低切换地图后中心点识别仍失败，下一轮再试");
                         }
                         continue;
                     }
@@ -1617,6 +1686,9 @@ public class TpTask
     public Rect GetBigMapRect(string mapName)
     {
         var rect = new Rect();
+        bool scrolledOnce = false;      // 滚轮兜底只做一次
+        bool zoomChangedForRecover = false; // 是否为识别把缩放临时拉到 5.5（成功后需复原）
+        double savedZoomLevel = 0;      // 记录拉 5.5 前的原缩放，识别成功后复原，避免污染调用方
         NewRetry.Do(() =>
         {
             // 判断是否在地图界面
@@ -1640,9 +1712,40 @@ public class TpTask
                 
                 if (rect == default)
                 {
-                    // 滚轮调整后再次识别
-                    Simulation.SendInput.Mouse.VerticalScroll(2);
-                    Sleep(500);
+                    if (!scrolledOnce)
+                    {
+                        // 第一次识别失败：滚轮调整一次后再识别（只做一次）
+                        Simulation.SendInput.Mouse.VerticalScroll(2);
+                        scrolledOnce = true;
+                        Sleep(500);
+                    }
+                    else
+                    {
+                        // 滚轮一次后仍失败：若在地下图层先切回地上；再把缩放临时拉到 5.5 稳定识别
+                        // （5.5 下画面缩小、特征更多，位置匹配更稳）。识别成功后在方法末尾把缩放复原，
+                        // 避免污染 MoveMapTo 等调用方持有的当前缩放值。
+                        using var raUnder = CaptureToRectArea();
+                        if (Bv.BigMapIsUnderground(raUnder))
+                        {
+                            TaskControl.Logger.LogInformation("识别大地图位置失败：检测到地下图层，切换到地上");
+                            using var raSwitch = CaptureToRectArea();
+                            raSwitch.Find(_assets.MapUndergroundToGroundButtonRo, rg => rg.Click());
+                            Sleep(300);
+                        }
+                        using var raZoom = CaptureToRectArea();
+                        double zoomNow = GetBigMapZoomLevel(raZoom);
+                        if (Math.Abs(zoomNow - 5.5) > _tpConfig.PrecisionThreshold)
+                        {
+                            if (!zoomChangedForRecover)
+                            {
+                                savedZoomLevel = zoomNow;   // 仅第一次记录原缩放
+                                zoomChangedForRecover = true;
+                            }
+                            TaskControl.Logger.LogInformation("识别大地图位置失败：缩放临时拉到 5.5 稳定识别");
+                            AdjustMapZoomLevel(zoomNow, 5.5).GetAwaiter().GetResult();
+                            Sleep(300);
+                        }
+                    }
                     throw new RetryException("识别大地图位置失败");
                 }
             }
@@ -1651,6 +1754,26 @@ public class TpTask
                 throw new RetryException("当前不在地图界面");
             }
         }, TimeSpan.FromMilliseconds(60), 20);
+
+        // 识别结束：若曾为识别临时拉过 5.5，复原到原缩放，避免污染调用方（成功或失败都要复原）
+        if (zoomChangedForRecover && savedZoomLevel > 0)
+        {
+            try
+            {
+                using var raNow = CaptureToRectArea();
+                double zoomNow = GetBigMapZoomLevel(raNow);
+                if (Math.Abs(zoomNow - savedZoomLevel) > _tpConfig.PrecisionThreshold)
+                {
+                    AdjustMapZoomLevel(zoomNow, savedZoomLevel).GetAwaiter().GetResult();
+                    TaskControl.Logger.LogInformation("识别完成：缩放复原到 {Z:0.0}", savedZoomLevel);
+                }
+            }
+            catch (Exception ex)
+            {
+                // 复原缩放失败不影响已识别到的 rect：记录告警，交由调用方后续按当前缩放继续
+                TaskControl.Logger.LogWarning("识别后复原缩放失败：{Msg}", ex.Message);
+            }
+        }
 
         if (rect == default)
         {

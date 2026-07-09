@@ -39,6 +39,7 @@ public static class TeleportClickSafeZone
         new DangerRect(1515, 959, 405, 121),  // 右下：菜单按键（延伸到 1920×1080）
         new DangerRect(0,    960, 105, 120),  // 左下：设置/图例按键
         new DangerRect(1780, 350, 140, 375),  // 右中：图层按键（竖条）
+        new DangerRect(0,    0,   1920, 20),  // 顶部：整宽 20px 顶边条
     };
 
     /// <summary>

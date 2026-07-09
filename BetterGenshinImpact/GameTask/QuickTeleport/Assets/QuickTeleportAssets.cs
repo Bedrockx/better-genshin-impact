@@ -166,9 +166,10 @@ public class QuickTeleportAssets : BaseAssets<QuickTeleportAssets>
                 (int)(90 * AssetScale),
                 (int)(570 * AssetScale)),
             UseMask = true,
+            Use3Channels = true, 
             MaskColor = Color.FromArgb(0, 255, 0),
             DrawOnWindow = true,
-            Threshold = 0.99
+            Threshold = 0.85
         }.InitTemplate();
     }
 
