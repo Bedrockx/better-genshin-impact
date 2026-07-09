@@ -1,3 +1,4 @@
+using BetterGenshinImpact.Core.Config;
 using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 using System;
@@ -9,7 +10,9 @@ namespace BetterGenshinImpact.GameTask.AutoSwitchRoles;
 /// <summary>
 /// 配对界面切换角色任务的资源加载器。
 /// 负责 ResourceDir 解析（固定不可配）、读图/读文、缺失策略（致命 vs 可恢复）。
-/// 运行时复用 JS 脚本目录 User/JsScript/AutoSwitchRoles/ 下的资源，只读不写。
+/// 模板图/头像图/attribute.txt 复用 JS 脚本目录 User/JsScript/AutoSwitchRoles/ 下的资源，只读不写；
+/// 别名表 combat_avatar.json 复用 BGI 本体 GameTask/AutoFight/Assets/combat_avatar.json（内置、随构建输出，
+/// 与换武器 CombatAvatarRepository 同源），不再依赖 JS 目录里那份（该份在 Debug 构建下缺失，会致命终止切角色）。
 /// </summary>
 public class AutoSwitchRolesResources
 {
@@ -17,6 +20,9 @@ public class AutoSwitchRolesResources
 
     /// <summary>资源根目录，固定为 AppContext.BaseDirectory/User/JsScript/AutoSwitchRoles。</summary>
     public string ResourceDir { get; }
+
+    /// <summary>别名表路径，复用 BGI 本体内置的 combat_avatar.json（随构建输出到 GameTask/AutoFight/Assets）。</summary>
+    private static string CombatAvatarPath => Global.Absolute(@"GameTask\AutoFight\Assets\combat_avatar.json");
 
     /// <summary>别名 → 正式名映射（由 combat_avatar.json 构建）。</summary>
     public Dictionary<string, string> AliasMap { get; private set; } = new();
@@ -32,10 +38,10 @@ public class AutoSwitchRolesResources
     /// </summary>
     public bool LoadAliasMap()
     {
-        var path = Path.Combine(ResourceDir, "combat_avatar.json");
+        var path = CombatAvatarPath;
         if (!File.Exists(path))
         {
-            _logger.LogError("配对界面切换角色资源缺失（致命）：{Path}，请确认 JS 脚本资源已随构建打包到该路径", path);
+            _logger.LogError("配对界面切换角色别名表缺失（致命）：{Path}，请确认 BGI 本体 combat_avatar.json 已随构建输出", path);
             return false;
         }
 

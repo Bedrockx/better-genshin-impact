@@ -1554,7 +1554,7 @@ public class TpTask
     /// 返回 true 表示已确认进入传送加载（IsLoadingScreen 命中），false 表示需要走兜底。
     /// fast-drag-recognition-acceleration spec / final click pre-stop optimization v2
     /// </summary>
-    private async Task<bool> FastClickTeleportButtonAsync(int popupTimeoutMs = 500, int loadingTimeoutMs = 2500, int pollMs = 30)
+    private async Task<bool> FastClickTeleportButtonAsync(int popupTimeoutMs = 500, int loadingTimeoutMs = 4500, int pollMs = 30)
     {
         long popupDeadline = Environment.TickCount + popupTimeoutMs;
         // 阶段 1：等按钮 popup 出现
