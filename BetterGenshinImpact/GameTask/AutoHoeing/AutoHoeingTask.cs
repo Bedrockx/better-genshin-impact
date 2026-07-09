@@ -3075,7 +3075,7 @@ public class AutoHoeingTask : ISoloTask
             var tsRouteEstimate = TimeSpan.FromSeconds(Math.Max(0, route.AdjustedTime));
             var tsRoundRemain = TimeSpan.FromSeconds(Math.Max(0, remainingEstimatedTime));
             _logger.LogInformation(
-                "{Prefix}开始第 {N}/{T} 条线路: {Name}，本线路预计用时 {EH}时{EMin}分{ES}秒，本轮预计剩余 {H}时{Min}分{S}秒",
+                "{Prefix}当前进度：开始第 {N}/{T} 条线路: {Name}，本线路预计用时 {EH}时{EMin}分{ES}秒，本轮预计剩余 {H}时{Min}分{S}秒",
                 roundPrefix, startIndex + count, groupRoutes.Count, route.FileName,
                 (int)tsRouteEstimate.TotalHours, tsRouteEstimate.Minutes, tsRouteEstimate.Seconds,
                 (int)tsRoundRemain.TotalHours, tsRoundRemain.Minutes, tsRoundRemain.Seconds);
