@@ -62,7 +62,30 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-      - run: npm install
+      - name: npm install (with retry on transient network errors)
+        shell: bash
+        run: |
+          # 提升 npm 内建 fetch 层对瞬时网络错误的容忍度
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          npm config set fetch-timeout 300000
+          # 步骤级重试：最多尝试 4 次（首次 + 最多重试 3 次）
+          for attempt in 1 2 3 4; do
+            echo "npm install attempt #${attempt}"
+            if npm install; then
+              echo "npm install succeeded on attempt #${attempt}"
+              exit 0
+            fi
+            echo "::warning::npm install failed on attempt #${attempt}"
+            if [ "${attempt}" -lt 4 ]; then
+              sleep_seconds=$((attempt * 15))
+              echo "retrying in ${sleep_seconds}s..."
+              sleep "${sleep_seconds}"
+            fi
+          done
+          echo "::error::npm install failed after 4 attempts"
+          exit 1
       - run: npm run build:single
       - uses: actions/upload-artifact@v4
         with:
@@ -79,7 +102,30 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-      - run: npm install
+      - name: npm install (with retry on transient network errors)
+        shell: bash
+        run: |
+          # 提升 npm 内建 fetch 层对瞬时网络错误的容忍度
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          npm config set fetch-timeout 300000
+          # 步骤级重试：最多尝试 4 次（首次 + 最多重试 3 次）
+          for attempt in 1 2 3 4; do
+            echo "npm install attempt #${attempt}"
+            if npm install; then
+              echo "npm install succeeded on attempt #${attempt}"
+              exit 0
+            fi
+            echo "::warning::npm install failed on attempt #${attempt}"
+            if [ "${attempt}" -lt 4 ]; then
+              sleep_seconds=$((attempt * 15))
+              echo "retrying in ${sleep_seconds}s..."
+              sleep "${sleep_seconds}"
+            fi
+          done
+          echo "::error::npm install failed after 4 attempts"
+          exit 1
       - run: npm run build:single
       - uses: actions/upload-artifact@v4
         with:
