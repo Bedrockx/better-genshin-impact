@@ -299,6 +299,10 @@ public class TpTask
         // 确保不会点错传送点的最小缩放，保证至少为 1.0
         var minZoomLevel = Math.Max(disBetweenTpPoints / 20, 1.0);
 
+        // 特殊相邻传送点命中判定基准（决策 e）：用最近真实传送点坐标，独立于 force 的 (x,y)。仅取值，无 IO。
+        double adjBaseX = nTpPoints[0].X;
+        double adjBaseY = nTpPoints[0].Y;
+
         if (mapName == MapTypes.Teyvat.ToString())
         {
             // 计算传送点位置离哪张地图切换后的中心点最近，切换到该地图
@@ -479,6 +483,47 @@ public class TpTask
                 await AdjustMapZoomLevel(zoomBack, DisplayTpPointZoomLevel);
                 await Delay(200, ct);
                 TaskControl.Logger.LogInformation("边沿重试：点击前缩放降回 {Z:0.0} 恢复传送点渲染", DisplayTpPointZoomLevel);
+                bigMapInAllMapRect = GetBigMapRect(mapName);
+            }
+        }
+
+        // 5.7 特殊相邻传送点：命中清单则点击前拉到专属放大（默认 2.5，比 4.4 更放大），
+        //     重新 MoveMapTo 定位并重算 bigMapInAllMapRect，使相邻两点在屏幕上分开、点得准、不弹菜单。
+        //     命中判定为纯坐标 O(n) 比较（清单懒加载+缓存），未命中零额外开销、逐字节走原路径。
+        //     详见 .kiro/specs/teleport-adjacent-point-misclick-zoom-whitelist-fix/design.md §组件 4。
+        if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
+        {
+            var (hitSpecial, specialZoom) = SpecialAdjacentTpPointDecisions.IsSpecialAdjacentPoint(
+                GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 10.0, defaultZoom: 2);
+            if (hitSpecial)
+            {
+                using var raSp = CaptureToRectArea();
+                double zoomNow = GetBigMapZoomLevel(raSp);
+                if (Math.Abs(zoomNow - specialZoom) > _tpConfig.PrecisionThreshold)
+                {
+                    await AdjustMapZoomLevel(zoomNow, specialZoom);
+                    await Delay(200, ct);
+                }
+                TaskControl.Logger.LogInformation(
+                    "命中特殊相邻传送点，点击前放大到 {Zoom:0.00} 并重新定位（基准 {X:0},{Y:0}）",
+                    specialZoom, adjBaseX, adjBaseY);
+                // 放大后屏幕映射改变，必须重新 MoveMapTo + 重算 bigMapInAllMapRect（决策 d）
+                await MoveMapTo(x, y, mapName, specialZoom, country, retryTimes);
+                if (_tpConfig.MapMoveStepDivisor)
+                {
+                    if (_tpConfig.FastDragRecognitionEnabled)
+                    {
+                        await WaitMapStableOrTimeoutAsync(500);
+                    }
+                    else
+                    {
+                        await Delay(300, ct);
+                    }
+                }
+                else
+                {
+                    await Delay(300, ct);
+                }
                 bigMapInAllMapRect = GetBigMapRect(mapName);
             }
         }
@@ -1899,6 +1944,65 @@ public class TpTask
             .OrderBy(tp => Math.Pow(tp.X - x, 2) + Math.Pow(tp.Y - y, 2))
             .Take(n)
             .ToList();
+    }
+
+    private static IReadOnlyList<SpecialAdjacentTpPoint>? _userSpecialListCache;
+    private static bool _userSpecialListLoaded;
+
+    /// <summary>
+    /// 返回用于命中判定的合并清单 = 内置硬编码清单 + 用户 JSON 清单（内存拼接，零额外 IO）。
+    /// 内置清单恒在（开箱即用）；用户清单懒加载缓存，缺失/坏 JSON → 空清单（不影响内置）。
+    /// 详见 .kiro/specs/teleport-adjacent-point-misclick-zoom-whitelist-fix/design.md §组件 3。
+    /// </summary>
+    private IReadOnlyList<SpecialAdjacentTpPoint> GetSpecialAdjacentTpPointList()
+    {
+        var user = GetUserSpecialAdjacentTpPointList();
+        var builtins = SpecialAdjacentTpPointBuiltins.List;
+
+        // 常见情况：用户清单为空 → 直接返回内置列表引用，零分配
+        if (user.Count == 0)
+        {
+            return builtins;
+        }
+
+        // 合并（内置在前，用户在后）。清单极小，一次性内存拼接。
+        var merged = new List<SpecialAdjacentTpPoint>(builtins.Count + user.Count);
+        merged.AddRange(builtins);
+        merged.AddRange(user);
+        return merged;
+    }
+
+    /// <summary>用户 JSON 清单：懒加载 + 缓存，兜底不抛异常。程序只读，绝不写/删该文件。</summary>
+    private IReadOnlyList<SpecialAdjacentTpPoint> GetUserSpecialAdjacentTpPointList()
+    {
+        if (_userSpecialListLoaded)
+        {
+            return _userSpecialListCache ?? System.Array.Empty<SpecialAdjacentTpPoint>();
+        }
+        _userSpecialListLoaded = true;
+        try
+        {
+            var path = BetterGenshinImpact.Core.Config.Global.Absolute(@"User\AutoTrackPath\special_adjacent_tp_points.json");
+            if (!System.IO.File.Exists(path))
+            {
+                // 文件缺失是正常情况（多数用户只用内置清单）→ 用户来源视为空，不抛异常。
+                // 注意：程序绝不自动创建此文件（内置点已由硬编码保证"自带"）。
+                _userSpecialListCache = System.Array.Empty<SpecialAdjacentTpPoint>();
+                return _userSpecialListCache;
+            }
+            var json = System.IO.File.ReadAllText(path);
+            _userSpecialListCache = System.Text.Json.JsonSerializer
+                .Deserialize<List<SpecialAdjacentTpPoint>>(json)
+                ?? new List<SpecialAdjacentTpPoint>();
+        }
+        catch (Exception ex)
+        {
+            // 解析失败：结构化告警 + 用户来源降级为空清单（内置清单仍生效）。
+            // 绝不因用户清单坏掉而中断传送（可恢复，仍走内置 + 原路径）。
+            TaskControl.Logger.LogWarning(ex, "用户特殊相邻传送点清单加载失败，本次运行仅按内置清单处理（不影响传送）");
+            _userSpecialListCache = System.Array.Empty<SpecialAdjacentTpPoint>();
+        }
+        return _userSpecialListCache;
     }
 
     public async Task<bool> SwitchRecentlyCountryMap(double x, double y, string? forceCountry = null)
