@@ -55,6 +55,11 @@ public class TpTask
     private readonly IStringLocalizer stringLocalizer;
     private readonly double _screenHeight;
 
+    // 分层先验区块限定匹配（teleport-bigmap-position-region-constrained-match spec）：
+    // 单次传送生命周期内有效。仅 TpOnce 路径设置；其它调用方（七天神像/地脉花）不设 → 保持 null → 走全图旧路径。
+    private Point2f? _miniMapPriorGenshin = null;   // 第一层先验（原神坐标），TpOnce 打开大地图前采集
+    private Point2f? _targetPriorGenshin = null;    // 第二层先验（原神坐标），= nTpPoints[0]
+
     /// <summary>
     /// 直接通过缩放比例按钮计算放大按钮的Y坐标
     /// </summary>
@@ -287,6 +292,9 @@ public class TpTask
     /// <param name="retryTimes">重试次数</param>
     private async Task<(double, double)> TpOnce(double tpX, double tpY, string mapName = "Teyvat", bool force = false, int retryTimes = 0, bool requireLoadingScreen = false, string? fastSyncId = null, bool pullZoomForEdgeRecognition = false)
     {
+        // 分层先验：打开大地图【之前】采集小地图当前坐标作第一层先验（原神坐标）。
+        // 详见 teleport-bigmap-position-region-constrained-match spec。
+        _miniMapPriorGenshin = TryGetMiniMapPriorGenshin(mapName);
         // 1. 确认在地图界面
         await OpenBigMapUi(1);
         // 2. 传送前的计算准备
@@ -294,6 +302,8 @@ public class TpTask
         var nTpPoints = GetNearestNTpPoints(tpX, tpY, mapName, 2);
         // 获取最近的传送点与区域
         var (x, y, country) = force ? (tpX, tpY, null) : (nTpPoints[0].X, nTpPoints[0].Y, nTpPoints[0].Country);
+        // 第二层先验（原神坐标）= 目标传送点坐标，供小地图先验失败/超范围时宽范围兜底。
+        _targetPriorGenshin = new Point2f((float)nTpPoints[0].X, (float)nTpPoints[0].Y);
         var disBetweenTpPoints = Math.Sqrt(Math.Pow(nTpPoints[0].X - nTpPoints[1].X, 2) +
                                            Math.Pow(nTpPoints[0].Y - nTpPoints[1].Y, 2));
         // 确保不会点错传送点的最小缩放，保证至少为 1.0
@@ -1836,6 +1846,101 @@ public class TpTask
         return MapManager.GetMap(mapName, _mapMatchingMethod).ConvertImageCoordinatesToGenshinMapCoordinates(rect)!.Value;
     }
 
+    /// <summary>
+    /// 打开大地图前采集第一层小地图先验（原神坐标）：主界面下截一帧小地图识别当前坐标；
+    /// 失败退回 NavigationInstance 缓存坐标；都无效返回 null。
+    /// 详见 .kiro/specs/teleport-bigmap-position-region-constrained-match/design.md §组件4。
+    /// </summary>
+    private Point2f? TryGetMiniMapPriorGenshin(string mapName)
+    {
+        try
+        {
+            using var ra = CaptureToRectArea();
+            var colorMat = new Mat(ra.SrcMat, MapAssets.Instance.MimiMapRect);
+            var p = MapManager.GetMap(mapName, _mapMatchingMethod).GetMiniMapPosition(colorMat);
+            if (!p.IsEmpty())
+            {
+                var g = MapManager.GetMap(mapName, _mapMatchingMethod).ConvertImageCoordinatesToGenshinMapCoordinates(p);
+                if (g is Point2f gp) return gp;
+            }
+        }
+        catch (Exception ex)
+        {
+            // 小地图先验识别失败不影响传送主流程（可恢复）：记录后退回缓存兜底
+            Logger.LogDebug(ex, "[大地图定位] 小地图先验识别异常，退回缓存坐标");
+        }
+        var (px, py) = Navigation.GetPrevPosition();
+        if (px > 0 && py > 0)
+        {
+            var g = MapManager.GetMap(mapName, _mapMatchingMethod).ConvertImageCoordinatesToGenshinMapCoordinates(new Point2f(px, py));
+            if (g is Point2f gp) return gp;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 分层先验区块限定匹配 + 层内合理性校验 + 对比日志（返回 256 尺度图像坐标，
+    /// 与 TeyvatMap.GetBigMapPosition 返回值同量纲，供 GetBigMapCenterPoint 后续 *8 → 转原神坐标）。
+    /// 详见 .kiro/specs/teleport-bigmap-position-region-constrained-match/design.md §组件4。
+    /// </summary>
+    private Point2f ResolveBigMapPositionLayered(TeyvatMap teyvat, Mat greyBigMapMat)
+    {
+        // 把 256 尺度结果转原神坐标（用于合理性校验/日志）：*8 → Convert
+        Point2f? ToGenshin(Point2f p256)
+        {
+            if (p256.IsEmpty()) return null;
+            var g = teyvat.ConvertImageCoordinatesToGenshinMapCoordinates(
+                new Point2f(p256.X * TeyvatMap.BigMap256ScaleTo2048, p256.Y * TeyvatMap.BigMap256ScaleTo2048));
+            return g;
+        }
+
+        Point2f result256 = default;
+        string hitLayer = "全图兜底";
+        double hitDist = -1;
+
+        // 第一层：小地图先验，range=100
+        if (_miniMapPriorGenshin is Point2f c1)
+        {
+            var r256 = teyvat.GetBigMapPositionInRange(greyBigMapMat, c1, BigMapPriorMatchDecisions.Layer1RangeGenshin);
+            var g = ToGenshin(r256);
+            if (g is Point2f gp
+                && BigMapPriorMatchDecisions.IsResultAcceptable(false, gp, c1, BigMapPriorMatchDecisions.Layer1RangeGenshin))
+            {
+                result256 = r256; hitLayer = "第一层(小地图,100)"; hitDist = BigMapPriorMatchDecisions.Distance(gp, c1);
+            }
+        }
+
+        // 第二层：目标坐标先验，range=500
+        if (result256.IsEmpty() && _targetPriorGenshin is Point2f c2)
+        {
+            var r256 = teyvat.GetBigMapPositionInRange(greyBigMapMat, c2, BigMapPriorMatchDecisions.Layer2RangeGenshin);
+            var g = ToGenshin(r256);
+            if (g is Point2f gp
+                && BigMapPriorMatchDecisions.IsResultAcceptable(false, gp, c2, BigMapPriorMatchDecisions.Layer2RangeGenshin))
+            {
+                result256 = r256; hitLayer = "第二层(目标,500)"; hitDist = BigMapPriorMatchDecisions.Distance(gp, c2);
+            }
+        }
+
+        // 最终兜底：全图盲搜（旧行为）
+        if (result256.IsEmpty())
+        {
+            result256 = teyvat.GetBigMapPosition(greyBigMapMat);
+        }
+
+        // 对比日志（LogInformation，用户可见，供 100/500 实测校准）
+        var finalG = ToGenshin(result256);
+        Logger.LogInformation(
+            "[大地图定位] 命中={Layer} 结果={Res} 距中心={Dist:0} 小地图先验={P1} 目标先验={P2}",
+            hitLayer,
+            finalG is Point2f fg ? $"({fg.X:0},{fg.Y:0})" : "空",
+            hitDist,
+            _miniMapPriorGenshin is Point2f p1 ? $"({p1.X:0},{p1.Y:0})" : "无",
+            _targetPriorGenshin is Point2f p2 ? $"({p2.X:0},{p2.Y:0})" : "无");
+
+        return result256;
+    }
+
     public Point2f GetBigMapCenterPoint(string mapName)
     {
         Point2f p = new Point2f();
@@ -1852,7 +1957,18 @@ public class TpTask
                 inMapUi = true;
                 try
                 {
-                    p = MapManager.GetMap(mapName, _mapMatchingMethod).GetBigMapPosition(ra.CacheGreyMat);
+                    var scene = MapManager.GetMap(mapName, _mapMatchingMethod);
+                    // 提瓦特 + 至少有一层先验 → 分层区块限定；否则逐字节走旧全图路径
+                    if (mapName == MapTypes.Teyvat.ToString()
+                        && scene is TeyvatMap teyvat
+                        && (_miniMapPriorGenshin != null || _targetPriorGenshin != null))
+                    {
+                        p = ResolveBigMapPositionLayered(teyvat, ra.CacheGreyMat);
+                    }
+                    else
+                    {
+                        p = scene.GetBigMapPosition(ra.CacheGreyMat); // 旧行为，逐字节不变
+                    }
                 }
                 catch (Exception ex)
                 {

@@ -65,6 +65,9 @@ public class NavigationInstance
         // 不重置 _consecutiveFailCount，因为 SetPrevPosition 是外部设置参考点，不代表匹配成功
     }
 
+    /// <summary>只读读取最近一次的位置锚点（图像坐标）。供传送分层先验兜底使用，不改任何识别状态。</summary>
+    public (float X, float Y) GetPrevPosition() => (_prevX, _prevY);
+
     private static readonly object GetPositionLock = new object(); 
     public Point2f GetPosition(ImageRegion imageRegion, string mapName, string mapMatchMethod)
     {

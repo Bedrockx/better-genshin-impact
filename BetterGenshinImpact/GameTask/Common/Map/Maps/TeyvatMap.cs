@@ -55,4 +55,9 @@ public class TeyvatMap : SceneBaseMap
     {
         return BigMapTeyvat256Layer.GetInstance(this).GetBigMapRect(greyBigMapMat, prevRect);
     }
+
+    public Point2f GetBigMapPositionInRange(Mat greyBigMapMat, Point2f genshinCenter, double genshinRadius)
+    {
+        return BigMapTeyvat256Layer.GetInstance(this).GetBigMapPositionInRange(greyBigMapMat, genshinCenter, genshinRadius);
+    }
 }

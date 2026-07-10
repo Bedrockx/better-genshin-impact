@@ -48,6 +48,9 @@ public abstract class SceneBaseMap : ISceneMap
     /// </summary>
     private readonly float _mapImageBlockWidthScale = 0;
 
+    /// <summary>特征地图图像块宽度 / 1024 的只读值（提瓦特恒=2），供区块限定匹配做原神↔图像坐标量纲换算。</summary>
+    public float MapImageBlockWidthScale => _mapImageBlockWidthScale;
+
 
     // ReSharper disable once ConvertToPrimaryConstructor
     protected SceneBaseMap(MapTypes type, Size mapSize, Point2f mapOriginInImageCoordinate, int mapImageBlockWidth, int splitRow, int splitCol)

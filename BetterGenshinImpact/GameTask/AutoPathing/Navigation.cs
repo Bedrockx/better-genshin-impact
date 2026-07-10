@@ -37,6 +37,8 @@ public class Navigation
         _instance.SetPrevPosition(x,y);
     }
 
+    public static (float X, float Y) GetPrevPosition() => _instance.GetPrevPosition();
+
     public static Point2f GetPosition(ImageRegion imageRegion, string mapName, string mapMatchMethod)
     {
         return _instance.GetPosition(imageRegion, mapName, mapMatchMethod);
