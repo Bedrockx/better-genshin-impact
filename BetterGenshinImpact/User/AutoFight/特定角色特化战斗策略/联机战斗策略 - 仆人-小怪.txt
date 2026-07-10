@@ -1,0 +1,2 @@
+//小怪仆人（小怪开特化检测：血量Q检测）
+仆人 keypress(q) ,e, wait(0.1), check, wait(0.1),charge(0.35), j, keydown(s), attack(0.3), keypress(e), attack(0.3), keypress(q), attack(0.57),e,wait(0.07),attack(0.45),wait(0.07),charge(0.35), keyup(s), keydown(w), attack(0.38), attack(0.6), keyup(w), keypress(q),  e,wait(0.07),attack(0.45),wait(0.07),charge(0.35), keydown(s),  attack(0.3), keypress(e), attack(0.3), keypress(e), attack(0.57), attack(0.45), keyup(s), keydown(w), attack(0.38),  attack(0.3), keypress(e), attack(0.3), keyup(w), wait(0.1), check,charge(0.35), keypress(q)

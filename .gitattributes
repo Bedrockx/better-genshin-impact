@@ -1,0 +1,6 @@
+* text=auto
+*.cs text diff
+*.sln text merge=union
+*.csproj text merge=union
+*.xaml text
+*.json text

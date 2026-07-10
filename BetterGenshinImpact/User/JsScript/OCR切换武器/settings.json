@@ -1,0 +1,43 @@
+[
+  {
+    "name": "Character",
+    "type": "input-text",
+    "label": "角色（如 草神、奶奶)"
+  },
+  {
+    "name": "Weapon",
+    "type": "input-text",
+    "label": "武器（如 金珀、祭礼)"
+  },
+  {
+    "name": "Element",
+    "type": "select",
+    "label": "=============\n选元素缩范围 非必填\n元素（默认'物'=不选)",
+    "options": [
+      "物",
+      "火",
+      "水",
+      "草",
+      "雷",
+      "风",
+      "冰",
+      "岩"
+    ]
+  },
+  {
+    "name": "quickMode",
+    "type": "checkbox",
+    "label": "快速模式",
+    "default": "true"
+  },
+    {
+    "name": "gridPosition",
+    "type": "input-text",
+    "label": "武器位置行列(非必要不指定)\n例(73)为第七行第三列"
+  },
+  {
+    "name": "pageScrollCount",
+    "type": "input-text",
+    "label": "默认：四行武器为一页\n最大滑页次数（默认2)"
+  }
+]

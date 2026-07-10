@@ -1,0 +1,2 @@
+// 不停转，开特化摩托状态检测
+玛薇卡 keypress(Q),charge(2),keypress(e),attack(0.4)

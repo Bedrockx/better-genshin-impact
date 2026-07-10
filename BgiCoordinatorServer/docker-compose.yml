@@ -1,0 +1,12 @@
+services:
+  coordinator:
+    build: .
+    ports:
+      - "80:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - MAX_ROOMS=50
+      - PLAYER_TIMEOUT_SECONDS=120
+      - SYNC_POINT_TIMEOUT_SECONDS=60
+    restart: always

@@ -1,0 +1,602 @@
+<UserControl x:Class="BetterGenshinImpact.View.Pages.View.MultiplayerHoeingSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:converters="clr-namespace:BetterGenshinImpact.View.Converters"
+             xmlns:pages="clr-namespace:BetterGenshinImpact.ViewModel.Pages.View"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             d:DataContext="{d:DesignInstance Type=pages:MultiplayerHoeingSettingsViewModel}"
+             d:DesignWidth="500"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <converters:BooleanToVisibilityRevertConverter x:Key="InverseBoolToVis" />
+    </UserControl.Resources>
+
+    <StackPanel Margin="12">
+        <!--  顶部：启用联机锄地模式 + 使用教程  -->
+        <Grid Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ui:ToggleSwitch Grid.Column="0"
+                             VerticalAlignment="Center"
+                             Content="启用联机锄地模式"
+                             IsChecked="{Binding MultiplayerEnabled, Mode=TwoWay}" />
+            <ui:Button x:Name="TopTutorialButton"
+                       Grid.Column="1"
+                       Margin="0,0,10,0"
+                       VerticalAlignment="Center"
+                       Content="联机锄地使用教程" />
+        </Grid>
+
+        <!--  单机内容区占位（MultiplayerEnabled=false 显示），code-behind 填充  -->
+        <ContentControl x:Name="SoloPanelHost"
+                        Visibility="{Binding MultiplayerEnabled, Converter={StaticResource InverseBoolToVis}}" />
+
+        <!--  联机内容区（MultiplayerEnabled=true 显示）  -->
+        <StackPanel Visibility="{Binding MultiplayerEnabled, Converter={StaticResource BoolToVis}}">
+
+            <!--  A0 账户名称（hoeing-multiplayer-account-name-config）：复用单机 AccountName，纯本地不同步  -->
+            <ui:CardExpander Margin="0,0,0,12"
+                             ContentPadding="12"
+                             Icon="{ui:SymbolIcon Person24}"
+                             IsExpanded="True">
+                <ui:CardExpander.Header>
+                    <ui:TextBlock FontTypography="Body" Text="账户名称" />
+                </ui:CardExpander.Header>
+                <StackPanel>
+                    <ui:TextBox Margin="0,0,0,4"
+                                PlaceholderText="默认账户"
+                                Text="{Binding AccountName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="用于多用户运行时区分不同账户的记录，单用户请勿修改"
+                                  TextWrapping="Wrap" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!--  A 联机角色  -->
+            <ui:CardExpander Margin="0,0,0,12"
+                             ContentPadding="12"
+                             Icon="{ui:SymbolIcon People24}"
+                             IsExpanded="True">
+                <ui:CardExpander.Header>
+                    <ui:TextBlock FontTypography="Body" Text="联机角色" />
+                </ui:CardExpander.Header>
+                <StackPanel>
+                    <ui:TextBlock Margin="0,0,0,4"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="选择本机在联机中的角色" />
+                    <ComboBox ItemsSource="{Binding RoleOptions}"
+                              SelectedItem="{Binding RoleSelection, Mode=TwoWay}" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!--  B 联机连接  -->
+            <ui:CardExpander Margin="0,0,0,12"
+                             ContentPadding="12"
+                             Icon="{ui:SymbolIcon PlugConnected24}"
+                             IsExpanded="True">
+                <ui:CardExpander.Header>
+                    <ui:TextBlock FontTypography="Body" Text="联机连接" />
+                </ui:CardExpander.Header>
+                <StackPanel>
+                    <ui:TextBlock Margin="0,0,0,2" Text="服务器地址" />
+                    <ui:TextBox Margin="0,0,0,8"
+                                PlaceholderText="协调服务器地址"
+                                Text="{Binding CoordinatorServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                            <ui:TextBlock Margin="0,0,0,2" Text="玩家名称(必填)" />
+                            <ui:TextBox PlaceholderText="玩家名称"
+                                        Text="{Binding PlayerName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                            <ui:TextBlock Margin="0,0,0,2" Text="玩家 UID(必填)" />
+                            <ui:TextBox PlaceholderText="玩家 UID"
+                                        Text="{Binding PlayerUid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <ui:TextBlock Margin="0,0,0,2" Text="拾取模式" />
+                    <ComboBox Margin="0,0,0,2"
+                              ItemsSource="{Binding PickupOptions}"
+                              SelectedItem="{Binding PickupMode, Mode=TwoWay}" />
+                    <ui:TextBlock Margin="0,0,0,8"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="推荐使用模板匹配拾取，BGI原版拾取性能开销大、准确度低"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBlock Margin="0,0,0,2" Text="联机队伍名称" />
+                    <ui:TextBox Margin="0,0,0,2"
+                                PlaceholderText="留空则使用当前队伍"
+                                Text="{Binding MultiplayerPartyName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ui:TextBlock Margin="0,0,0,8"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="联机前自动切换到指定队伍，留空则使用当前队伍"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBlock Margin="0,0,0,2" Text="联机起始角色名称" />
+                    <ui:TextBox Margin="0,0,0,2"
+                                PlaceholderText="留空则使用当前角色，如：钟离、纳西妲"
+                                Text="{Binding MultiplayerStartAvatarName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="联机前自动切换到指定角色，留空则使用当前角色"
+                                  TextWrapping="Wrap" />
+
+                    <!--  开锄前换武器配置区（固定2行，code-behind 填充）。
+                          可见性 = 队伍名非空 且 起始角色名非空（hoeing-multiplayer-preswitch-weapon）  -->
+                    <StackPanel x:Name="PreSwitchWeaponArea"
+                                Margin="0,12,0,0"
+                                Visibility="{Binding ShowPreSwitchWeaponArea}">
+                        <ui:TextBlock Margin="0,0,0,2"
+                                      FontTypography="BodyStrong"
+                                      Text="开锄前换武器（最多2个角色）" />
+                        <ui:TextBlock x:Name="PreSwitchWeaponDescText"
+                                      Margin="0,0,0,6"
+                                      Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="首轮开锄前，切队切角色后依次为下列已启用行换武器"
+                                      TextWrapping="Wrap" />
+                        <Grid x:Name="PreSwitchWeaponRowsHost"
+                              HorizontalAlignment="Stretch"
+                              Width="{Binding (FrameworkElement.ActualWidth), RelativeSource={RelativeSource AncestorType=ScrollContentPresenter}}" />
+                    </StackPanel>
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!--  C 房主区（仅房主可见）  -->
+            <StackPanel Visibility="{Binding ShowHostArea}">
+
+                <!--  C1 房间设置  -->
+                <ui:CardExpander Margin="0,0,0,12"
+                                 ContentPadding="12"
+                                 Icon="{ui:SymbolIcon Settings24}"
+                                 IsExpanded="True">
+                    <ui:CardExpander.Header>
+                        <ui:TextBlock FontTypography="Body" Text="房间设置" />
+                    </ui:CardExpander.Header>
+                    <StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <ui:TextBlock Margin="0,0,0,2" Text="期望人数(2-4)" />
+                                <ui:TextBox Width="70"
+                                            HorizontalAlignment="Left"
+                                            PlaceholderText="2-4"
+                                            Text="{Binding ExpectedPlayerCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                                <ui:TextBlock Margin="0,0,0,2" Text="组队超时(秒)" />
+                                <ui:TextBox Width="70"
+                                            HorizontalAlignment="Left"
+                                            PlaceholderText="秒"
+                                            Text="{Binding HostPartyTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <ui:TextBlock Margin="0,0,0,2" Text="超时动作" />
+                                <ComboBox HorizontalAlignment="Left"
+                                          MinWidth="160"
+                                          ItemsSource="{Binding TimeoutActionOptions}"
+                                          SelectedIndex="{Binding PartyTimeoutAction, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Grid>
+                        <ui:TextBlock Margin="0,0,0,2" Text="房间白名单" />
+                        <ui:TextBox Margin="0,0,0,2"
+                                    PlaceholderText="逗号分隔，留空不限制"
+                                    Text="{Binding RoomWhitelist, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <ui:TextBlock Margin="0,0,0,8"
+                                      Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="逗号分隔，房主自己也要加进去，留空不限"
+                                      TextWrapping="Wrap" />
+                        <ui:ToggleSwitch Margin="0,0,0,4"
+                                         Content="启用多世界连续锄地"
+                                         IsChecked="{Binding MultiWorldEnabled, Mode=TwoWay}" />
+                        <StackPanel Margin="12,0,0,0">
+                            <ui:TextBlock Margin="0,0,0,2" Text="轮数(1-4)" />
+                            <ui:TextBox Width="70"
+                                        HorizontalAlignment="Left"
+                                        IsEnabled="{Binding MultiWorldCountEnabled}"
+                                        PlaceholderText="轮数（1-4）"
+                                        Text="{Binding MultiWorldCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="按加入顺序轮换房主，最多4轮"
+                                          TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </ui:CardExpander>
+
+                <!--  C2 同步给成员区（外层大 Card）  -->
+                <ui:Card Margin="0,0,0,12" Padding="12">
+                    <StackPanel>
+                        <!--  顶部横幅  -->
+                        <Border Margin="0,0,0,8"
+                                Padding="8"
+                                Background="{ui:ThemeResource ControlFillColorSecondaryBrush}"
+                                CornerRadius="4">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Margin="0,0,6,0" Symbol="ArrowSync24" />
+                                <ui:TextBlock FontTypography="BodyStrong" Text="以下配置将同步给所有成员" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  同步子卡 1：集合点与战斗  -->
+                        <ui:CardExpander Margin="0,0,0,8"
+                                         ContentPadding="12"
+                                         Icon="{ui:SymbolIcon Timer24}"
+                                         IsExpanded="False">
+                            <ui:CardExpander.Header>
+                                <ui:TextBlock FontTypography="Body" Text="集合点与战斗" />
+                            </ui:CardExpander.Header>
+                            <StackPanel>
+                                <ui:TextBlock Margin="0,0,0,2" Text="集合点最小距离，根据线路生成的同步点最小距离" />
+                                <ui:TextBox Width="70"
+                                            Margin="0,0,0,8"
+                                            HorizontalAlignment="Left"
+                                            PlaceholderText="默认30"
+                                            Text="{Binding SyncPointMinDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ui:TextBlock Margin="0,0,0,2" Text="战斗超时(秒)，根据练度，建议小怪25，精英30" />
+                                <ui:TextBox Width="70"
+                                            Margin="0,0,0,8"
+                                            HorizontalAlignment="Left"
+                                            PlaceholderText="秒，默认120"
+                                            Text="{Binding FightTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ui:ToggleSwitch Margin="0,0,0,4"
+                                                 Content="启用快速同步点抢报"
+                                                 IsChecked="{Binding FastSyncPointEnabled, Mode=TwoWay}" />
+                                <StackPanel Margin="12,0,0,0">
+                                    <ui:TextBlock Margin="0,0,0,2" Text="路径抢报距离阈值，提前多少距离上报到点" />
+                                    <ui:TextBox Width="70"
+                                                Margin="0,0,0,2"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding FastSyncParamsEnabled}"
+                                                PlaceholderText="米，5-30，默认30"
+                                                Text="{Binding FastSyncPathingDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ui:TextBlock Margin="0,4,0,2" Text="传送loading抢报延迟，加载页面多少秒上报到点" />
+                                    <ui:TextBox Width="70"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding FastSyncParamsEnabled}"
+                                                PlaceholderText="毫秒，0-3000，默认0"
+                                                Text="{Binding FastSyncTeleportLoadingDelayMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <ui:ToggleSwitch Margin="0,8,0,4"
+                                                 Content="启用共享战斗配额结束同步(怪物仇恨共享)"
+                                                 IsChecked="{Binding SharedFightEndQuorumEnabled, Mode=TwoWay}" />
+                                <StackPanel Margin="12,0,0,0">
+                                    <ui:TextBlock Margin="0,0,0,2" Text="战斗结束人数/总人数的值，超过即全员结束战斗" />
+                                    <ui:TextBox Width="70"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding SharedFightEndQuorumParamsEnabled}"
+                                                PlaceholderText="0-1，默认0.5"
+                                                Text="{Binding SharedFightEndQuorumRatio, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ui:CardExpander>
+
+                        <!--  同步子卡 2：万叶聚物同步  -->
+                        <ui:CardExpander ContentPadding="12"
+                                         Icon="{ui:SymbolIcon LeafThree24}"
+                                         IsExpanded="False">
+                            <ui:CardExpander.Header>
+                                <ui:TextBlock FontTypography="Body" Text="万叶聚物同步" />
+                            </ui:CardExpander.Header>
+                            <StackPanel>
+                                <ui:ToggleSwitch Margin="0,0,0,4"
+                                                 Content="启用万叶聚物同步(参数默认0/5/5/6/50/3即可)"
+                                                 IsChecked="{Binding EnableKazuhaSync, Mode=TwoWay}" />
+                                <StackPanel Margin="12,0,0,0">
+                                    <ui:TextBlock Margin="0,0,0,2" Text="聚物完成后停留" />
+                                    <ui:TextBox Width="70"
+                                                Margin="0,0,0,2"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding KazuhaParamsEnabled}"
+                                                PlaceholderText="秒，0-30，默认0"
+                                                Text="{Binding KazuhaSyncWaitSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ui:TextBlock Margin="0,4,0,2" Text="聚物同步总超时" />
+                                    <ui:TextBox Width="70"
+                                                Margin="0,0,0,2"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding KazuhaParamsEnabled}"
+                                                PlaceholderText="秒，5-120，默认5"
+                                                Text="{Binding KazuhaSyncTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ui:TextBlock Margin="0,4,0,2" Text="E技CD等待上限" />
+                                    <ui:TextBox Width="70"
+                                                Margin="0,0,0,2"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding KazuhaParamsEnabled}"
+                                                PlaceholderText="秒，3-10，默认5"
+                                                Text="{Binding KazuhaWaitSkillCdSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ui:TextBlock Margin="0,4,0,2" Text="拾取前精接近步数" />
+                                    <ui:TextBox Width="70"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding KazuhaParamsEnabled}"
+                                                PlaceholderText="步，1-30，默认6"
+                                                Text="{Binding KazuhaSecondApproachMaxSteps, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ui:TextBlock Margin="0,4,0,2" Text="回点异常坐标阈值" />
+                                    <ui:TextBox Width="70"
+                                                Margin="0,0,0,2"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding KazuhaParamsEnabled}"
+                                                PlaceholderText="单位，默认50"
+                                                Text="{Binding KazuhaReturnAbnormalCoordThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ui:TextBlock Margin="0,4,0,2" Text="回点重识别重试次数" />
+                                    <ui:TextBox Width="70"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding KazuhaParamsEnabled}"
+                                                PlaceholderText="次，默认3"
+                                                Text="{Binding KazuhaReturnReseedRetryCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ui:TextBlock Margin="0,4,0,2" Text="回点距离预判(0,0)重试窗口(ms)" />
+                                    <ui:TextBox Width="70"
+                                                HorizontalAlignment="Left"
+                                                IsEnabled="{Binding KazuhaParamsEnabled}"
+                                                PlaceholderText="ms，默认2000"
+                                                Text="{Binding KazuhaReturnPreDistanceZeroRetryTimeoutMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ui:CardExpander>
+                    </StackPanel>
+                </ui:Card>
+            </StackPanel>
+
+            <!--  D 成员区（仅成员可见）  -->
+            <ui:CardExpander Margin="0,0,0,12"
+                             ContentPadding="12"
+                             Icon="{ui:SymbolIcon PersonAdd24}"
+                             IsExpanded="True"
+                             Visibility="{Binding ShowMemberArea}">
+                <ui:CardExpander.Header>
+                    <ui:TextBlock FontTypography="Body" Text="加入设置" />
+                </ui:CardExpander.Header>
+                <StackPanel>
+                    <ui:TextBlock Margin="0,0,0,2" Text="加入方式" />
+                    <ComboBox Margin="0,0,0,8"
+                              HorizontalAlignment="Left"
+                              MinWidth="160"
+                              ItemsSource="{Binding JoinModeOptions}"
+                              SelectedItem="{Binding JoinModeSelection, Mode=TwoWay}" />
+                    <ui:TextBlock Margin="0,0,0,2" Text="指定房主名称" />
+                    <ui:TextBox Margin="0,0,0,2"
+                                IsEnabled="{Binding TargetHostEnabled}"
+                                PlaceholderText="房主的玩家名称"
+                                Text="{Binding TargetHostName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ui:TextBlock Margin="0,0,0,8"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="仅「指定房主名称」模式下生效"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBlock Margin="0,0,0,2" Text="等待超时" />
+                    <ui:TextBox Width="70"
+                                HorizontalAlignment="Left"
+                                PlaceholderText="秒，默认300"
+                                Text="{Binding MemberPartyTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="秒，默认300"
+                                  TextWrapping="Wrap" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!--  按线路切换角色（成员侧，独立可折叠卡片）：线路由房主下发，成员只配「线路→自己的1/2号位角色」  -->
+            <ui:CardExpander Margin="0,0,0,12"
+                             ContentPadding="12"
+                             Icon="{ui:SymbolIcon People24}"
+                             IsExpanded="False"
+                             Visibility="{Binding ShowMemberArea}">
+                <ui:CardExpander.Header>
+                    <ui:TextBlock FontTypography="Body" Text="按线路切换角色" />
+                </ui:CardExpander.Header>
+                <StackPanel>
+                    <ui:TextBlock Margin="0,0,0,6"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="线路由房主决定，无需在此选择。点右侧「⚙角色」为对应线路文件夹配置你自己要切换的角色（留空则不切换）。"
+                                  TextWrapping="Wrap" />
+                    <!--  成员侧线路角色配置占位（code-behind 填充：每行 线路名 + ⚙角色 按钮）  -->
+                    <ContentControl x:Name="MemberRouteRolesHost" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!--  E 联机战斗策略（房主成员共用）  -->
+            <ui:CardExpander Margin="0,0,0,12"
+                             ContentPadding="12"
+                             Icon="{ui:SymbolIcon Flash24}"
+                             IsExpanded="True">
+                <ui:CardExpander.Header>
+                    <ui:TextBlock FontTypography="Body" Text="联机战斗策略" />
+                </ui:CardExpander.Header>
+                <StackPanel>
+                    <ui:TextBlock Margin="0,0,0,6"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="联机锄地战斗策略已固定为 User\AutoFight\联机战斗策略.txt，点击下方按钮可编辑该策略文件。"
+                                  TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal">
+                        <ui:Button x:Name="OpenFightStrategyButton"
+                                   VerticalAlignment="Center"
+                                   Content="打开联机战斗策略文件" />
+                        <ComboBox x:Name="FightStrategyCombo"
+                                  Width="170"
+                                  Margin="12,0,0,0"
+                                  VerticalAlignment="Center"
+                                  IsEnabled="{Binding FightStrategySelectable}" />
+                    </StackPanel>
+                    <ui:ToggleSwitch Margin="0,8,0,0"
+                                     Content="固定使用联机战斗策略(关闭即使用右方战斗策略)"
+                                     IsChecked="{Binding MultiplayerUseFixedFightStrategy, Mode=TwoWay}" />
+                    <ui:TextBlock Margin="0,4,0,0"
+                                  Foreground="DarkRed"
+                                  Text="联机战斗策略为针对联机优化过，大部分角色的普通战斗策略和联机可能不一样，可打开《联机战斗策略.txt》查看和编辑相关角色的策略。"
+                                  TextWrapping="Wrap" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!--  F 线路设置（倒数第二，仅房主可见）  -->
+            <ui:CardExpander Margin="0,0,0,12"
+                             ContentPadding="12"
+                             Icon="{ui:SymbolIcon Map24}"
+                             IsExpanded="False"
+                             Visibility="{Binding ShowHostArea}">
+                <ui:CardExpander.Header>
+                    <ui:TextBlock FontTypography="Body" Text="线路设置" />
+                </ui:CardExpander.Header>
+                <StackPanel>
+                    <ComboBox Margin="0,0,0,4"
+                              ItemsSource="{Binding RouteModeOptions}"
+                              SelectedItem="{Binding RouteModeSelection, Mode=TwoWay}" />
+                    <ui:TextBlock Margin="0,0,0,8"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  TextWrapping="Wrap">
+                        如果使用单机调试线路，关闭联机选项进行线路调试，建议使用联机内置线路，针对联机做了优化。<LineBreak />
+                    </ui:TextBlock>
+                    <!--  关键词过滤  -->
+                    <ui:TextBlock Margin="0,0,0,2"
+                                  Text="以逗号分隔关键词，文件名包含任一关键词线路将被跳过"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBox Margin="0,0,0,8"
+                                PlaceholderText="例如：传奇，十六倍"
+                                Text="{Binding RouteFilterKeywords, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <!--  从第几条路线开始  -->
+                    <ui:TextBlock Margin="0,0,0,2" Text="从第几条路线开始(0=CD过滤)" />
+                    <ui:TextBox Width="70"
+                                Margin="0,0,0,8"
+                                HorizontalAlignment="Left"
+                                PlaceholderText="0=从头"
+                                Text="{Binding StartRouteIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <!--  执行线路（groupIndex）下拉 - 仅「单机调试线路」模式下显示  -->
+                    <StackPanel Visibility="{Binding ShowGroupIndex}">
+                        <ui:TextBlock Margin="0,0,0,2" Text="执行线路" />
+                        <ui:TextBlock Margin="0,0,0,2"
+                                      Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="选择单机锄地的第几个路径组，联机将用该路径组所选线路来跑"
+                                      TextWrapping="Wrap" />
+                        <ComboBox Margin="0,0,0,4"
+                                  ItemsSource="{Binding GroupOptions}"
+                                  SelectedItem="{Binding GroupIndex, Mode=TwoWay}" />
+                    </StackPanel>
+                    <!--  内置线路按钮组占位（code-behind 填充），随 ShowManualRoute 显隐  -->
+                    <ContentControl x:Name="BuiltinRouteHost" Visibility="{Binding ShowManualRoute}" />
+                    <ui:ToggleSwitch Margin="0,8,0,0"
+                                     Content="调试模式（跳过路线一致性验证）"
+                                     IsChecked="{Binding DebugMode, Mode=TwoWay}" />
+                </StackPanel>
+            </ui:CardExpander>
+        </StackPanel>
+
+        <!--  G 线路变体偏好（最末，房主成员都可见）  -->
+        <ui:CardExpander x:Name="VariantExpander"
+                         Margin="0,0,0,0"
+                         ContentPadding="0"
+                         Icon="{ui:SymbolIcon Branch24}"
+                         IsExpanded="False">
+            <ui:CardExpander.Header>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Column="0"
+                                  Grid.Row="0"
+                                  VerticalAlignment="Center"
+                                  FontTypography="Body"
+                                  Text="线路变体偏好" />
+                    
+                    <!-- 横线 -->
+                    <Border Grid.Column="0"
+                            Grid.Row="1"
+                            Grid.ColumnSpan="3"
+                            Margin="0,8,30,8"
+                            BorderBrush="{ui:ThemeResource ControlFillColorSecondaryBrush}"
+                            BorderThickness="0,0,30,1" />
+                    
+                    <StackPanel Grid.Column="1" Grid.Row="0"
+                                Margin="12,0,8,0"
+                                HorizontalAlignment="Left"
+                                Orientation="Horizontal">
+                        <ui:Button x:Name="VariantHelpButton"
+                                   Margin="0,0,6,0"
+                                   Content="线路变体说明" />
+                        <ui:Button x:Name="VariantRulesButton" Content="制作规则" />
+                    </StackPanel>
+                    
+                    <ui:TextBlock Grid.Column="0"
+                                  Grid.Row="2"
+                                  Grid.ColumnSpan="3"
+                                  VerticalAlignment="Center"
+                                  FontTypography="Body"
+                                  Margin="0,0,0,0"
+                                  Text="同一线路的不同版本，查看线路Readme了解" />
+                </Grid>
+            </ui:CardExpander.Header>
+            <ContentControl x:Name="VariantPanelHost" />
+        </ui:CardExpander>
+
+        <!--  H 调试（房主可见；落后追赶为房主下发设置，成员隐藏整张卡，D4 方案 C）  -->
+        <ui:CardExpander Margin="0,12,0,0"
+                         ContentPadding="12"
+                         Icon="{ui:SymbolIcon Bug24}"
+                         IsExpanded="False"
+                         Visibility="{Binding ShowHostArea}">
+            <ui:CardExpander.Header>
+                <ui:TextBlock FontTypography="Body" Text="调试" />
+            </ui:CardExpander.Header>
+            <StackPanel>
+                <!--  子卡片：落后成员逐段追赶（每个调试功能单独一张子卡片，后续功能在此并列追加）  -->
+                <ui:Card Padding="12">
+                    <StackPanel>
+                        <ui:TextBlock Margin="0,0,0,8"
+                                      FontTypography="BodyStrong"
+                                      Text="落后成员逐段追赶" />
+                        <ui:ToggleSwitch Margin="0,0,0,4"
+                                         Content="启用落后逐段追赶"
+                                         IsChecked="{Binding EnableLaggingCatchUp, Mode=TwoWay}" />
+                        <ui:TextBlock Margin="0,0,0,2" Text="落后触发阈值（落后多少段触发追赶，范围 1-3）" />
+                        <ui:TextBox Width="70"
+                                    Margin="0,0,0,8"
+                                    HorizontalAlignment="Left"
+                                    PlaceholderText="1-3，默认1"
+                                    Text="{Binding LagSegmentThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="房主统一配置并同步给所有成员；房主与成员都参与追赶。落后玩家逐段快速跳进对齐大部队，单机不受影响。"
+                                      TextWrapping="Wrap" />
+                    </StackPanel>
+                </ui:Card>
+                <!--  子卡片：重开续跑（房主侧，hoeing-multiworld-host-restart-resume-round）  -->
+                <ui:Card Margin="0,8,0,0" Padding="12">
+                    <StackPanel>
+                        <ui:TextBlock Margin="0,0,0,8"
+                                      FontTypography="BodyStrong"
+                                      Text="重开续跑（跳过已完成世界）" />
+                        <ui:ToggleSwitch Margin="0,0,0,4"
+                                         Content="启用重开续跑"
+                                         IsChecked="{Binding MultiWorldResumeEnabled, Mode=TwoWay}" />
+                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="房主中途停止后重新开始时，全组直接跳到第一个待执行的轮次，跳过已锄完的房主世界（默认开启）。关闭则回退为从第 1 轮逐个世界试探的旧行为。仅房主可见，效果作用于全组。"
+                                      TextWrapping="Wrap" />
+                    </StackPanel>
+                </ui:Card>
+                <!--  子卡片：单人调试模式（纯本地，hoeing-multiplayer-solo-debug-mode）  -->
+                <ui:Card Margin="0,8,0,0" Padding="12">
+                    <StackPanel>
+                        <ui:TextBlock Margin="0,0,0,8"
+                                      FontTypography="BodyStrong"
+                                      Text="单人调试模式" />
+                        <ui:ToggleSwitch Margin="0,0,0,4"
+                                         Content="单人调试模式"
+                                         IsChecked="{Binding SoloDebugMode, Mode=TwoWay}" />
+                        <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="仅用于单人调试线路：开启后单人世界下联机锄地不再因检测不到多人世界而退出，便于调试整条线路，并且不记录CD。默认关闭，正常联机锄地请勿开启（不保证依赖真实多人世界的环节在单人下可用）。"
+                                      TextWrapping="Wrap" />
+                    </StackPanel>
+                </ui:Card>
+            </StackPanel>
+        </ui:CardExpander>
+    </StackPanel>
+</UserControl>

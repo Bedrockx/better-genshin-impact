@@ -1,0 +1,5 @@
+//仆人精英 （不开特化检测的策略）
+//仆人 attack(0.01),e, wait(0.1), check, wait(0.05),charge(0.35), j, keydown(s), attack(0.3), keypress(e), attack(0.3), attack(0.57),e,wait(0.07),attack(0.45),wait(0.07),charge(0.35), keyup(s), keydown(w), attack(0.38),  attack(0.3), keypress(e), attack(0.3), keyup(w), e,wait(0.07),attack(0.45),wait(0.07),charge(0.35), keydown(s), attack(0.6), keypress(e), attack(0.57), attack(0.45),attack(0.45), keyup(s), keydown(w), attack(0.38),  attack(0.3), keypress(e), attack(0.3), keyup(w), wait(0.1), check,charge(0.35), keypress(q)
+
+//仆人精英 （开特化检测“阿蕾奇诺自动EQ”的策略）
+仆人  e,attack(0.1), j, keydown(s),wait(0.05),keyup(s),attack(1.2),wait(0.04),check,attack(0.01),attack(0.8),wait(0.04),check,attack(0.01)
