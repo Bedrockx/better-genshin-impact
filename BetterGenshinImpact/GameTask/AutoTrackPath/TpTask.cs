@@ -497,6 +497,26 @@ public class TpTask
             }
         }
 
+        // 5.6b 点击前缩放兜底（Zoom_Collapse_Guard）：无条件确保点击前缩放 ≤ 4.4。
+        //     根因：异常/重试路径（TpPointNotActivate 后 5.0 拉 5.5、或经 Tp 外层 catch→ReturnMainUiTask
+        //     退回主界面重进后 edgeZoomApplied 已复位为 false 而缩放仍停在 5.5）会绕过 5.6 的降档条件
+        //     (edgeZoomApplied && MapMoveStepDivisor)，使缩放停在 5.5。普通传送点在 5.5 不渲染，
+        //     点击落在空位 → 传送失败。此兜底不依赖 edgeZoomApplied，仅看实测缩放是否 > 4.4+容差。
+        //     位于 5.7 之前：5.7 的 specialZoom(2.0<4.4) 不受影响，且 5.7 命中时会自行重算 rect。
+        //     详见 .kiro/specs/teleport-final-click-zoom-not-collapsed-click-miss-fix/design.md 组件 B。
+        if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
+        {
+            using var raCollapse = CaptureToRectArea();
+            double zoomNow = GetBigMapZoomLevel(raCollapse);
+            if (ShouldCollapseZoomBeforeClick(zoomNow, DisplayTpPointZoomLevel, _tpConfig.PrecisionThreshold))
+            {
+                await AdjustMapZoomLevel(zoomNow, DisplayTpPointZoomLevel);
+                await Delay(200, ct);
+                TaskControl.Logger.LogInformation("点击前缩放兜底：{From:0.0} 高于可点击档，降回 {To:0.0} 恢复传送点渲染", zoomNow, DisplayTpPointZoomLevel);
+                bigMapInAllMapRect = GetBigMapRect(mapName);
+            }
+        }
+
         // 5.7 特殊相邻传送点：命中清单则点击前拉到专属放大（默认 2.5，比 4.4 更放大），
         //     重新 MoveMapTo 定位并重算 bigMapInAllMapRect，使相邻两点在屏幕上分开、点得准、不弹菜单。
         //     命中判定为纯坐标 O(n) 比较（清单懒加载+缓存），未命中零额外开销、逐字节走原路径。
@@ -504,7 +524,7 @@ public class TpTask
         if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
         {
             var (hitSpecial, specialZoom) = SpecialAdjacentTpPointDecisions.IsSpecialAdjacentPoint(
-                GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 10.0, defaultZoom: 2);
+                GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 20.0, defaultZoom: 2);
             if (hitSpecial)
             {
                 using var raSp = CaptureToRectArea();
@@ -928,8 +948,8 @@ public class TpTask
             catch (Exception e)
             {
                 lastWasTpPointNotActivate = false; // 非"点击后没传送点"的失败，下次重试不拉 5.5
-                TaskControl.Logger.LogError("传送失败，重试 {I} 次", i + 1);
-                // TaskControl.Logger.LogDebug(e, "传送失败，重试 {I} 次", i + 1);
+                TaskControl.Logger.LogError("传送失败，重试 {I} 次，原因：{Msg}", i + 1, e.Message);
+                TaskControl.Logger.LogDebug(e, "传送失败异常详情（重试 {I} 次）", i + 1);
                 if (_tpConfig.MapMoveStepDivisor)Simulation.SendInput.Mouse.LeftButtonUp();
                 //回到主界面，重置状态
                 await new ReturnMainUiTask().Start(ct);
@@ -1275,6 +1295,11 @@ public class TpTask
                             totalMoveMouseX = _tpConfig.MapScaleFactor * Math.Abs(xOffset) / currentZoomLevel;
                             totalMoveMouseY = _tpConfig.MapScaleFactor * Math.Abs(yOffset) / currentZoomLevel;
                             mouseDistance = Math.Sqrt(totalMoveMouseX * totalMoveMouseX + totalMoveMouseY * totalMoveMouseY);
+                            // 切图重识别成功，等同主路径"识别成功即清零失败账"的约定：清零 exceptionTimes。
+                            // 否则切图前旧地图上累积的 exceptionTimes 会赖到切图后的新地图账上，使容错额度被历史
+                            // 欠账吃掉——动态跑道模式阈值仅 1，切图后再有一次跳跃即撞线抛"惯性推算失效"，
+                            // 导致"地图正常、传送点已可点击"却误报传送失败重试。
+                            exceptionTimes = 0;
                             TaskControl.Logger.LogDebug("亮度过低切换地图后重新识别中心点成功");
                         }
                         catch (MapPositionNotRecognizedException)
@@ -1855,14 +1880,14 @@ public class TpTask
     {
         try
         {
-            using var ra = CaptureToRectArea();
-            var colorMat = new Mat(ra.SrcMat, MapAssets.Instance.MimiMapRect);
-            var p = MapManager.GetMap(mapName, _mapMatchingMethod).GetMiniMapPosition(colorMat);
-            if (!p.IsEmpty())
-            {
-                var g = MapManager.GetMap(mapName, _mapMatchingMethod).ConvertImageCoordinatesToGenshinMapCoordinates(p);
-                if (g is Point2f gp) return gp;
-            }
+            // using var ra = CaptureToRectArea();
+            // var colorMat = new Mat(ra.SrcMat, MapAssets.Instance.MimiMapRect);
+            // var p = MapManager.GetMap(mapName, _mapMatchingMethod).GetMiniMapPosition(colorMat);
+            // if (!p.IsEmpty())
+            // {
+            //     var g = MapManager.GetMap(mapName, _mapMatchingMethod).ConvertImageCoordinatesToGenshinMapCoordinates(p);
+            //     if (g is Point2f gp) return gp;
+            // }
         }
         catch (Exception ex)
         {
@@ -2241,6 +2266,7 @@ public class TpTask
         // fast-drag-recognition-acceleration spec / SwitchArea tail wait optimization
         if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
         {
+            await Delay(100, ct);
             await WaitMapStableOrTimeoutAsync(timeoutMs: 500);
         }
         else
@@ -2412,6 +2438,22 @@ public class TpTask
         int clamped = Math.Min(attempt, totalAttempts - 1);
         double t = (double)clamped / (totalAttempts - 1); // attempt1→0.5, attempt2→1.0
         return hi - (hi - lo) * t;              // 朝 lo（更放大）线性收敛
+    }
+
+    /// <summary>
+    ///     判定最终点击前是否需要把缩放收敛回传送点可渲染档位。
+    ///     普通传送点图标仅在缩放 ≤ displayZoom(4.4) 时渲染；若点击前缩放停在更高档
+    ///     （典型 5.5，来自异常/重试路径未完全降档），点击会落在不渲染图标的空位 → 传送失败。
+    ///     纯函数：无 UI / Mat / logger / 状态依赖，同输入恒同输出，便于 PBT 撒输入。
+    ///     详见 .kiro/specs/teleport-final-click-zoom-not-collapsed-click-miss-fix/design.md 组件 A。
+    /// </summary>
+    /// <param name="currentZoom">点击前由 GetBigMapZoomLevel 读取的当前大地图缩放级别。</param>
+    /// <param name="displayZoom">传送点显示缩放上界（DisplayTpPointZoomLevel = 4.4）。</param>
+    /// <param name="precisionThreshold">缩放比较容差（_tpConfig.PrecisionThreshold）。</param>
+    /// <returns>currentZoom 高于 displayZoom + precisionThreshold 时返回 true（需降档），否则 false。</returns>
+    public static bool ShouldCollapseZoomBeforeClick(double currentZoom, double displayZoom, double precisionThreshold)
+    {
+        return currentZoom > displayZoom + precisionThreshold;
     }
 }
 

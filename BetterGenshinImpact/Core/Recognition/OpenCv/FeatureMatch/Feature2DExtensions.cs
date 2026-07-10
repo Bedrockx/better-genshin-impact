@@ -110,26 +110,26 @@ public static class Feature2DExtensions
             var hMat = Cv2.FindHomography(pQuery, pTrain, HomographyMethods.Ransac, mask: outMask);
             speedTimer.Record("FindHomography");
 
-            // === 诊断日志（仅观察，不改变任何行为）===
-            // RANSAC 内点率 = 几何自洽的匹配点数 / 参与匹配的总点数。
-            // 用于验证"内点率能否区分正确识别与自相似区误识别"这一假设：
-            // 正确识别的点几何一致→内点率高；误识别的点各自乱指→内点率低。
-            // 与之前失败的"good match 数量门槛"本质不同：数量测不出对错，内点率测几何自洽性。
-            // 此处只打印、不做任何拦截，供人工用真实数据校准阈值。
-            try
-            {
-                int totalMatch = pQuery.Count;
-                int inliers = outMask.Empty() ? 0 : Cv2.CountNonZero(outMask);
-                double inlierRatio = totalMatch > 0 ? (double)inliers / totalMatch : 0;
-                BetterGenshinImpact.GameTask.Common.TaskControl.Logger.LogInformation(
-                    "[大地图定位诊断] good match={Total}，RANSAC内点={Inliers}，内点率={Ratio:P1}（仅观察，不拦截）",
-                    totalMatch, inliers, inlierRatio);
-            }
-            catch (Exception logEx)
-            {
-                // 诊断日志失败绝不能影响定位主流程（可恢复，忽略并继续返回识别结果）
-                BetterGenshinImpact.GameTask.Common.TaskControl.Logger.LogDebug(logEx, "[大地图定位诊断] 内点率日志计算异常，已忽略");
-            }
+            // // === 诊断日志（仅观察，不改变任何行为）===
+            // // RANSAC 内点率 = 几何自洽的匹配点数 / 参与匹配的总点数。
+            // // 用于验证"内点率能否区分正确识别与自相似区误识别"这一假设：
+            // // 正确识别的点几何一致→内点率高；误识别的点各自乱指→内点率低。
+            // // 与之前失败的"good match 数量门槛"本质不同：数量测不出对错，内点率测几何自洽性。
+            // // 此处只打印、不做任何拦截，供人工用真实数据校准阈值。
+            // try
+            // {
+            //     int totalMatch = pQuery.Count;
+            //     int inliers = outMask.Empty() ? 0 : Cv2.CountNonZero(outMask);
+            //     double inlierRatio = totalMatch > 0 ? (double)inliers / totalMatch : 0;
+            //     BetterGenshinImpact.GameTask.Common.TaskControl.Logger.LogInformation(
+            //         "[大地图定位诊断] good match={Total}，RANSAC内点={Inliers}，内点率={Ratio:P1}（仅观察，不拦截）",
+            //         totalMatch, inliers, inlierRatio);
+            // }
+            // catch (Exception logEx)
+            // {
+            //     // 诊断日志失败绝不能影响定位主流程（可恢复，忽略并继续返回识别结果）
+            //     BetterGenshinImpact.GameTask.Common.TaskControl.Logger.LogDebug(logEx, "[大地图定位诊断] 内点率日志计算异常，已忽略");
+            // }
 
             // 1. 计算查询图像的中心点
             var queryCenterPoint = new Point2f(queryMat.Cols / 2f, queryMat.Rows / 2f);
