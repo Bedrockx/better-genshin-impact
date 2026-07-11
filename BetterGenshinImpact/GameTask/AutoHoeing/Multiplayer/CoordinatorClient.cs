@@ -877,6 +877,56 @@ public class CoordinatorClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// 纯本地查询：判断自己是否在房间花名册（CurrentPlayerList 镜像）中。
+    /// 优先按 PlayerUid 匹配，回退 PlayerName。无网络调用。
+    /// 用于加入世界前后确认自身在房，规避"物理在世界但花名册已掉"导致被误踢。
+    /// </summary>
+    public bool AmIInRoomRoster()
+    {
+        var list = CurrentPlayerList;
+        if (list == null || list.Count == 0) return false;
+        if (!string.IsNullOrEmpty(_playerUid) && list.Any(p => p.PlayerUid == _playerUid))
+            return true;
+        if (!string.IsNullOrEmpty(_playerName) && list.Any(p => p.PlayerName == _playerName))
+            return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 确保自己仍在房间：本地标志与花名册都认为在房则直接返回 true；
+    /// 否则用保存的房间码重新 JoinRoom（服务端对同名/同 UID 重连幂等，可安全反复调用），
+    /// 成功后补发一次心跳。网络异常静默返回 false，由调用方决定是否继续。
+    /// </summary>
+    public async Task<bool> EnsureInRoomAsync(CancellationToken ct = default)
+    {
+        if (_connection == null || !IsConnected) return false;
+        if (_isInRoom && AmIInRoomRoster()) return true;
+        if (string.IsNullOrEmpty(_currentRoomCode)) return false;
+        try
+        {
+            var ok = await _connection.InvokeAsync<bool>("JoinRoom",
+                _currentRoomCode, _playerName ?? "", _playerUid ?? "",
+                BetterGenshinImpact.Core.Config.Global.Version ?? "");
+            _isInRoom = ok;
+            if (ok)
+            {
+                _logger.LogInformation("[联机] EnsureInRoomAsync：重新确认加入房间 {Code} 成功", _currentRoomCode);
+                try { await SendHeartbeatAsync(); } catch { /* 心跳失败不阻塞，下个周期重试 */ }
+            }
+            else
+            {
+                _logger.LogWarning("[联机] EnsureInRoomAsync：重新加入房间 {Code} 被拒（可能已满/已开锄/白名单）", _currentRoomCode);
+            }
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[联机] EnsureInRoomAsync 失败（静默，下个周期重试）");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 查询房主是否就绪
     /// </summary>
     public async Task<bool> IsHostReadyAsync()

@@ -82,6 +82,12 @@ public class AutoHoeingTask : ISoloTask
     private string? _stopReason;
     private CancellationTokenSource? _linkedStopCts;
 
+    // 联机组队是否达到"可开锄"状态。仅在 InitializeMultiplayerAsync 成功走到末尾时置 true；
+    // 任何失败/降级路径（连不上服务器、加不进房间、拿不到房主 UID、房主未就绪超时、
+    // 加入世界失败、等待组队超时、初始化异常）都会提前 return，标志保持 false。
+    // RunTask 据此守卫：false 且非单人调试模式 → 不进入锄地，杜绝成员在自己世界单跑。
+    private bool _multiplayerPartyReady;
+
     // hoeing-multiplayer-sync-execution-params §C2 通道 C：成员回填时暂存被覆盖的全局
     // PickDropsAfterFightSeconds 原值，finally（§C4）恢复，保证单机 ScanPickTask 零感知。
     // 用 ??= 只在首次回填记录，多世界多次回填不覆盖真正原值。
@@ -582,6 +588,8 @@ public class AutoHoeingTask : ISoloTask
 
     private async Task InitializeMultiplayerAsync()
     {
+        // 进入即置 false；仅在成功走到方法末尾时置 true（见字段注释）。
+        _multiplayerPartyReady = false;
         try
         {
             var client = new CoordinatorClient();
@@ -1093,7 +1101,12 @@ public class AutoHoeingTask : ISoloTask
                 var hostUid = client.HostPlayerUid;
                 if (string.IsNullOrEmpty(hostUid))
                 {
-                    _logger.LogWarning("[联机] 无法获取房主 UID，跳过自动组队");
+                    // 成员拿不到房主 UID = 组队失败，不能在自己世界开锄，提前终止（_multiplayerPartyReady 保持 false）
+                    _logger.LogError("[联机] 无法获取房主 UID，组队失败，停止联机锄地");
+                    _worldStateMonitor.IsPartyPhase = false;
+                    await client.DisposeAsync();
+                    _multiplayerCoordinator = null;
+                    return;
                 }
                 else
                 {
@@ -1233,6 +1246,9 @@ public class AutoHoeingTask : ISoloTask
                         _logger.LogWarning("[联机] 无法获取房主配置，使用本地配置");
                     }
 
+                    // 加入世界前先确认自己在房间花名册，掉了就用房间码重新加入（网络抖动容错）
+                    await client.EnsureInRoomAsync(_ct);
+
                     _logger.LogInformation("[联机] 当前为成员，尝试加入房主世界，房主 UID: {Uid}", AutoPartyTask.MaskUid(hostUid));
                     var joinOk = await autoParty.JoinHostWorldAsync(hostUid, _ct);
                     if (joinOk)
@@ -1245,8 +1261,6 @@ public class AutoHoeingTask : ISoloTask
                         client.AllWorldJoined += handler;
                         try
                         {
-                            await client.ReportWorldJoinedAsync();
-
                             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_config.PartyTimeoutSeconds));
                             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_ct, timeoutCts.Token);
                             using var reg = linkedCts.Token.Register(() =>
@@ -1256,6 +1270,23 @@ public class AutoHoeingTask : ISoloTask
                                 else
                                     waitTcs.TrySetResult(false);
                             });
+
+                            // 周期性确认在房 + 重报已加入世界（每 5s），杜绝单次上报因网络抖动丢失。
+                            // 循环内首次立即执行一次（无初始延迟），收到 AllWorldJoined 或超时/取消即停止。
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    while (!waitTcs.Task.IsCompleted && !linkedCts.Token.IsCancellationRequested)
+                                    {
+                                        await client.EnsureInRoomAsync(linkedCts.Token);
+                                        await client.ReportWorldJoinedAsync();
+                                        await Task.Delay(5000, linkedCts.Token);
+                                    }
+                                }
+                                catch (OperationCanceledException) { /* 正常结束（就绪或超时） */ }
+                                catch (Exception ex) { _logger.LogWarning(ex, "[联机] 周期上报已加入世界异常（忽略）"); }
+                            }, linkedCts.Token);
 
                             var allReady = await waitTcs.Task;
                             if (allReady)
@@ -1299,6 +1330,10 @@ public class AutoHoeingTask : ISoloTask
                 var completed = ComputeCompletedHostUidsForReport(client);
                 await client.MarkRoomStartedAsync(completed);
             }
+
+            // 只有走到这里（所有组队/加入/等待环节均未提前 return）才算组队成功，允许后续开锄。
+            // 任何失败/降级/超时路径都在上方提前 return，本标志保持 false，RunTask 据此拦截开锄。
+            _multiplayerPartyReady = true;
         }
         catch (Exception ex)
         {
@@ -1593,6 +1628,34 @@ public class AutoHoeingTask : ISoloTask
             await PrepareMultiplayerPartyAndAvatar();
             
             await InitializeMultiplayerAsync();
+
+            // 组队守卫（方案A）：只要联机组队没有达到"可开锄"状态（连接失败 / 加入房间失败 /
+            // 拿不到房主 UID / 房主未就绪超时 / 加入房主世界失败 / 等待全员就绪超时 / 初始化异常等），
+            // 一律不进入锄地，杜绝成员在自己世界单跑、房主未满员被动开跑。
+            // 例外：单人调试模式（SoloDebugMode）是开发者故意独自跑线路，组队本就不会满员，必须放行。
+            // 注意：房主主动"立即开始(当前人数)" / ESC 跳过 / 超时按现有人数锄地 这三条属于人为选择，
+            // 它们走的是 WaitForMembersAsync 正常返回 + 成功走到 InitializeMultiplayerAsync 末尾，
+            // _multiplayerPartyReady 为 true，不受本守卫影响。
+            if (!_multiplayerPartyReady && !_config.SoloDebugMode)
+            {
+                _logger.LogError("[联机] 组队未成功（未达到满员/就绪条件），停止锄地，不在自己世界单独运行");
+                if (_worldStateMonitor != null) _worldStateMonitor.IsPartyPhase = false;
+                try
+                {
+                    if (_coordinatorClientRef != null)
+                    {
+                        await _coordinatorClientRef.DisposeAsync();
+                        _coordinatorClientRef = null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 清理连接失败可恢复：任务即将结束，连接终会随进程释放，仅记日志不阻断退出。
+                    _logger.LogWarning(ex, "[联机] 组队失败后释放协调连接异常（忽略）");
+                }
+                _multiplayerCoordinator = null;
+                return;
+            }
 
             // kazuha-declare-after-team-switch: 合法声明窗口
             // 时序保证：PrepareMultiplayerPartyAndAvatar 已返回（tTeam ≤ tCall）
@@ -2002,9 +2065,16 @@ public class AutoHoeingTask : ISoloTask
                     using var reg = linkedCts.Token.Register(() => hostAllJoinedTcs.TrySetResult(false));
                     var allJoined = await hostAllJoinedTcs.Task;
                     if (allJoined)
+                    {
                         _logger.LogInformation("[多世界] 第 {Round} 轮所有成员已就绪", round + 1);
+                    }
                     else
-                        _logger.LogWarning("[多世界] 第 {Round} 轮等待所有成员就绪超时，继续执行", round + 1);
+                    {
+                        // 组队守卫（方案A）：本轮未达全员就绪，不开锄，终止多世界。
+                        // （事件反注册由下方 finally 统一处理，此处不重复 -=）
+                        _logger.LogError("[多世界] 第 {Round} 轮等待所有成员就绪超时，未满员，终止本轮不开锄", round + 1);
+                        return RoundSetupOutcome.Abort;
+                    }
                 }
                 finally
                 {
@@ -2151,6 +2221,9 @@ public class AutoHoeingTask : ISoloTask
                     return RoundSetupOutcome.Abort;
                 }
 
+                // 加入世界前先确认自己在房间花名册，掉了就用房间码重新加入（网络抖动容错）
+                await client.EnsureInRoomAsync(_ct);
+
                 // 加入新房主世界
                 var joinOk = await autoParty.JoinHostWorldAsync(roundHostPlayer.PlayerUid, _ct);
                 if (!joinOk)
@@ -2165,13 +2238,34 @@ public class AutoHoeingTask : ISoloTask
                 client.AllWorldJoined += allJoinedHandler;
                 try
                 {
-                    await client.ReportWorldJoinedAsync();
-
                     using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_config.PartyTimeoutSeconds));
                     using var linked = CancellationTokenSource.CreateLinkedTokenSource(_ct, timeoutCts.Token);
                     using var reg = linked.Token.Register(() => allJoinedTcs.TrySetResult(false));
+
+                    // 周期性确认在房 + 重报已加入世界（每 5s），杜绝单次上报因网络抖动丢失。
+                    // 循环内首次立即执行一次（无初始延迟），收到 AllWorldJoined 或超时/取消即停止。
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            while (!allJoinedTcs.Task.IsCompleted && !linked.Token.IsCancellationRequested)
+                            {
+                                await client.EnsureInRoomAsync(linked.Token);
+                                await client.ReportWorldJoinedAsync();
+                                await Task.Delay(5000, linked.Token);
+                            }
+                        }
+                        catch (OperationCanceledException) { /* 正常结束（就绪或超时） */ }
+                        catch (Exception ex) { _logger.LogWarning(ex, "[联机] 周期上报已加入世界异常（忽略）"); }
+                    }, linked.Token);
+
                     if (!await allJoinedTcs.Task)
-                        _logger.LogWarning("[多世界] 等待全员就绪超时，继续执行");
+                    {
+                        // 组队守卫（方案A）：本轮未达全员就绪，成员不在自己/房主世界单跑，终止本轮。
+                        // （finally 会 -= allJoinedHandler，此处不重复解绑）
+                        _logger.LogError("[多世界] 等待全员就绪超时，未满员，终止本轮不开锄");
+                        return RoundSetupOutcome.Abort;
+                    }
                 }
                 finally { client.AllWorldJoined -= allJoinedHandler; }
             }
