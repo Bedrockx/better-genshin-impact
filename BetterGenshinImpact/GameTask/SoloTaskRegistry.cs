@@ -17,7 +17,7 @@ public static class SoloTaskRegistry
     /// </summary>
     public static readonly List<string> AvailableTasks =
     [
-        "锄地一条龙",
+        "锄地一条龙（联机）",
         "好感任务自动完成",
         "OCR切换武器",
         "配对界面切换角色"
@@ -31,7 +31,8 @@ public static class SoloTaskRegistry
     {
         return name switch
         {
-            "锄地一条龙" => new AutoHoeingTask(partyConfig, settings, groupName),
+            // 新显示名 + 旧名（向后兼容：旧配置组已保存的任务名仍为"锄地一条龙"）
+            "锄地一条龙（联机）" or "锄地一条龙" => new AutoHoeingTask(partyConfig, settings, groupName),
             "好感任务自动完成" => new AutoFriendshipTask(TaskContext.Instance().Config.AutoFriendshipConfig, partyConfig, settings, partyConfig?.AutoFightConfig),
             "OCR切换武器" => new OcrSwitchWeaponTask(partyConfig, settings, groupName),
             "配对界面切换角色" => new AutoSwitchRolesTask(partyConfig, settings, groupName),
@@ -46,7 +47,7 @@ public static class SoloTaskRegistry
     {
         return taskName switch
         {
-            "锄地一条龙" => AutoHoeingTask.GetSettingDefinitions(),
+            "锄地一条龙（联机）" or "锄地一条龙" => AutoHoeingTask.GetSettingDefinitions(),
             "好感任务自动完成" => AutoFriendshipTask.GetSettingDefinitions(),
             "OCR切换武器" => OcrSwitchWeaponTask.GetSettingDefinitions(),
             "配对界面切换角色" => AutoSwitchRolesTask.GetSettingDefinitions(),
