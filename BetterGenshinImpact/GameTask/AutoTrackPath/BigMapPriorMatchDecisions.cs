@@ -7,6 +7,7 @@ public static class BigMapPriorMatchDecisions
 {
     public const double Layer1RangeGenshin = 100.0; // 第一层小地图先验范围
     public const double Layer2RangeGenshin = 500.0; // 第二层目标坐标先验范围
+    public const double RegionCenterRangeGenshin = 200.0; // 区域中心点先验范围（切换区域后，中心点已知精确，可用较大半径）
 
     /// <summary>
     /// 判断某层区块限定匹配结果是否可信：非空 且 距该层先验中心 ≤ 该层范围。

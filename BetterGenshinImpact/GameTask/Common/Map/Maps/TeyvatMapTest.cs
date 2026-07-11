@@ -44,4 +44,9 @@ public class TeyvatMapTest : SceneBaseMapByTemplateMatch
     {
         return BigMapTeyvat256Layer.GetInstance(this).GetBigMapRect(greyBigMapMat);
     }
+
+    public override Point2f GetBigMapPositionInRange(Mat greyBigMapMat, Point2f genshinCenter, double genshinRadius)
+    {
+        return BigMapTeyvat256Layer.GetInstance(this).GetBigMapPositionInRange(greyBigMapMat, genshinCenter, genshinRadius);
+    }
 }

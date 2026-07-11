@@ -126,6 +126,13 @@ public abstract class SceneBaseMap : ISceneMap
         return SiftMatcher.KnnMatchRect(MainLayer.TrainKeyPoints, MainLayer.TrainDescriptors, greyBigMapMat);
     }
 
+    /// <summary>
+    /// 按区块限定范围定位（返回 256 尺度图像坐标中心点）。
+    /// 基类默认返回 default = 本地图不支持区块限定，调用方兜底走全图盲搜。
+    /// 支持区块限定的地图（提瓦特 SIFT / 模板匹配）override 此方法转发到分层匹配。
+    /// </summary>
+    public virtual Point2f GetBigMapPositionInRange(Mat greyBigMapMat, Point2f genshinCenter, double genshinRadius) => default;
+
     public virtual Point2f GetMiniMapPosition(Mat greyMiniMapMat)
     {
         // 从表到里逐层匹配
