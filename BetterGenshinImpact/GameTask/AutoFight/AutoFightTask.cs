@@ -2043,7 +2043,7 @@ public class AutoFightTask : ISoloTask
         if (_taskParam is { PickDropsAfterFightEnabled: true } )
         {
             // 执行扫描掉落物光柱并靠近的功能
-            await new ScanPickTask().Start(ct);
+            await new ScanPickTask().Start(ct, _taskParam.PickDropsAfterFightSeconds);
         }
 
         if (_taskParam.EndBloodCheackEnabled)
