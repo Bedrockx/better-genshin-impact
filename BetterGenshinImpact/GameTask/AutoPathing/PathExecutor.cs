@@ -2517,6 +2517,7 @@ public class PathExecutor
         double distanceHalf = 0;
         bool dushed = true;
         bool relifed = false;
+        bool mwktiao = true;
         
         string nextAvatarIndexStop = "";
         Avatar? avatar = null;
@@ -2613,7 +2614,7 @@ public class PathExecutor
             // 仅回点路径（escapeClimbOnReturn==true）启用攀爬脱离；其它所有调用方默认 false 零感知。
             // 复用本帧 screen2（无副作用纯查询），检测到攀爬即发一次 Drop（取消攀爬键），
             // Delay(500) 冷却避免连发。不做卡死/扭动/跳跃/复苏/NormalAttack。
-            if (escapeClimbOnReturn && Bv.GetMotionStatus(screen2) == MotionStatus.Climb)
+            if ((escapeClimbOnReturn) && Bv.GetMotionStatus(screen2) == MotionStatus.Climb)
             {
                 Logger.LogInformation("[联机] 回点检测到攀爬，发送 Drop 脱离");
                 Simulation.SendInput.SimulateAction(GIActions.Drop);
@@ -2973,6 +2974,7 @@ public class PathExecutor
                     hurryOnLogo = false; 
               
                     if(num%2 == 1)Logger.LogInformation("自动赶路：{t} 赶路...{t2}",avatar.Name,Math.Round(distance));
+
                     if (avatar.Name == "玛薇卡") //连续点按E类型
                     {
                         // 获取两个点的颜色值
@@ -2983,22 +2985,18 @@ public class PathExecutor
                             Math.Pow(pos.Item1 - pos2.Item1, 2) + // 绿通道差值的平方
                             Math.Pow(pos.Item2 - pos2.Item2, 2)   // 红通道差值的平方
                         );
-                        // Logger.LogInformation("玛薇卡技能颜色差值-2:{ColorDifference}", Math.Round(colorDifference, 2));
+                        Logger.LogWarning("玛薇卡技能颜色差值--------66:{ColorDifference}", Math.Round(colorDifference, 2));
                         
                         if (colorDifference >15)
                         {
                             Task.Run(async () =>
                             {
-                                // hurryOnIn = true;
-                                // await Delay(100, ct);
                                 Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
                                 await Delay(200, ct);
                                 Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
                                 await Delay(300, ct);
                                 Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
                                 await Delay(700, ct);
-                                // Simulation.SendInput.SimulateAction(GIActions.SprintMouse, KeyType.KeyDown);
-                                // await Delay(400, ct);
                                 
                                 using var region3 = CaptureToRectArea();
 
@@ -3006,16 +3004,7 @@ public class PathExecutor
                                 
                                 if (waypoint?.MoveMode == MoveModeEnum.Fly.Code && _MwkFly)
                                 {
-                                    // Logger.LogInformation("玛薇卡技能11111");
-                                    // waypoint.MoveMode = MoveModeEnum.Run.Code;
-                                    // var pos11 = region3.SrcMat.At<Vec3b>(1012,1574);
-                                    // var pos22 = region3.SrcMat.At<Vec3b>(1006, 1608);
                                     var pos33 = region3.SrcMat.At<Vec3b>(1028, 1584);
-                                    //  colorDifference2 = Math.Sqrt(
-                                    //     Math.Pow(pos11.Item0 - pos22.Item0, 2) + // 蓝通道差值的平方
-                                    //     Math.Pow(pos11.Item1 - pos22.Item1, 2) + // 绿通道差值的平方
-                                    //     Math.Pow(pos11.Item2 - pos22.Item2, 2)   // 红通道差值的平方
-                                    // );
                                     isFlyingMwk = (pos33.Item0 == 255 && pos33.Item1 == 255 && pos33.Item2 == 255);
                                     
                                     if (!aa && isFlyingMwk)
@@ -3077,6 +3066,12 @@ public class PathExecutor
                                      if (continueHurryOn > 0 && (waypoint.MoveMode != MoveModeEnum.Fly.Code && !isFlyingMwk))//?????
                                     {
                                         Logger.LogInformation("自动赶路：继续...");
+                                        var isF = Bv.GetMotionStatus(region3) == MotionStatus.Fly;
+                                        if (isF)
+                                        {
+                                            Logger.LogInformation("自动赶路：测试普攻...");
+                                            Simulation.SendInput.SimulateAction(GIActions.NormalAttack);  
+                                        }
                                         hurryOnLogo = true;
                                         continueHurryOn = 0;
                                     }
@@ -3137,6 +3132,61 @@ public class PathExecutor
                                 {
                                     avatar.LastSkillTime = DateTime.UtcNow;
                                 }
+                                
+                                if (distance > 75 && Bv.GetMotionStatus(region3) != MotionStatus.Fly)
+                                {
+                                    hurryOnLogo = true;
+                                    // var pos55 = region3.SrcMat.At<Vec3b>(978, 1692);
+                                    // var pos255 = region3.SrcMat.At<Vec3b>(995, 1702);
+                                    // double colorDifference55 = Math.Sqrt(
+                                    //     Math.Pow(pos55.Item0 - pos255.Item0, 2) + // 蓝通道差值的平方
+                                    //     Math.Pow(pos55.Item1 - pos255.Item1, 2) + // 绿通道差值的平方
+                                    //     Math.Pow(pos55.Item2 - pos255.Item2, 2)   // 红通道差值的平方
+                                    // );
+                                    // Logger.LogInformation("玛薇卡技能颜色差值-2:{ColorDifference}", Math.Round(colorDifference, 2));
+                                    //
+                                    // if (colorDifference55 > 15)
+                                    // {
+                                        mwktiao = false;
+                                        Logger.LogInformation("自动赶路：玛薇卡跳飞，距离 {d}", Math.Round(distance));
+                                        Simulation.SendInput.SimulateAction(GIActions.Jump);
+                                        await Delay(150, ct);
+                                        Simulation.SendInput.SimulateAction(GIActions.Jump);
+                                        await Delay(100, ct);
+                                        Simulation.SendInput.SimulateAction(GIActions.Jump);
+                                        await Delay(10, ct);
+                                        Simulation.SendInput.SimulateAction(GIActions.Jump);
+                                        await Delay(150, ct);
+                                        mwktiao = true;
+                                    // }
+                                    
+                                    using var screen2334 = CaptureToRectArea();
+                                    (position, additionalTimeInMs) = await GetPositionAndTime(screen2334, waypoint,isPoint);
+
+                                    if (position is  { X: 0, Y: 0 })
+                                    {
+                                        if ((DateTime.UtcNow - _prePositionUpdateTime).TotalSeconds <= 5)
+                                        {
+                                            position = prePosition;
+                                        }
+                                        else
+                                        {
+                                            Logger.LogWarning("prePosition 已过时，触发全局匹配2");
+                                            Navigation.Reset();
+                                            prePosition = default;
+                                            _prePositionMapKey = string.Empty;
+                                        }
+                                    }
+                            
+                                    distance = Navigation.GetDistance(waypoint, position);
+                                    if (distance > 75)
+                                    {
+                                        Logger.LogWarning("自动赶路：玛薇卡跳飞结束，距离 {d}", Math.Round(distance));
+                                        hurryOnLogo = true;
+                                    } 
+                                    
+                                }
+                                
                             },ct);
                         }
                         else
@@ -3618,7 +3668,7 @@ public class PathExecutor
                     if (Math.Abs((fastModeColdTime - DateTime.UtcNow).TotalMilliseconds) > 1000) //冷却一会
                     {
                         fastModeColdTime = DateTime.UtcNow;
-                        if (!hurryOnLogo && dushed)
+                        if (!hurryOnLogo && dushed && mwktiao)
                         {
                             dushed = false;
                             Task.Run(async () =>
