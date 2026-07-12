@@ -2924,8 +2924,10 @@ public class PathExecutor
                                 
                                 if (mavikaFlyCount > (mwktiaoIn?8:5) && avatar.IsActive(screen2))
                                 {
-                                    if(nextWaypoint?.MoveMode != MoveModeEnum.Fly.Code)Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                                    if(nextWaypoint?.MoveMode != MoveModeEnum.Fly.Code && Bv.GetMotionStatus(screen2) == MotionStatus.Fly)Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                                    if(mwktiaoIn &&colorDifference44 <15)Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
                                     mavikaFlyCount = 0;
+                                    mwktiaoIn = false;
                                     Logger.LogInformation("自动赶路：靠近节点切换 {t}...-h {t2}",nextAvatarIndexStop,waypoint?.MoveMode);
                                 } 
                             }
@@ -3222,6 +3224,20 @@ public class PathExecutor
                         }
                         else
                         {
+                            // 获取两个点的颜色值
+                            var pos66 = screen2.SrcMat.At<Vec3b>(978, 1692);
+                            var pos266 = screen2.SrcMat.At<Vec3b>(995, 1702);
+                            double colorDifference66 = Math.Sqrt(
+                                Math.Pow(pos66.Item0 - pos266.Item0, 2) + // 蓝通道差值的平方
+                                Math.Pow(pos66.Item1 - pos266.Item1, 2) + // 绿通道差值的平方
+                                Math.Pow(pos66.Item2 - pos266.Item2, 2)   // 红通道差值的平方
+                            );
+                            if (colorDifference66 < 15 && (Bv.GetMotionStatus(screen2) == MotionStatus.Fly))
+                            {
+                                Logger.LogInformation("自动赶路：飞行下落...");
+                                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                            }
+                                
                             hurryOnIn = false;
                             hurryOnLogo = true;
                         }
