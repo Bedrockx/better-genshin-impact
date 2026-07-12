@@ -59,7 +59,9 @@ public class TpTask
     // 单次传送生命周期内有效。仅 TpOnce 路径设置；其它调用方（七天神像/地脉花）不设 → 保持 null → 走全图旧路径。
     private Point2f? _miniMapPriorGenshin = null;   // 第一层先验（原神坐标），TpOnce 打开大地图前采集
     private Point2f? _targetPriorGenshin = null;    // 第二层先验（原神坐标），= nTpPoints[0]
-    private Point2f? _lastTpTargetGenshin = null;   // 上一次传送的目标坐标（原神坐标），用于第二层先验
+    // 上一次传送的目标坐标（原神坐标），用于第二层先验。
+    // 必须 static：PathExecutor 每次传送都 new TpTask，实例字段无法跨传送保留。
+    private static Point2f? _lastTpTargetGenshin = null;
     private bool _priorIsRegionCenter = false;   // 标记当前第一层先验是否为"区域中心点"（切换区域后），是则用 RegionCenterRangeGenshin(200) 而非 Layer1RangeGenshin(100)
 
     /// <summary>
@@ -1888,22 +1890,22 @@ public class TpTask
     /// </summary>
     private Point2f? TryGetMiniMapPriorGenshin(string mapName)
     {
-        try
-        {
-            // using var ra = CaptureToRectArea();
-            // var colorMat = new Mat(ra.SrcMat, MapAssets.Instance.MimiMapRect);
-            // var p = MapManager.GetMap(mapName, _mapMatchingMethod).GetMiniMapPosition(colorMat);
-            // if (!p.IsEmpty())
-            // {
-            //     var g = MapManager.GetMap(mapName, _mapMatchingMethod).ConvertImageCoordinatesToGenshinMapCoordinates(p);
-            //     if (g is Point2f gp) return gp;
-            // }
-        }
-        catch (Exception ex)
-        {
-            // 小地图先验识别失败不影响传送主流程（可恢复）：记录后退回缓存兜底
-            Logger.LogDebug(ex, "[大地图定位] 小地图先验识别异常，退回缓存坐标");
-        }
+        // try
+        // {
+        //     // using var ra = CaptureToRectArea();
+        //     // var colorMat = new Mat(ra.SrcMat, MapAssets.Instance.MimiMapRect);
+        //     // var p = MapManager.GetMap(mapName, _mapMatchingMethod).GetMiniMapPosition(colorMat);
+        //     // if (!p.IsEmpty())
+        //     // {
+        //     //     var g = MapManager.GetMap(mapName, _mapMatchingMethod).ConvertImageCoordinatesToGenshinMapCoordinates(p);
+        //     //     if (g is Point2f gp) return gp;
+        //     // }
+        // }
+        // catch (Exception ex)
+        // {
+        //     // 小地图先验识别失败不影响传送主流程（可恢复）：记录后退回缓存兜底
+        //     Logger.LogDebug(ex, "[大地图定位] 小地图先验识别异常，退回缓存坐标");
+        // }
         var (px, py) = Navigation.GetTpPriorPosition();  // 读传送先验专用缓存，不受 WarmUp 影响
         if (px > 0 && py > 0)
         {
