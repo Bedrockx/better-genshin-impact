@@ -43,6 +43,11 @@ public class AutoFightJsonTask : ISoloTask
     private readonly BgiYoloPredictor? _predictor;
     private DateTime _lastFightFlagTime = DateTime.Now;
 
+    /// <summary>
+    /// 经验值检测器（战后拾取判断用）
+    /// </summary>
+    private ExperienceDetector? _expDetector;
+
     private readonly ReturnMainUiTask _returnMainUiTask = new();
     private readonly double _assetScale = TaskContext.Instance().SystemInfo.AssetScale;
     private readonly double _dpi = TaskContext.Instance().DpiScale;
@@ -322,13 +327,17 @@ public class AutoFightJsonTask : ISoloTask
         var evaluator = new ConditionEvaluator(combatScenes, () => CaptureToRectArea());
 
         // 基于经验值的战后拾取检测
-        ExperienceDetector? expDetector = null;
-        if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpBasedPickupEnabled)
+        if (_taskParam.ExpKazuhaPickup)
         {
-            using var gameCaptureRegion = CaptureToRectArea();
-            var expRos = AutoFightAssets.Get(gameCaptureRegion).ExperienceRecognitionObjects;
-            expDetector = new ExperienceDetector(expRos, cts2.Token);
-            expDetector.Start();
+            var systemInfo = TaskContext.Instance().SystemInfo;
+            var captureRect = systemInfo.ScaleMax1080PCaptureRect;
+            var autoFightAssets = AutoFightAssets.Get(captureRect.Width, captureRect.Height);
+            var ros = autoFightAssets.InitializeRecognitionObjects();
+            if (ros.Count > 0)
+            {
+                _expDetector = new ExperienceDetector(ros, cts2.Token);
+                _expDetector.Start();
+            }
         }
 
         // 战斗前动作
@@ -453,20 +462,20 @@ public class AutoFightJsonTask : ISoloTask
         try
         {
             // 基于经验值检测结果的拾取判断
-            if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpBasedPickupEnabled && expDetector != null)
+            if (_taskParam.ExpKazuhaPickup && _expDetector != null)
             {
-                if (!expDetector.HasDetectedExperience)
+                if (!_expDetector.HasDetectedExperience)
                 {
                     Logger.LogInformation("基于经验值判断：等待经验值检测结果");
                     var waitMs = 1100;
-                    while (!expDetector.HasDetectedExperience && waitMs > 0)
+                    while (!_expDetector.HasDetectedExperience && waitMs > 0)
                     {
                         await Delay(100, _ct);
                         waitMs -= 100;
                     }
                 }
 
-                var shouldPickup = expDetector.HasDetectedExperience;
+                var shouldPickup = _expDetector.HasDetectedExperience;
                 Logger.LogInformation("基于经验值判断：{Result} 战后拾取", shouldPickup ? "执行" : "不执行");
 
                 if (!shouldPickup)
@@ -481,10 +490,11 @@ public class AutoFightJsonTask : ISoloTask
         }
         finally
         {
-            if (expDetector != null)
+            if (_expDetector != null)
             {
-                await expDetector.StopAsync();
-                expDetector.Dispose();
+                await _expDetector.StopAsync();
+                _expDetector.Dispose();
+                _expDetector = null;
             }
         }
 
