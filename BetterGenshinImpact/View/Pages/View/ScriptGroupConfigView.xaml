@@ -350,7 +350,7 @@
                         <ui:TextBox Grid.Row="0"
                                     Grid.RowSpan="2"
                                     Grid.Column="2"
-                                    MinWidth="60"
+                                    MinWidth="45"
                                     Height="35"
                                     HorizontalContentAlignment="Center"
                                     Margin="0,0,10,0"
@@ -388,7 +388,7 @@
                                       Grid.RowSpan="2"
                                       Grid.Column="3"
                                       FontSize="10"
-                                      Margin="10,70,5,0"
+                                      Margin="10,83,5,0"
                                       HorizontalAlignment="Left"
                                       Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
                                       Text="飞行赶路"
@@ -397,7 +397,7 @@
                                                           Grid.RowSpan="2"
                                                           Grid.Column="3"
                                                           FontSize="10"
-                                                          Margin="0,64,5,0"
+                                                          Margin="0,73,5,0"
                                                           HorizontalAlignment="Right"
                                                           IsChecked="{Binding PathingConfig.MwkFlyEnabled, Mode=TwoWay}">
                                              <ui:ToggleSwitch.Style>
@@ -412,7 +412,40 @@
                                                      </Style.Triggers>
                                                  </Style>
                                              </ui:ToggleSwitch.Style>
-                                         </ui:ToggleSwitch>                
+                                         </ui:ToggleSwitch>
+
+                        <!-- 玛薇卡挑飞触发距离：ui:TextBox（禁止 NumberBox），跟随 HurryOnAvatar==玛薇卡 启用 -->
+                        <ui:TextBlock Grid.Row="0"
+                                      Grid.RowSpan="2"
+                                      Grid.Column="2"
+                                      FontSize="10"
+                                      Margin="10,83,70,0"
+                                      HorizontalAlignment="Left"
+                                      Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                      Text="跳飞距离(推荐75左右)"
+                                      TextWrapping="Wrap" />
+                        <ui:TextBox Grid.Row="0"
+                                    Grid.RowSpan="2"
+                                    Grid.Column="2"
+                                    MinWidth="55"
+                                    Height="30"
+                                    HorizontalContentAlignment="Center"
+                                    Margin="0,75,10,0"
+                                    HorizontalAlignment="Right"
+                                    Text="{Binding PathingConfig.MwkFlyJumpDistance, Mode=TwoWay}">
+                            <ui:TextBox.Style>
+                                <Style TargetType="ui:TextBox" BasedOn="{StaticResource {x:Type ui:TextBox}}">
+                                    <!-- 默认禁用 -->
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                    <Style.Triggers>
+                                        <!-- 当 HurryOnAvatar 等于 '玛薇卡' 时启用 -->
+                                        <DataTrigger Binding="{Binding PathingConfig.HurryOnAvatar}" Value="玛薇卡">
+                                            <Setter Property="IsEnabled" Value="True"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ui:TextBox.Style>
+                        </ui:TextBox>
                         
                     </Grid>
                     <Grid Margin="16">

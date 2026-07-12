@@ -68,6 +68,8 @@ public class PathExecutor
     private PathExecutorSuspend pathExecutorSuspend;
     private string _hurryOnAvatar = "";
     private bool _MwkFly = true;
+    // 玛薇卡挑飞触发距离阈值，从 PartyConfig.MwkFlyJumpDistance 读取（默认 75，0=不挑飞）
+    private int _mwkFlyJumpDistance = 75;
     private readonly ReturnMainUiTask _returnMainUiTask = new();
     
     public PathingPartyConfig PartyConfig
@@ -1624,6 +1626,8 @@ public class PathExecutor
         }
         
         _MwkFly = PartyConfig.MwkFlyEnabled;
+        // 一次赋值，供本次赶路执行中两处阈值判定共用，保证两处取值一致（R1.8）
+        _mwkFlyJumpDistance = PartyConfig.MwkFlyJumpDistance;
     }
 
     private void LogScreenResolution()
@@ -2518,6 +2522,7 @@ public class PathExecutor
         bool dushed = true;
         bool relifed = false;
         bool mwktiao = true;
+        bool mwktiaoIn = false;
         
         string nextAvatarIndexStop = "";
         Avatar? avatar = null;
@@ -2885,8 +2890,9 @@ public class PathExecutor
                 } 
 
                 // 自动赶路的特殊处理模式，防止异常情况
-                if (!hurryOnLogo)
+                if (!hurryOnLogo || mwktiaoIn)
                 {
+                    // if(mwktiaoIn) Logger.LogWarning("444444");
                     if (avatar.Name == "玛薇卡") //玛薇卡冲坡判断
                     {
                         var pos = screen2.SrcMat.At<Vec3b>(1012,1574);
@@ -2898,12 +2904,25 @@ public class PathExecutor
                             Math.Pow(pos.Item2 - pos2.Item2, 2)   // 红通道差值的平方
                         );
                         
-                        if (colorDifference < 15 && !isFlyingMwk)
+                        if ((colorDifference < 15 && !isFlyingMwk) || mwktiaoIn)
                         {
-                            if (pos3.Item0 == 255 && pos3.Item1 == 255 && pos3.Item2 == 255)
+                            // 获取两个点的颜色值
+                            var pos44 = screen2.SrcMat.At<Vec3b>(978, 1692);
+                            var pos244 = screen2.SrcMat.At<Vec3b>(995, 1702);
+                            double colorDifference44 = Math.Sqrt(
+                                Math.Pow(pos44.Item0 - pos244.Item0, 2) + // 蓝通道差值的平方
+                                Math.Pow(pos44.Item1 - pos244.Item1, 2) + // 绿通道差值的平方
+                                Math.Pow(pos44.Item2 - pos244.Item2, 2)   // 红通道差值的平方
+                            );
+                            // Logger.LogWarning("玛薇卡技能颜色差值--------66:{ColorDifference}", Math.Round(colorDifference, 2));
+                        
+                
+                            
+                            if ((pos3.Item0 == 255 && pos3.Item1 == 255 && pos3.Item2 == 255)||colorDifference44 <15)
                             {
                                 mavikaFlyCount++;
-                                if (mavikaFlyCount > 5 && avatar.IsActive(screen2))
+                                
+                                if (mavikaFlyCount > (mwktiaoIn?8:5) && avatar.IsActive(screen2))
                                 {
                                     if(nextWaypoint?.MoveMode != MoveModeEnum.Fly.Code)Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
                                     mavikaFlyCount = 0;
@@ -2974,6 +2993,12 @@ public class PathExecutor
                     hurryOnLogo = false; 
               
                     if(num%2 == 1)Logger.LogInformation("自动赶路：{t} 赶路...{t2}",avatar.Name,Math.Round(distance));
+                    if (distance < _mwkFlyJumpDistance && Bv.GetMotionStatus(screen2) == MotionStatus.Fly)
+                    {
+                        Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                        // Logger.LogWarning("自动赶路：玛薇卡跳飞结束");
+                        hurryOnLogo = false;
+                    }
 
                     if (avatar.Name == "玛薇卡") //连续点按E类型
                     {
@@ -2985,7 +3010,7 @@ public class PathExecutor
                             Math.Pow(pos.Item1 - pos2.Item1, 2) + // 绿通道差值的平方
                             Math.Pow(pos.Item2 - pos2.Item2, 2)   // 红通道差值的平方
                         );
-                        Logger.LogWarning("玛薇卡技能颜色差值--------66:{ColorDifference}", Math.Round(colorDifference, 2));
+                        // Logger.LogWarning("玛薇卡技能颜色差值--------66:{ColorDifference}", Math.Round(colorDifference, 2));
                         
                         if (colorDifference >15)
                         {
@@ -3133,7 +3158,7 @@ public class PathExecutor
                                     avatar.LastSkillTime = DateTime.UtcNow;
                                 }
                                 
-                                if (distance > 75 && Bv.GetMotionStatus(region3) != MotionStatus.Fly)
+                                if (MwkFlyJumpDecisions.ShouldTriggerMwkFlyJump(_mwkFlyJumpDistance, distance, Bv.GetMotionStatus(region3) == MotionStatus.Fly))
                                 {
                                     hurryOnLogo = true;
                                     // var pos55 = region3.SrcMat.At<Vec3b>(978, 1692);
@@ -3158,6 +3183,8 @@ public class PathExecutor
                                         Simulation.SendInput.SimulateAction(GIActions.Jump);
                                         await Delay(150, ct);
                                         mwktiao = true;
+                                        mwktiaoIn = true;
+                                        mavikaFlyCount = 0;
                                     // }
                                     
                                     using var screen2334 = CaptureToRectArea();
@@ -3179,11 +3206,15 @@ public class PathExecutor
                                     }
                             
                                     distance = Navigation.GetDistance(waypoint, position);
-                                    if (distance > 75)
+                                    if (distance > _mwkFlyJumpDistance)
                                     {
                                         Logger.LogWarning("自动赶路：玛薇卡跳飞结束，距离 {d}", Math.Round(distance));
                                         hurryOnLogo = true;
-                                    } 
+                                    }
+                                    else
+                                    {
+                                        hurryOnLogo = false;
+                                    }
                                     
                                 }
                                 

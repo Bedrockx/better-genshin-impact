@@ -1,4 +1,5 @@
 using BetterGenshinImpact.GameTask;
+using BetterGenshinImpact.GameTask.AutoPathing;
 using BetterGenshinImpact.GameTask.AutoEat;
 using BetterGenshinImpact.GameTask.AutoFight;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -156,6 +157,21 @@ public partial class PathingPartyConfig : ObservableObject
     
     [ObservableProperty]
     private bool _mwkFlyEnabled = true;
+
+    // 玛薇卡挑飞触发距离阈值：>=0（无上限），默认 75；0 表示不挑飞。
+    // 默认值与改动前硬编码常量一致，保证向后兼容与零回归。
+    [ObservableProperty]
+    private int _mwkFlyJumpDistance = 75;
+
+    // 负数钳制到 0（R4.2）；空/非数字由 WPF 绑定失败自动保留旧值（R4.1），不进入此方法。
+    partial void OnMwkFlyJumpDistanceChanged(int value)
+    {
+        var clamped = MwkFlyJumpDecisions.Clamp(value);
+        if (clamped != value)
+        {
+            MwkFlyJumpDistance = clamped;
+        }
+    }
     
     [ObservableProperty]
     private string? _recoverAvatarIndex = null;

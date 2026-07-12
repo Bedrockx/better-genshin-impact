@@ -1928,11 +1928,9 @@ public class TpTask
             var g = MapManager.GetMap(mapName, _mapMatchingMethod).ConvertImageCoordinatesToGenshinMapCoordinates(new Point2f(px, py));
             if (g is Point2f gp)
             {
-                Logger.LogInformation("[大地图定位] 第一层缓存先验命中: 缓存图像坐标=({PX:0},{PY:0}) → 原神坐标=({GX:0},{GY:0})", px, py, gp.X, gp.Y);
                 return gp;
             }
         }
-        Logger.LogInformation("[大地图定位] 第一层缓存先验无效(缓存图像坐标=({PX:0},{PY:0}))，本次无第一层先验", px, py);
         return null;
     }
 
@@ -1953,8 +1951,6 @@ public class TpTask
         }
 
         Point2f result256 = default;
-        string hitLayer = "全图兜底";
-        double hitDist = -1;
 
         // 第一层：小地图/缓存先验，range=100
         if (_miniMapPriorGenshin is Point2f c1)
@@ -1976,20 +1972,10 @@ public class TpTask
             var g = ToGenshin(r256);
             bool acc1 = g is Point2f gpChk1
                 && BigMapPriorMatchDecisions.IsResultAcceptable(false, gpChk1, c1, layer1Range);
-            Logger.LogInformation("[大地图定位] 第一层(先验,{R:0}) 先验中心=({CX:0},{CY:0}) 区块匹配原始结果={Res} 距中心={Dist:0} 采纳={Acc}",
-                layer1Range,
-                c1.X, c1.Y,
-                g is Point2f gLog1 ? $"({gLog1.X:0},{gLog1.Y:0})" : "空",
-                g is Point2f gDist1 ? BigMapPriorMatchDecisions.Distance(gDist1, c1) : -1,
-                acc1);
             if (g is Point2f gp && acc1)
             {
-                result256 = r256; hitLayer = "第一层(小地图,100)"; hitDist = BigMapPriorMatchDecisions.Distance(gp, c1);
+                result256 = r256;
             }
-        }
-        else
-        {
-            Logger.LogInformation("[大地图定位] 第一层(缓存,100) 无先验中心，跳过");
         }
 
         // 第二层：目标传送点先验，range=500
@@ -2009,14 +1995,9 @@ public class TpTask
             var g = ToGenshin(r256);
             bool acc2 = g is Point2f gpChk2
                 && BigMapPriorMatchDecisions.IsResultAcceptable(false, gpChk2, c2, BigMapPriorMatchDecisions.Layer2RangeGenshin);
-            Logger.LogInformation("[大地图定位] 第二层(目标,500) 先验中心=({CX:0},{CY:0}) 区块匹配原始结果={Res} 距中心={Dist:0} 采纳={Acc}",
-                c2.X, c2.Y,
-                g is Point2f gLog2 ? $"({gLog2.X:0},{gLog2.Y:0})" : "空",
-                g is Point2f gDist2 ? BigMapPriorMatchDecisions.Distance(gDist2, c2) : -1,
-                acc2);
             if (g is Point2f gp && acc2)
             {
-                result256 = r256; hitLayer = "第二层(目标,500)"; hitDist = BigMapPriorMatchDecisions.Distance(gp, c2);
+                result256 = r256;
             }
         }
 
@@ -2026,16 +2007,6 @@ public class TpTask
             Logger.LogWarning("[大地图定位] 前两层先验均未采纳，进入全图盲搜兜底（此路径存在自相似区误识别风险）");
             result256 = teyvat.GetBigMapPosition(greyBigMapMat);
         }
-
-        // 对比日志（LogInformation，用户可见，供 100/500 实测校准）
-        var finalG = ToGenshin(result256);
-        Logger.LogInformation(
-            "[大地图定位] 命中={Layer} 结果={Res} 距中心={Dist:0} 小地图先验={P1} 目标先验={P2}",
-            hitLayer,
-            finalG is Point2f fg ? $"({fg.X:0},{fg.Y:0})" : "空",
-            hitDist,
-            _miniMapPriorGenshin is Point2f p1 ? $"({p1.X:0},{p1.Y:0})" : "无",
-            _targetPriorGenshin is Point2f p2 ? $"({p2.X:0},{p2.Y:0})" : "无");
 
         return result256;
     }
@@ -2067,11 +2038,6 @@ public class TpTask
         var g = ToGenshin(r256);
         bool acc = g is Point2f gp
             && BigMapPriorMatchDecisions.IsResultAcceptable(false, gp, dragCenter, radiusGenshin);
-        Logger.LogInformation("[大地图定位] 拖动先验 中心=({CX:0},{CY:0}) 半径={R:0} 区块结果={Res} 距中心={Dist:0} 采纳={Acc}",
-            dragCenter.X, dragCenter.Y, radiusGenshin,
-            g is Point2f gLog ? $"({gLog.X:0},{gLog.Y:0})" : "空",
-            g is Point2f gDist ? BigMapPriorMatchDecisions.Distance(gDist, dragCenter) : -1,
-            acc);
 
         if (g is Point2f gpFinal && acc)
         {
