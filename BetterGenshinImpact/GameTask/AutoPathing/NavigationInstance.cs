@@ -194,7 +194,7 @@ public class NavigationInstance
     /// <returns>当前位置坐标</returns>
     public Point2f GetPositionStable(ImageRegion imageRegion, string mapName, string mapMatchMethod)
     {
-        var colorMat = new Mat(imageRegion.SrcMat, MapAssets.Instance.MimiMapRect);
+        var colorMat = new Mat(imageRegion.SrcMat, MapAssets.Get(imageRegion).MimiMapRect);
         var captureTime = DateTime.UtcNow;
         var diagPrevX = _prevX;
         var diagPrevY = _prevY;

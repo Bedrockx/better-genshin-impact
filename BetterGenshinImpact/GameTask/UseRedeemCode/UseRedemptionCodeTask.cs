@@ -114,7 +114,7 @@ public class UseRedemptionCodeTask : ISoloTask
         // 粘贴兑换码
         await page.GetByText("粘贴").WithRoi(captureRect.CutRight(0.5)).Click();
         // 点击兑换
-        await page.Locator(ElementAssets.Instance.BtnWhiteConfirm).Click();
+        await page.Locator(ElementRecognition.Get("BtnWhiteConfirm")).Click();
 
         // === OQ-1 (a) 锚点：BtnWhiteConfirm.Click 已 await 返回 = 已向服务器提交一次 (uid, code)。
         // 立即标记为终态，无视后续 OCR 结果（OQ-2 a 删除拒绝识别 / OQ-6 b 仅做日志区分）。

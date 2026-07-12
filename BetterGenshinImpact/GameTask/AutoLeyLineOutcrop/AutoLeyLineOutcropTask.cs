@@ -1126,7 +1126,7 @@ public class AutoLeyLineOutcropTask : ISoloTask
                                     if (find)
                                     {
                                         using var imagePick = CaptureToRectArea();
-                                        if (imagePick.Find(AutoPickAssets.Instance.PickRo).IsExist())
+                                        if (imagePick.Find(AutoPickAssets.Get(imagePick, TaskContext.Instance().Config.AutoPickConfig.PickKey).PickRo).IsExist())
                                         {
                                             find = false;
                                         }

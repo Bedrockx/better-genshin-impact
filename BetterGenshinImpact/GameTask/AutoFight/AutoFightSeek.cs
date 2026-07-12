@@ -802,7 +802,7 @@ namespace BetterGenshinImpact.GameTask.AutoFight
                 using var image = CaptureToRectArea();
                 if (!guardianAvatar.IsActive(image))
                 {
-                    var skillArea = AutoFightAssets.Instance.AvatarQRectListMap[guardianAvatar.Index - 1];//Q技能区域
+                    var skillArea = AutoFightAssets.Get(image).AvatarQRectListMap[guardianAvatar.Index - 1];//Q技能区域
                     // 首先对图像进行预处理，转为灰度图
                     using var grayImage = image.DeriveCrop(skillArea).SrcMat.CvtColor(ColorConversionCodes.BGR2GRAY);
                 
@@ -1064,8 +1064,7 @@ namespace BetterGenshinImpact.GameTask.AutoFight
         
             foreach (var i in eqList)
             {
-                var skillArea = i != avatarCurrent ? AutoFightAssets.Instance.AvatarQRectListMap[i - 1]: new Rect(1762, 915, 114, 111);
-
+var skillArea = i != avatarCurrent ? AutoFightAssets.Get(image).AvatarQRectListMap[i - 1]: new Rect(1762, 915, 114, 111);
                 using var grayImage = image.DeriveCrop(skillArea).SrcMat.CvtColor(ColorConversionCodes.BGR2GRAY);
         
                 var meanBrightness = Cv2.Mean(grayImage);

@@ -1,4 +1,4 @@
-﻿using BetterGenshinImpact.Core.Recognition;
+using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.Core.Script.Dependence;
 using BetterGenshinImpact.Core.Simulator;
@@ -43,7 +43,7 @@ namespace BetterGenshinImpact.GameTask.AutoTrackPath;
 /// </summary>
 public class TpTask
 {
-    private readonly QuickTeleportAssets _assets = QuickTeleportAssets.Instance;
+    private readonly QuickTeleportAssets _assets;
     private readonly Rect _captureRect = TaskContext.Instance().SystemInfo.ScaleMax1080PCaptureRect;
     private readonly double _zoomOutMax1080PRatio = TaskContext.Instance().SystemInfo.ZoomOutMax1080PRatio;
     private readonly TpConfig _tpConfig = TaskContext.Instance().Config.TpConfig;
@@ -118,6 +118,7 @@ public class TpTask
     public TpTask(CancellationToken ct)
     {
         this.ct = ct;
+        _assets = QuickTeleportAssets.Get(_captureRect.Width, _captureRect.Height);
         TpTaskParam param = new TpTaskParam();
         this.cultureInfo = param.GameCultureInfo;
         this.stringLocalizer = param.StringLocalizer;
@@ -143,6 +144,16 @@ public class TpTask
             SystemControl.GetGameScreenRect(TaskContext.Instance().GameHandle).Size,
             _screenHeight,
             (_tpConfig.MapMoveStepDivisor && _tpConfig.MapZoomDistanceForce == 0) ? "动态跑道" : (_tpConfig.MapMoveStepDivisor ? "自定义固定倍数" : "经典"));
+    }
+
+    private static RecognitionObject GetQuickTeleportRecognitionObject(string objectName)
+    {
+        return RecognitionAssets.Get("QuickTeleport", objectName);
+    }
+
+    private static RecognitionObject GetQuickTeleportRecognitionObject(string objectName, Region region)
+    {
+        return RecognitionAssets.Get("QuickTeleport", objectName, region);
     }
 
     /// <summary>
@@ -240,7 +251,7 @@ public class TpTask
     {
         GiTpPosition? nearestGiTpPosition = null;
         double minDistance = double.MaxValue;
-        foreach (var (_, goddessPosition) in MapLazyAssets.Instance.GoddessPositions)
+        foreach (var (_, goddessPosition) in MapLazyAssets.Get().GoddessPositions)
         {
             var distance = Math.Sqrt(Math.Pow(goddessPosition.X - x, 2) + Math.Pow(goddessPosition.Y - y, 2));
             if (distance < minDistance)
@@ -711,7 +722,7 @@ public class TpTask
                 suppressClickSet = true;
             }
 
-            // === 阶段 1（仅当联机调用方传入 requireLoadingScreen=true）===
+// === 阶段 1（仅当联机调用方传入 requireLoadingScreen=true）===
             if (requireLoadingScreen)
             {
                 bool seen = await WaitForLoadingScreenAsync(timeoutMs: 6000, intervalMs: 200, fastSyncId: fastSyncId);
@@ -725,6 +736,8 @@ public class TpTask
                     TaskControl.Logger.LogInformation("[联机] 观察到传送过渡页，继续等待传送完成");
                 }
             }
+
+            // === 阶段 2（保持原行为 + 增加复苏弹窗检测）===
 
             // === 阶段 2（保持原行为 + 增加复苏弹窗检测）===
             await Delay(delayMs, ct);
@@ -1891,7 +1904,7 @@ public class TpTask
         {
             // 判断是否在地图界面
             using var ra = CaptureToRectArea();
-            using var mapScaleButtonRa = ra.Find(QuickTeleportAssets.Instance.MapScaleButtonRo);
+            using var mapScaleButtonRa = ra.Find(GetQuickTeleportRecognitionObject("MapScaleButton", ra));
             if (mapScaleButtonRa.IsExist())
             {
                 try
@@ -2237,7 +2250,7 @@ public class TpTask
         {
             string targetCountry = "当前位置";
             double minDistance = double.MaxValue;
-            foreach (var (country, position) in MapLazyAssets.Instance.CountryPositions)
+            foreach (var (country, position) in MapLazyAssets.Get().CountryPositions)
             {
                 var distance = Math.Sqrt(Math.Pow(position[0] - x, 2) + Math.Pow(position[1] - y, 2));
                 if (distance < minDistance)
@@ -2274,7 +2287,7 @@ public class TpTask
         }
 
         // 按距离排序并选择前 n 个点
-        return MapLazyAssets.Instance.ScenesDic[mapName].Points
+        return MapLazyAssets.Get().ScenesDic[mapName].Points
             .OrderBy(tp => Math.Pow(tp.X - x, 2) + Math.Pow(tp.Y - y, 2))
             .Take(n)
             .ToList();
@@ -2379,7 +2392,7 @@ public class TpTask
         }
         
         string minCountry = "当前位置";
-        foreach (var (country, position) in MapLazyAssets.Instance.CountryPositions)
+        foreach (var (country, position) in MapLazyAssets.Get().CountryPositions)
         {
             var distance = Math.Sqrt(Math.Pow(position[0] - x, 2) + Math.Pow(position[1] - y, 2));
             if (distance < minDistance)
@@ -2510,7 +2523,7 @@ public class TpTask
         if (hasTeleportButton) return;   // 可以传送了，结束
         // 3. 没点出传送按钮，且不存在外部地图关闭按钮
         // 说明只有两种可能，a. 点出来的是未激活传送点或者标点 b. 选择传送点选项列表
-        var mapCloseRa1 = imageRegion.Find(_assets.MapCloseButtonRo);
+        var mapCloseRa1 = imageRegion.Find(GetQuickTeleportRecognitionObject("MapCloseButton", imageRegion));
         if (!mapCloseRa1.IsEmpty()) throw new TpPointNotActivate("传送点未激活或不存在");
 
         // 4. 循环判断选项列表是否有传送点(未激活点位也在里面)
@@ -2518,7 +2531,7 @@ public class TpTask
         // 没有传送点说明不是传送点
         if (!hasMapChooseIcon) throw new TpPointNotActivate("选项列表不存在传送点");
         var teleportButtonFound = await NewRetry.WaitForElementAppear(
-            _assets.TeleportButtonRo,
+            GetQuickTeleportRecognitionObject("TeleportButton"),
             () => { },
             ct,
             6,
@@ -2526,10 +2539,10 @@ public class TpTask
         );
         if (!teleportButtonFound) throw new TpPointNotActivate("选项列表的传送点未激活");
         await NewRetry.WaitForElementDisappear(
-            _assets.TeleportButtonRo,
+            GetQuickTeleportRecognitionObject("TeleportButton"),
             screen =>
             {
-                screen.Find(_assets.TeleportButtonRo, ra =>
+                screen.Find(GetQuickTeleportRecognitionObject("TeleportButton", screen), ra =>
                 {
                     ra.Click();
                     ra.Dispose();
@@ -2544,7 +2557,7 @@ public class TpTask
     private bool CheckTeleportButton(ImageRegion imageRegion)
     {
         var hasTeleportButton = false;
-        imageRegion.Find(_assets.TeleportButtonRo, ra =>
+        imageRegion.Find(GetQuickTeleportRecognitionObject("TeleportButton", imageRegion), ra =>
         {
             ra.Click();
             hasTeleportButton = true;
@@ -2672,6 +2685,6 @@ public class TpTask
 
 public class MapPositionNotRecognizedException : Exception
 {
-    public MapPositionNotRecognizedException(string message) : base(message) { }
+public MapPositionNotRecognizedException(string message) : base(message) { }
     public MapPositionNotRecognizedException(string message, Exception innerException) : base(message, innerException) { }
 }

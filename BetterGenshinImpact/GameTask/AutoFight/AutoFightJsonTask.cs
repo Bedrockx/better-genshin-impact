@@ -291,6 +291,16 @@ public class AutoFightJsonTask : ISoloTask
         // 初始化条件求值器
         var evaluator = new ConditionEvaluator(combatScenes, () => CaptureToRectArea());
 
+// 基于经验值的战后拾取检测
+        ExperienceDetector? expDetector = null;
+        if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpBasedPickupEnabled)
+        {
+            using var gameCaptureRegion = CaptureToRectArea();
+            var expRos = AutoFightAssets.Get(gameCaptureRegion).ExperienceRecognitionObjects;
+            expDetector = new ExperienceDetector(expRos, cts2.Token);
+            expDetector.Start();
+        }
+
         // 战斗前动作
         await RunPreActions(combatScenes, evaluator);
 
@@ -1207,7 +1217,7 @@ public class AutoFightJsonTask : ISoloTask
                 {
                     Simulation.SendInput.SimulateAction(GIActions.OpenPartySetupScreen);
                     var enterGameAppear = await NewRetry.WaitForElementAppear(
-                        ElementAssets.Instance.PartyBtnChooseView,
+                        ElementRecognition.Get("PartyBtnChooseView"),
                         () => { },
                         _ct,
                         15,
@@ -1229,7 +1239,7 @@ public class AutoFightJsonTask : ISoloTask
                 while (timeWaitStart < 6000)
                 {
                     using var ra = CaptureToRectArea();
-                    var partyViewBtn = ra.Find(ElementAssets.Instance.PartyBtnChooseView);
+                    var partyViewBtn = ra.Find(ElementRecognition.Get("PartyBtnChooseView"));
                     if (partyViewBtn.IsExist())
                     {
                         var rawPartyName = ra.Find(new RecognitionObject
@@ -1352,7 +1362,7 @@ public class AutoFightJsonTask : ISoloTask
                                                 {
                                                     using (var imagePick = CaptureToRectArea())
                                                     {
-                                                        if (imagePick.Find(AutoPickAssets.Instance.PickRo).IsExist())
+                                                        if (imagePick.Find(AutoPickAssets.Get(imagePick, TaskContext.Instance().Config.AutoPickConfig.PickKey).PickRo).IsExist())
                                                         {
                                                             find = false;
                                                         }

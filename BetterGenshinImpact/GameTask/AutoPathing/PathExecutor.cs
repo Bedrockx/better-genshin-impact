@@ -1,4 +1,4 @@
-﻿using BetterGenshinImpact.Core.Config;
+using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Simulator;
 using BetterGenshinImpact.GameTask.AutoFight.Assets;
 using BetterGenshinImpact.GameTask.AutoFight.Model;
@@ -8,7 +8,6 @@ using BetterGenshinImpact.GameTask.AutoPathing.Handler;
 using BetterGenshinImpact.GameTask.AutoPathing.Model;
 using BetterGenshinImpact.GameTask.AutoPathing.Model.Enum;
 using BetterGenshinImpact.GameTask.AutoSkip;
-using BetterGenshinImpact.GameTask.AutoSkip.Assets;
 using BetterGenshinImpact.GameTask.AutoTrackPath;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
 using BetterGenshinImpact.GameTask.Common.Job;
@@ -24,6 +23,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.Core.Recognition.OCR;
 using BetterGenshinImpact.GameTask.AutoPathing.Suspend;
 using BetterGenshinImpact.GameTask.Common;
@@ -297,7 +297,7 @@ public class PathExecutor
     // 最近一次获取派遣奖励的时间
     private DateTime _lastGetExpeditionRewardsTime = DateTime.MinValue;
 
-    //记录上一个节点
+//记录上一个节点
     private WaypointForTrack? _lastWaypoint = null;
     
     // 朝向标记位
@@ -1574,7 +1574,7 @@ public class PathExecutor
             return true;
         }
 
-        var pRaList = ra.FindMulti(AutoFightAssets.Instance.PRa); // 判断是否联机
+        var pRaList = ra.FindMulti(RecognitionAssets.Get("AutoFight", "P", ra)); // 判断是否联机
         if (pRaList.Count > 0)
         {
             Logger.LogInformation("处于联机状态下，不切换队伍");
@@ -4414,7 +4414,7 @@ public class PathExecutor
     private async Task AutoSkip()
     {
         var ra = CaptureToRectArea();
-        var disabledUiButtonRa = ra.Find(AutoSkipAssets.Instance.DisabledUiButtonRo);
+        var disabledUiButtonRa = ra.Find(GetAutoSkipRecognitionObject("DisabledUiButton", ra));
         if (disabledUiButtonRa.IsExist())
         {
             Logger.LogWarning("进入剧情，自动点击剧情直到结束");
@@ -4436,7 +4436,7 @@ public class PathExecutor
             while (true)
             {
                 ra = CaptureToRectArea();
-                disabledUiButtonRa = ra.Find(AutoSkipAssets.Instance.DisabledUiButtonRo);
+                disabledUiButtonRa = ra.Find(GetAutoSkipRecognitionObject("DisabledUiButton", ra));
                 if (disabledUiButtonRa.IsExist())
                 {
                     _autoSkipTrigger.OnCapture(new CaptureContent(ra));

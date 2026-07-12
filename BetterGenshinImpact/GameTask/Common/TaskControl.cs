@@ -716,7 +716,7 @@ public class TaskControl
 
     public static Mat? CaptureGameImageNoRetry(IGameCapture? gameCapture)
     {
-        return gameCapture?.Capture();
+        return gameCapture?.Capture()?.Frame;
     }
 
     /// <summary>

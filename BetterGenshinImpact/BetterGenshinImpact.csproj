@@ -78,6 +78,7 @@
 		<PackageReference Include="Microsoft.ClearScript.V8" Version="7.4.5" />
 		<PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.4.5" />
 		<PackageReference Include="MouseKeyHook" Version="5.7.1" />
+		<PackageReference Include="NCalc" Version="6.2.0" />
 		<PackageReference Include="PresentMonFps" Version="2.0.5" />
 		<PackageReference Include="Sdl.MultiSelectComboBox" Version="1.0.103" />
 		<PackageReference Include="Semver" Version="3.0.0" />
@@ -114,6 +115,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Update="GameTask\**\Recognition.json">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
 		<None Update="Assets\Map\**">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
@@ -132,7 +136,7 @@
 		<None Update="GameTask\AutoFight\Assets\combat_avatar.json">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="GameTask\OcrSwitchWeapon\Assets\weaponName.json">
+<None Update="GameTask\OcrSwitchWeapon\Assets\weaponName.json">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<!-- 配对界面切换角色：工程内资源副本(纳入 git)随构建输出到运行时读取路径 User\JsScript\AutoSwitchRoles\ -->
@@ -166,7 +170,7 @@
 		      Link="User\JsScript\AutoSwitchRoles\Assets\characterimage\%(Filename)%(Extension)">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="GameTask\AutoFishing\Assets\1920x1080\**">
+		<None Update="GameTask\AutoFishing\Assets\**">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<None Update="GameTask\AutoFriendship\Assets\*.png">
@@ -193,7 +197,7 @@
 		<None Update="GameTask\AutoSkip\Assets\1920x1080\**">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="GameTask\AutoSkip\Assets\hangout.json">
+		<None Update="GameTask\AutoSkip\Assets\*.json">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 		<None Update="GameTask\AutoTrackPath\Assets\tp.json">
