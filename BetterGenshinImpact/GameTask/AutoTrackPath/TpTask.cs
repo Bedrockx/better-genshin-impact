@@ -64,6 +64,11 @@ public class TpTask
     private static Point2f? _lastTpTargetGenshin = null;
     private bool _priorIsRegionCenter = false;   // 标记当前第一层先验是否为"区域中心点"（切换区域后），是则用 RegionCenterRangeGenshin(200) 而非 Layer1RangeGenshin(100)
 
+    // 拖动滑动窗口先验（teleport 拖动循环专用）：中心=predictedPoint，半径=预测移动距离*2，跟随拖动前移。
+    // 非 null 时 GetBigMapCenterPoint 优先走此动态先验；匹配失败降级全图。与三层先验字段互斥使用。
+    private Point2f? _dragPriorCenterGenshin = null;
+    private double _dragPriorRadiusGenshin = 0;
+
     /// <summary>
     /// 直接通过缩放比例按钮计算放大按钮的Y坐标
     /// </summary>
@@ -1231,13 +1236,20 @@ public class TpTask
                 (float)(moveMouseX * currentZoomLevel / _tpConfig.MapScaleFactor),
                 (float)(moveMouseY * currentZoomLevel / _tpConfig.MapScaleFactor));
 
+            // 预测移动距离（原神坐标），供跳变判定与拖动先验半径共用
+            double expectedMoveLen = Math.Sqrt(moveMouseX * moveMouseX + moveMouseY * moveMouseY) * currentZoomLevel / _tpConfig.MapScaleFactor;
+
+            // 拖动滑动窗口先验：中心=预测位置，半径=预测移动距离*2（至少给个下限防止半径过小锁死）。
+            // 仅提瓦特启用（GetBigMapCenterPoint 内部有 mapName/类型判断兜底）。
+            _dragPriorCenterGenshin = predictedPoint;
+            _dragPriorRadiusGenshin = Math.Max(expectedMoveLen * 2, 200);
+
             try
             {
-                var newCenterPoint = GetPositionFromBigMap(mapName, usePrior: false); // 拖动中识别，不用先验
-                
+                var newCenterPoint = GetPositionFromBigMap(mapName, usePrior: false); // 拖动中识别，走拖动滑动窗口先验（下方 usePrior 参数不影响拖动先验）
+
                 // 计算识别坐标与预测坐标的偏差
                 double jumpDistance = Math.Sqrt(Math.Pow(newCenterPoint.X - predictedPoint.X, 2) + Math.Pow(newCenterPoint.Y - predictedPoint.Y, 2));
-                double expectedMoveLen = Math.Sqrt(moveMouseX * moveMouseX + moveMouseY * moveMouseY) * currentZoomLevel / _tpConfig.MapScaleFactor;
                 
                 // 如果实际识别坐标产生超出物理可能的远距离跳跃 (比如原本只移动了50单位，但是坐标跳跃了300单位以上)
                 // 则判定为低特征区域产生的误识别（假阳性），抛出异常进入下面的盲走抓取逻辑
@@ -1263,6 +1275,10 @@ public class TpTask
                 Logger.LogDebug("进入盲走推算 (跳过次数: {times})", exceptionTimes);
                 mapCenterPoint = predictedPoint;
             }
+
+            // 清掉拖动滑动窗口先验，避免影响本轮循环内后续识别（亮度切图等）
+            _dragPriorCenterGenshin = null;
+            _dragPriorRadiusGenshin = 0;
 
             // Logger.LogError("地图名称:{mapName}", mapName);;//mapName
             if (_tpConfig.MapMoveStepDivisor)
@@ -2024,6 +2040,49 @@ public class TpTask
         return result256;
     }
 
+    /// <summary>
+    /// 拖动滑动窗口先验识别：以 dragCenter 为中心、radiusGenshin 为半径做区块限定匹配。
+    /// 匹配到且距中心≤半径 → 采用；否则/异常 → 降级全图盲搜。返回 256 尺度图像坐标。
+    /// </summary>
+    private Point2f ResolveDragPriorPosition(SceneBaseMap teyvat, Mat greyBigMapMat, Point2f dragCenter, double radiusGenshin)
+    {
+        Point2f? ToGenshin(Point2f p256)
+        {
+            if (p256.IsEmpty()) return null;
+            return teyvat.ConvertImageCoordinatesToGenshinMapCoordinates(
+                new Point2f(p256.X * TeyvatMap.BigMap256ScaleTo2048, p256.Y * TeyvatMap.BigMap256ScaleTo2048));
+        }
+
+        Point2f r256 = default;
+        try
+        {
+            r256 = teyvat.GetBigMapPositionInRange(greyBigMapMat, dragCenter, radiusGenshin);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug("[大地图定位] 拖动先验区块匹配异常(特征点不足)，降级全图: {Msg}", ex.Message);
+            r256 = default;
+        }
+
+        var g = ToGenshin(r256);
+        bool acc = g is Point2f gp
+            && BigMapPriorMatchDecisions.IsResultAcceptable(false, gp, dragCenter, radiusGenshin);
+        Logger.LogInformation("[大地图定位] 拖动先验 中心=({CX:0},{CY:0}) 半径={R:0} 区块结果={Res} 距中心={Dist:0} 采纳={Acc}",
+            dragCenter.X, dragCenter.Y, radiusGenshin,
+            g is Point2f gLog ? $"({gLog.X:0},{gLog.Y:0})" : "空",
+            g is Point2f gDist ? BigMapPriorMatchDecisions.Distance(gDist, dragCenter) : -1,
+            acc);
+
+        if (g is Point2f gpFinal && acc)
+        {
+            return r256;
+        }
+
+        // 降级全图盲搜
+        Logger.LogDebug("[大地图定位] 拖动先验未采纳，降级全图盲搜");
+        return teyvat.GetBigMapPosition(greyBigMapMat);
+    }
+
     public Point2f GetBigMapCenterPoint(string mapName, bool usePrior = true)
     {
         Point2f p = new Point2f();
@@ -2041,8 +2100,17 @@ public class TpTask
                 try
                 {
                     var scene = MapManager.GetMap(mapName, _mapMatchingMethod);
-                    // 提瓦特大地图(真实类型) + 至少有一层先验 + usePrior=true → 分层区块限定；否则逐字节走旧全图路径
+                    // 拖动滑动窗口先验（拖动循环专用，最高优先级）：中心=预测位置，半径=预测移动距离*2
                     if (mapName == MapTypes.Teyvat.ToString()
+                        && (scene is TeyvatMap || scene is TeyvatMapTest)
+                        && scene is SceneBaseMap sceneDrag
+                        && _dragPriorCenterGenshin is Point2f dragCenter
+                        && _dragPriorRadiusGenshin > 0)
+                    {
+                        p = ResolveDragPriorPosition(sceneDrag, ra.CacheGreyMat, dragCenter, _dragPriorRadiusGenshin);
+                    }
+                    // 提瓦特大地图(真实类型) + 至少有一层先验 + usePrior=true → 分层区块限定；否则逐字节走旧全图路径
+                    else if (mapName == MapTypes.Teyvat.ToString()
                         && (scene is TeyvatMap || scene is TeyvatMapTest)
                         && scene is SceneBaseMap sceneBase
                         && (_miniMapPriorGenshin != null || _targetPriorGenshin != null)
