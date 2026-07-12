@@ -106,6 +106,17 @@ public static class ESkillCdTracker
                 }
             }
             catch (OperationCanceledException) { }
+            catch (ObjectDisposedException)
+            {
+                // 防抖期间旧 CTS 被后续触发 Cancel+Dispose，本 Task 再访问其
+                // WaitHandle/Token 会抛 ObjectDisposedException。等价于"已被新触发取代"，
+                // 直接忽略即可（不写日志，避免高频触发刷屏）。
+            }
+            catch (Exception ex)
+            {
+                // 兜底：防止任何异常逃逸到线程池导致进程级未处理异常弹窗、进而中断任务。
+                Logger.LogWarning(ex, "{Name} 战技cd检测后台任务异常", characterName);
+            }
         }, CancellationToken.None);
     }
 

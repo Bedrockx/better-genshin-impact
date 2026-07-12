@@ -535,7 +535,7 @@ public class TpTask
         if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
         {
             var (hitSpecial, specialZoom) = SpecialAdjacentTpPointDecisions.IsSpecialAdjacentPoint(
-                GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 20.0, defaultZoom: 2);
+                GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 40.0, defaultZoom: 2);
             if (hitSpecial)
             {
                 using var raSp = CaptureToRectArea();
