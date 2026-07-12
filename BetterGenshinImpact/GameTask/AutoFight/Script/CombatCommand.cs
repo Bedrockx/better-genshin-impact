@@ -1,4 +1,5 @@
-﻿using BetterGenshinImpact.GameTask.AutoFight.Model;
+using BetterGenshinImpact.GameTask.AutoFight.Model;
+using BetterGenshinImpact.GameTask.Common;
 using BetterGenshinImpact.Helpers;
 using System;
 using System.Collections.Generic;
@@ -7,6 +8,7 @@ using TimeSpan = System.TimeSpan;
 using Vanara.PInvoke;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
 
+using Vanara.PInvoke;
 
 namespace BetterGenshinImpact.GameTask.AutoFight.Script;
 
@@ -85,17 +87,7 @@ public class CombatCommand
         Avatar? avatar = null;
         if (Name == CombatScriptParser.CurrentAvatarName)
         {
-            var ra = CaptureToRectArea();
-            for (var i = 1; i <= 4; i++)
-            {
-                avatar = combatScenes.SelectAvatar(i);
-                if (avatar.IsActive(ra))
-                {
-                    break;
-                }
-            }
-            ra.Dispose();
-            avatar ??= combatScenes.SelectAvatar(1);
+            avatar = combatScenes.SelectAvatar(Name);
         }
         else
         {
@@ -338,7 +330,7 @@ public class CombatCommand
                 double cd = 0;
                 for (var attempt = 0; attempt < 4; attempt++)
                 {
-                    using var region = CaptureToRectArea();
+                    using var region = TaskControl.CaptureToRectArea();
                     cd = avatar.AfterUseSkill(region);
                     if (cd > 0) break;
                     if (attempt < 3) Thread.Sleep(100);

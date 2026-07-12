@@ -15,7 +15,7 @@ namespace BetterGenshinImpact.GameTask.AutoFight.Script;
 ///     <item><description><see cref="Record"/>：记录传入的 CD 值（纯存储，>0 才记录）</description></item>
 ///     <item><description><see cref="ApplyFallback"/>：根据角色预置配置进行兜底设置</description></item>
 ///   </list>
-/// 由调用方（Avatar / PathExecutor）自行决定何时调用兜底。
+/// 由调用方（Avatar）自行决定何时调用兜底。
 /// 可通过 <see cref="IsReady"/> / <see cref="GetRemainingCd"/> 查询任意角色的 E 技能状态，
 /// 即使跨越多场战斗和地图追踪简易策略节点。
 /// </summary>
@@ -46,7 +46,7 @@ public static class ESkillCdTracker
     private static CancellationTokenSource? _debounceCts;
     private static readonly object _debounceLock = new();
 
-    private static readonly ILogger Logger = App.GetLogger<ConditionEvaluator>(); // TODO: 改为 ESkillCdTracker，但目前仅支持 GetLogger<T> 且 T 不能是静态类
+    private static readonly ILogger Logger = App.GetLogger<ConditionEvaluator>(); // ESkillCdTracker 是静态类，不能用作泛型参数
 
     /// <summary>
     /// 防抖触发 E 技能 CD 检测。
@@ -65,14 +65,11 @@ public static class ESkillCdTracker
             _debounceCts = newCts = new CancellationTokenSource();
         }
 
-        // 取消并释放旧 CTS，防止泄漏
-        if (oldCts != null)
-        {
-            oldCts.Cancel();
-            oldCts.Dispose();
-        }
+        // 只取消旧 CTS（唤醒旧 Task），Dispose 由旧 Task 自身的 finally 处理
+        try { oldCts?.Cancel(); } catch (ObjectDisposedException) { }
 
-        var debounceToken = newCts.Token;
+        var capturedCts = newCts;
+        var debounceToken = capturedCts.Token;
 
         Task.Run(() =>
         {
@@ -85,10 +82,12 @@ public static class ESkillCdTracker
 
                 ct.ThrowIfCancellationRequested();
                 debounceToken.ThrowIfCancellationRequested();
+
                 var cd = ocrFunc();
 
                 ct.ThrowIfCancellationRequested();
                 debounceToken.ThrowIfCancellationRequested();
+
                 var recordedCd = Record(characterName, cd);
                 if (recordedCd <= 0)
                 {
@@ -106,16 +105,9 @@ public static class ESkillCdTracker
                 }
             }
             catch (OperationCanceledException) { }
-            catch (ObjectDisposedException)
+            finally
             {
-                // 防抖期间旧 CTS 被后续触发 Cancel+Dispose，本 Task 再访问其
-                // WaitHandle/Token 会抛 ObjectDisposedException。等价于"已被新触发取代"，
-                // 直接忽略即可（不写日志，避免高频触发刷屏）。
-            }
-            catch (Exception ex)
-            {
-                // 兜底：防止任何异常逃逸到线程池导致进程级未处理异常弹窗、进而中断任务。
-                Logger.LogWarning(ex, "{Name} 战技cd检测后台任务异常", characterName);
+                capturedCts.Dispose();
             }
         }, CancellationToken.None);
     }
