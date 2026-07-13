@@ -87,7 +87,8 @@ public class CombatCommand
         Avatar? avatar = null;
         if (Name == CombatScriptParser.CurrentAvatarName)
         {
-            avatar = combatScenes.SelectAvatar(Name);
+            var currentName = combatScenes.CurrentAvatar();
+            avatar = currentName != null ? combatScenes.SelectAvatar(currentName) : combatScenes.SelectAvatar(1);
         }
         else
         {
