@@ -3180,7 +3180,7 @@ public class PathExecutor
                                 {
                                     // 检查距离上次执行的时间间隔，至少1.5秒
                                     var timeSinceLastJump = (DateTime.UtcNow - _lastMwkFlyJumpTime).TotalSeconds;
-                                    if (timeSinceLastJump > 1.5)
+                                    if (timeSinceLastJump > 1.5 && waypoint?.MoveMode != MoveModeEnum.Fly.Code)
                                     {
                                         Logger.LogDebug("自动赶路：玛薇卡跳飞冷却中，距离上次执行 {time:F1}秒", timeSinceLastJump);
                                         _lastMwkFlyJumpTime = DateTime.UtcNow;

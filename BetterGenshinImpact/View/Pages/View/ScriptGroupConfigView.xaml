@@ -422,7 +422,7 @@
                                       Margin="10,83,70,0"
                                       HorizontalAlignment="Left"
                                       Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                      Text="跳飞距离(推荐75左右)"
+                                      Text="跳飞距离(推荐60左右)"
                                       TextWrapping="Wrap" />
                         <ui:TextBox Grid.Row="0"
                                     Grid.RowSpan="2"
