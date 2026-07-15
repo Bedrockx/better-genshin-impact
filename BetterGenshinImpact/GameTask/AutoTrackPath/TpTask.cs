@@ -318,7 +318,7 @@ public class TpTask
         var disBetweenTpPoints = Math.Sqrt(Math.Pow(nTpPoints[0].X - nTpPoints[1].X, 2) +
                                            Math.Pow(nTpPoints[0].Y - nTpPoints[1].Y, 2));
         // 确保不会点错传送点的最小缩放，保证至少为 1.0
-        var minZoomLevel = Math.Max(disBetweenTpPoints / 20, 1.0);
+        var minZoomLevel = Math.Max(disBetweenTpPoints / 30, 1.0);
 
         // 特殊相邻传送点命中判定基准（决策 e）：用最近真实传送点坐标，独立于 force 的 (x,y)。仅取值，无 IO。
         double adjBaseX = nTpPoints[0].X;
@@ -535,7 +535,7 @@ public class TpTask
         if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
         {
             var (hitSpecial, specialZoom) = SpecialAdjacentTpPointDecisions.IsSpecialAdjacentPoint(
-                GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 40.0, defaultZoom: 2);
+                GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 50.0, defaultZoom: 1.5);
             if (hitSpecial)
             {
                 using var raSp = CaptureToRectArea();
@@ -573,7 +573,8 @@ public class TpTask
         // Debug.WriteLine($"({x},{y}) 在 {bigMapInAllMapRect} 内，计算它在窗体内的位置");
         // 注意这个坐标的原点是中心区域某个点，所以要转换一下点击坐标（点击坐标是左上角为原点的坐标系），不能只是缩放
         var (clickX, clickY) = ConvertToGameRegionPosition(mapName, bigMapInAllMapRect, x, y);
-        TaskControl.Logger.LogInformation("点击传送点");
+        TaskControl.Logger.LogInformation("点击传送点：目标坐标=({X:0},{Y:0}) bigMapRect={Rect} 计算点击位置=({ClickX:0},{ClickY:0}) 实际点击=({ActualX},{ActualY})",
+            x, y, bigMapInAllMapRect, clickX, clickY, (int)clickX, (int)clickY - 12);
         using var ra4 = CaptureToRectArea();
         ra4.ClickTo((int)clickX, (int)clickY-12);
 
@@ -763,6 +764,7 @@ public class TpTask
         // 坐标不包含直接返回
         if (!bigMapInAllMapRect.Contains(x, y))
         {
+            Logger.LogDebug("[IsPointInBigMapWindow] 传送点({X:0},{Y:0})不在bigMapRect={Rect}内", x, y, bigMapInAllMapRect);
             return false;
         }
 
@@ -770,7 +772,10 @@ public class TpTask
         // 用五个精确 UI 危险区矩形替换旧的"左上 360×400 + 四周 115 圈"粗糙屏蔽。
         // 命中任一 UI 矩形 → 危险（继续 MoveMapTo 避让）；否则可点击（含边缘中段）。
         // 详见 .kiro/specs/teleport-drag-corner-ui-safezone-clamp/。
-        return TeleportClickSafeZone.IsClickable(clickX, clickY, _zoomOutMax1080PRatio);
+        bool isClickable = TeleportClickSafeZone.IsClickable(clickX, clickY, _zoomOutMax1080PRatio);
+        Logger.LogDebug("[IsPointInBigMapWindow] 传送点({X:0},{Y:0}) 计算点击位置=({ClickX:0},{ClickY:0}) 安全区判定={IsClickable} ratio={Ratio:0.00}",
+            x, y, clickX, clickY, isClickable, _zoomOutMax1080PRatio);
+        return isClickable;
     }
 
     /// <summary>
@@ -2371,6 +2376,12 @@ public class TpTask
                 _priorIsRegionCenter = false;
             }
             _targetPriorGenshin = null; // 第二层先验清空（切换后与上次传送目标无关）
+        }
+
+        // 层岩巨渊渲染较慢，额外等待100ms
+        if (areaName == "层岩巨渊")
+        {
+            await Delay(100, ct);
         }
 
         // 加速识别模式：等地图视区像素稳定即继续，兜底 500ms（与旧 Delay 等值）

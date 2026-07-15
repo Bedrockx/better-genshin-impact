@@ -122,6 +122,13 @@ public class Genshin
         await tpTask.CheckInBigMapUi();
         await tpTask.SwitchRecentlyCountryMap(x, y, forceCountry);
         await tpTask.MoveMapTo(x, y, MapTypes.Teyvat.ToString());
+        
+        // 等待地图移动完成（画面稳定）
+        // 快速拖动优化后，MoveMapTo 内部拖动结束时画面可能仍在渲染中。
+        // 单独调用时（如 JS 脚本），紧接着的操作（如 SetBigMapZoomLevel / GetPositionFromBigMap）
+        // 会读到中间态导致识别错误。此处统一等待 500ms 确保画面稳定。
+        // TpOnce 内部调用时，外层已有更长的等待（500-1000ms），此等待会被"吸收"，零额外开销。
+        await Delay(500, CancellationContext.Instance.Cts.Token);
     }
 
     /// <summary>
@@ -150,6 +157,9 @@ public class Genshin
             await tpTask.SwitchArea(MapTypesExtensions.ParseFromName(mapName).GetDescription());
         }
         await tpTask.MoveMapTo(x, y, mapName);
+        
+        // 等待地图移动完成（画面稳定）
+        await Delay(500, CancellationContext.Instance.Cts.Token);
     }
 
     /// <summary>
