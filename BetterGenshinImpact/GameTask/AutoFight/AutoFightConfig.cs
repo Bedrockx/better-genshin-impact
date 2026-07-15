@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Collections.Generic;
 
@@ -69,6 +69,51 @@ public partial class AutoFightConfig : ObservableObject
     /// 注意：Avatar.cs 读全局战斗配置实例 TaskContext.Instance().Config.AutoFightConfig。
     /// </summary>
     [ObservableProperty] private int _skillCdForQ = 5;
+
+    /// <summary>
+    /// 恰斯卡特化 — X 轴灵敏度系数（默认 1.0）。
+    /// 控制 e(hold) 旋转搜索时水平移动的幅度。
+    /// </summary>
+    [ObservableProperty] private double _chascaXSensitivity = 1.0;
+
+    /// <summary>
+    /// 恰斯卡特化 — Y 轴灵敏度系数（默认 1.0）。
+    /// 控制 e(hold) 旋转搜索时垂直下压的幅度。
+    /// </summary>
+    [ObservableProperty] private double _chascaYSensitivity = 1.0;
+
+    /// <summary>
+    /// 恰斯卡传奇模式 — 旋转间隔（秒，默认 0.75）。
+    /// 子弹模式稳定超过此时间后触发旋转搜索。
+    /// </summary>
+    [ObservableProperty] private double _chascaLegendaryRotateInterval = 0.75;
+
+    /// <summary>
+    /// 恰斯卡 — 无血条旋转次数上限（默认 12）。
+    /// 连续旋转搜索此次数仍未找到血条则落地退出。
+    /// </summary>
+    [ObservableProperty] private int _chascaRotateCountLimit = 12;
+
+    /// <summary>
+    /// 特化逻辑帧间隔（毫秒，默认 50）。
+    /// 供恰斯卡飞行/桑多涅重击等特化循环使用，控制每帧 Sleep 时长。
+    /// </summary>
+    [ObservableProperty] private int _specializedFrameIntervalMs = 50;
+
+    /// <summary>
+    /// 桑多涅（Sandrone）重击时间序列（字符串，格式待定）。
+    /// </summary>
+    [ObservableProperty] private string _sandroneChargeTimeSequence = "";
+
+    /// <summary>
+    /// 桑多涅重击预瞄点 X 坐标（默认 840）。
+    /// </summary>
+    [ObservableProperty] private int _sandroneChargePreAimX = 840;
+
+    /// <summary>
+    /// 桑多涅（木偶）重击旋转速度系数（默认 1.0）。
+    /// </summary>
+    [ObservableProperty] private double _sandroneChargeRotateSpeed = 1.0;
 
     /// <summary>
     /// 只拾取精英掉落
