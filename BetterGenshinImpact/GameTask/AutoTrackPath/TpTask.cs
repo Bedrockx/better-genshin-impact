@@ -318,7 +318,7 @@ public class TpTask
         var disBetweenTpPoints = Math.Sqrt(Math.Pow(nTpPoints[0].X - nTpPoints[1].X, 2) +
                                            Math.Pow(nTpPoints[0].Y - nTpPoints[1].Y, 2));
         // 确保不会点错传送点的最小缩放，保证至少为 1.0
-        var minZoomLevel = Math.Max(disBetweenTpPoints / 30, 1.0);
+        var minZoomLevel = Math.Max(disBetweenTpPoints / 25, 1.0);
 
         // 特殊相邻传送点命中判定基准（决策 e）：用最近真实传送点坐标，独立于 force 的 (x,y)。仅取值，无 IO。
         double adjBaseX = nTpPoints[0].X;
@@ -378,8 +378,31 @@ public class TpTask
             }
         }
 
+        // 3.5 提前白名单判定：决策是否跳过步骤 4（避免重复缩放）
+        bool skipStep4DueToSpecial = false;
+        if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
+        {
+            try
+            {
+                var (hitSpecialEarly, specialZoomEarly) = SpecialAdjacentTpPointDecisions.IsSpecialAdjacentPoint(
+                    GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 50.0, defaultZoom: 1.5);
+                if (hitSpecialEarly)
+                {
+                    skipStep4DueToSpecial = true;
+                    TaskControl.Logger.LogInformation(
+                        "命中特殊白名单传送点（基准 {X:0},{Y:0}），跳过步骤 4 通用缩放，将在步骤 5.7 统一处理",
+                        adjBaseX, adjBaseY);
+                }
+            }
+            catch (Exception ex)
+            {
+                TaskControl.Logger.LogWarning(ex, "白名单判定异常，按通用流程处理");
+                skipStep4DueToSpecial = false;
+            }
+        }
+
         // 4. zoomLevel不满足条件，强制进行一次 MoveMapTo，避免传送点相近导致误点
-        if (zoomLevel > minZoomLevel)
+        if (!skipStep4DueToSpecial && zoomLevel > minZoomLevel)
         {
             if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
             {
@@ -528,44 +551,77 @@ public class TpTask
             }
         }
 
-        // 5.7 特殊相邻传送点：命中清单则点击前拉到专属放大（默认 2.5，比 4.4 更放大），
+        // 5.7 特殊相邻传送点：命中清单则点击前拉到专属放大，并整合步骤 4 的 minZoomLevel
         //     重新 MoveMapTo 定位并重算 bigMapInAllMapRect，使相邻两点在屏幕上分开、点得准、不弹菜单。
         //     命中判定为纯坐标 O(n) 比较（清单懒加载+缓存），未命中零额外开销、逐字节走原路径。
         //     详见 .kiro/specs/teleport-adjacent-point-misclick-zoom-whitelist-fix/design.md §组件 4。
         if (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor)
         {
-            var (hitSpecial, specialZoom) = SpecialAdjacentTpPointDecisions.IsSpecialAdjacentPoint(
-                GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 50.0, defaultZoom: 1.5);
-            if (hitSpecial)
+            try
             {
-                using var raSp = CaptureToRectArea();
-                double zoomNow = GetBigMapZoomLevel(raSp);
-                if (Math.Abs(zoomNow - specialZoom) > _tpConfig.PrecisionThreshold)
+                var (hitSpecial, specialZoom) = SpecialAdjacentTpPointDecisions.IsSpecialAdjacentPoint(
+                    GetSpecialAdjacentTpPointList(), adjBaseX, adjBaseY, tolerance: 50.0, defaultZoom: 1.5);
+                if (hitSpecial)
                 {
-                    await AdjustMapZoomLevel(zoomNow, specialZoom);
-                    await Delay(200, ct);
-                }
-                TaskControl.Logger.LogInformation(
-                    "命中特殊相邻传送点，点击前放大到 {Zoom:0.00} 并重新定位（基准 {X:0},{Y:0}）",
-                    specialZoom, adjBaseX, adjBaseY);
-                // 放大后屏幕映射改变，必须重新 MoveMapTo + 重算 bigMapInAllMapRect（决策 d）
-                await MoveMapTo(x, y, mapName, specialZoom, country, retryTimes);
-                if (_tpConfig.MapMoveStepDivisor)
-                {
-                    if (_tpConfig.FastDragRecognitionEnabled)
+                    // 整合步骤 4 的安全缩放：取 minZoomLevel 和 specialZoom 中更小值（更放大 = 更安全）
+                    double finalZoom = Math.Min(minZoomLevel, specialZoom);
+                    
+                    using var raSp = CaptureToRectArea();
+                    double zoomNow = GetBigMapZoomLevel(raSp);
+                    if (Math.Abs(zoomNow - finalZoom) > _tpConfig.PrecisionThreshold)
                     {
-                        await WaitMapStableOrTimeoutAsync(500);
+                        await AdjustMapZoomLevel(zoomNow, finalZoom);
+                        await Delay(200, ct);
+                    }
+                    TaskControl.Logger.LogInformation(
+                        "命中特殊相邻传送点，点击前放大到 {FinalZoom:0.00}（minZoom={MinZoom:0.00}, specialZoom={SpecZoom:0.00}）并重新定位（基准 {X:0},{Y:0}）",
+                        finalZoom, minZoomLevel, specialZoom, adjBaseX, adjBaseY);
+                    // 放大后屏幕映射改变，必须重新 MoveMapTo + 重算 bigMapInAllMapRect（决策 d）
+                    await MoveMapTo(x, y, mapName, finalZoom, country, retryTimes);
+                    if (_tpConfig.MapMoveStepDivisor)
+                    {
+                        if (_tpConfig.FastDragRecognitionEnabled)
+                        {
+                            await WaitMapStableOrTimeoutAsync(500);
+                        }
+                        else
+                        {
+                            await Delay(300, ct);
+                        }
                     }
                     else
                     {
                         await Delay(300, ct);
                     }
+                    bigMapInAllMapRect = GetBigMapRect(mapName);
                 }
-                else
+            }
+            catch (Exception ex)
+            {
+                TaskControl.Logger.LogWarning(ex, "步骤 5.7 白名单判定异常");
+                // 补偿逻辑：如果步骤 4 被跳过了，这里必须补上安全缩放
+                if (skipStep4DueToSpecial && zoomLevel > minZoomLevel)
                 {
-                    await Delay(300, ct);
+                    TaskControl.Logger.LogInformation("补偿缩放：步骤 4 已跳过但步骤 5.7 失败，使用 minZoomLevel={MinZoom:0.00}", minZoomLevel);
+                    await MoveMapTo(x, y, mapName, minZoomLevel, country, retryTimes);
+                    if (_tpConfig.MapMoveStepDivisor)
+                    {
+                        int timeoutMs = retryTimes > 0 ? 600 : 200;
+                        if (_tpConfig.FastDragRecognitionEnabled)
+                        {
+                            await WaitMapStableOrTimeoutAsync(1000);
+                        }
+                        else
+                        {
+                            await Delay(timeoutMs, ct);
+                        }
+                    }
+                    else
+                    {
+                        await Delay(300, ct);
+                    }
+                    bigMapInAllMapRect = GetBigMapRect(mapName);
                 }
-                bigMapInAllMapRect = GetBigMapRect(mapName);
             }
         }
 
@@ -573,8 +629,6 @@ public class TpTask
         // Debug.WriteLine($"({x},{y}) 在 {bigMapInAllMapRect} 内，计算它在窗体内的位置");
         // 注意这个坐标的原点是中心区域某个点，所以要转换一下点击坐标（点击坐标是左上角为原点的坐标系），不能只是缩放
         var (clickX, clickY) = ConvertToGameRegionPosition(mapName, bigMapInAllMapRect, x, y);
-        TaskControl.Logger.LogInformation("点击传送点：目标坐标=({X:0},{Y:0}) bigMapRect={Rect} 计算点击位置=({ClickX:0},{ClickY:0}) 实际点击=({ActualX},{ActualY})",
-            x, y, bigMapInAllMapRect, clickX, clickY, (int)clickX, (int)clickY - 12);
         using var ra4 = CaptureToRectArea();
         ra4.ClickTo((int)clickX, (int)clickY-12);
 
@@ -764,7 +818,6 @@ public class TpTask
         // 坐标不包含直接返回
         if (!bigMapInAllMapRect.Contains(x, y))
         {
-            Logger.LogDebug("[IsPointInBigMapWindow] 传送点({X:0},{Y:0})不在bigMapRect={Rect}内", x, y, bigMapInAllMapRect);
             return false;
         }
 
@@ -2355,6 +2408,67 @@ public class TpTask
         if (matchRect == null)
         {
             Logger.LogWarning("切换区域失败：{Country}", areaName);
+            
+            // 新增：非独立地图失败恢复流程（独立地图仍走下方异常抛出分支）
+            bool isIndependentMap = areaName == MapTypes.TheChasm.GetDescription() 
+                || areaName == MapTypes.Enkanomiya.GetDescription() 
+                || areaName == MapTypes.SeaOfBygoneEras.GetDescription() 
+                || areaName == MapTypes.AncientSacredMountain.GetDescription() 
+                || areaName == MapTypes.TempleOfSpace.GetDescription();
+            
+            if (!isIndependentMap)
+            {
+                // Step 1: 关闭地图菜单弹出层
+                Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
+                Logger.LogInformation("区域切换失败，尝试关闭弹出层菜单（ESC）");
+                
+                // Step 2: 等待菜单关闭动画完成
+                if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
+                {
+                    await Delay(100, ct);
+                }
+                else
+                {
+                    await Delay(200, ct);
+                }
+                
+                // Step 3: 重新打开大地图
+                Simulation.SendInput.SimulateAction(GIActions.OpenMap);
+                Logger.LogInformation("区域切换失败，重新打开大地图（M 键）");
+                
+                // Step 4: 等待大地图界面稳定
+                if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
+                {
+                    await Delay(100, ct);
+                    if (!await WaitForBigMapUiOrTimeoutAsync(2000))
+                    {
+                        Logger.LogWarning("区域切换失败恢复：等待大地图界面超时（2000ms），额外等待1000ms");
+                        await Delay(1000, ct);
+                        if (!await WaitForBigMapUiOrTimeoutAsync(2000))
+                        {
+                            Logger.LogWarning("区域切换失败恢复：二次等待仍超时，地图界面可能未正常打开");
+                        }
+                    }
+                    await WaitMapStableOrTimeoutAsync(timeoutMs: 500);
+                }
+                else
+                {
+                    await Delay(300, ct);
+                    if (!await WaitForBigMapUiOrTimeoutAsync(2000))
+                    {
+                        Logger.LogWarning("区域切换失败恢复：等待大地图界面超时（2000ms），额外等待1000ms");
+                        await Delay(1000, ct);
+                        if (!await WaitForBigMapUiOrTimeoutAsync(2000))
+                        {
+                            Logger.LogWarning("区域切换失败恢复：二次等待仍超时，地图界面可能未正常打开");
+                        }
+                    }
+                }
+                
+                Logger.LogInformation("区域切换失败恢复流程完成，地图界面已重新稳定");
+            }
+            
+            // 独立地图失败：保持原有异常抛出逻辑（不进入上方 if）
             if (areaName == MapTypes.TheChasm.GetDescription() || areaName == MapTypes.Enkanomiya.GetDescription() || areaName == MapTypes.SeaOfBygoneEras.GetDescription() || areaName == MapTypes.AncientSacredMountain.GetDescription() || areaName == MapTypes.TempleOfSpace.GetDescription())
             {
                 throw new Exception($"切换独立地图区域[{areaName}]失败");
