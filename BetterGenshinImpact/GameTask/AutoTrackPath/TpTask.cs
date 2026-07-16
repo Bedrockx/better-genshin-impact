@@ -318,7 +318,7 @@ public class TpTask
         var disBetweenTpPoints = Math.Sqrt(Math.Pow(nTpPoints[0].X - nTpPoints[1].X, 2) +
                                            Math.Pow(nTpPoints[0].Y - nTpPoints[1].Y, 2));
         // 确保不会点错传送点的最小缩放，保证至少为 1.0
-        var minZoomLevel = Math.Max(disBetweenTpPoints / 25, 1.0);
+        var minZoomLevel = Math.Max(disBetweenTpPoints / 30, 1.0);
 
         // 特殊相邻传送点命中判定基准（决策 e）：用最近真实传送点坐标，独立于 force 的 (x,y)。仅取值，无 IO。
         double adjBaseX = nTpPoints[0].X;
@@ -1043,7 +1043,8 @@ public class TpTask
     /// <param name="finalZoomLevel">到达目标点的最小缩放等级，只在 MapZoomEnabled 为 True 生效</param>
     /// <param name="country">传送地图国家</param>
     /// <param name="retryTimes">重试次数</param>
-    public async Task MoveMapTo(double x, double y, string mapName, double finalZoomLevel = 2, string? country = null, int retryTimes = 0)
+    /// <param name="enableEarlyStop">是否启用早停机制（几何早停和容差早停）。默认为 true 保持向后兼容，设为 false 时将精确拖动到目标点正中心</param>
+    public async Task MoveMapTo(double x, double y, string mapName, double finalZoomLevel = 2, string? country = null, int retryTimes = 0, bool enableEarlyStop = true)
     {
         // 参数初始化
         using var ra1 = CaptureToRectArea();
@@ -1182,7 +1183,8 @@ public class TpTask
             // 用 IsPointInBigMapWindow 处理，故此门控不损失任何合法早停；提瓦特/层岩等均在拖动后
             // （iteration>=1）才触发早停，行为不受影响。
             // 详见 .kiro/specs/teleport-drag-early-stop-when-clickable/。
-            if (iteration > 0
+            if (enableEarlyStop
+                && iteration > 0
                 && TeleportClickSafeZone.ShouldEarlyStopClick(
                     _tpConfig.MapMoveStepDivisor, x, y, mapCenterPoint.X, mapCenterPoint.Y,
                     _tpConfig.MapScaleFactor, currentZoomLevel, TeleportClickSafeZone.DefaultEarlyStopMargin))
@@ -1192,7 +1194,7 @@ public class TpTask
             }
 
             // 非常接近目标点，不再进一步调整
-            if (mouseDistance < (_tpConfig.MapMoveStepDivisor ? retryTimes == 0 ? 400 : 300 : _tpConfig.Tolerance))
+            if (enableEarlyStop && mouseDistance < (_tpConfig.MapMoveStepDivisor ? retryTimes == 0 ? 400 : 300 : _tpConfig.Tolerance))
             {
                 TaskControl.Logger.LogDebug("移动 {I} 次鼠标后，已经接近目标点，不再移动地图。", iteration + 1);
                 break;
@@ -1386,6 +1388,7 @@ public class TpTask
                             // 欠账吃掉——动态跑道模式阈值仅 1，切图后再有一次跳跃即撞线抛"惯性推算失效"，
                             // 导致"地图正常、传送点已可点击"却误报传送失败重试。
                             exceptionTimes = 0;
+                            falseCount = 0; // 切换地图后识别成功，重置亮度过低计数器，避免死循环
                             TaskControl.Logger.LogDebug("亮度过低切换地图后重新识别中心点成功");
                         }
                         catch (MapPositionNotRecognizedException)
@@ -1853,6 +1856,7 @@ public class TpTask
     {
         var rect = new Rect();
         bool scrolledOnce = false;      // 滚轮兜底只做一次
+        bool layerSwitchedOnce = false; // 图层切换只做一次（防止循环点击地上/地下切换按钮）
         bool zoomChangedForRecover = false; // 是否为识别把缩放临时拉到 5.5（成功后需复原）
         double savedZoomLevel = 0;      // 记录拉 5.5 前的原缩放，识别成功后复原，避免污染调用方
         NewRetry.Do(() =>
@@ -1887,16 +1891,20 @@ public class TpTask
                     }
                     else
                     {
-                        // 滚轮一次后仍失败：若在地下图层先切回地上；再把缩放临时拉到 5.5 稳定识别
-                        // （5.5 下画面缩小、特征更多，位置匹配更稳）。识别成功后在方法末尾把缩放复原，
-                        // 避免污染 MoveMapTo 等调用方持有的当前缩放值。
-                        using var raUnder = CaptureToRectArea();
-                        if (Bv.BigMapIsUnderground(raUnder))
+                        // 滚轮一次后仍失败：若在地下图层先切回地上（只切换一次，防止循环点击）；
+                        // 再把缩放临时拉到 5.5 稳定识别（5.5 下画面缩小、特征更多，位置匹配更稳）。
+                        // 识别成功后在方法末尾把缩放复原，避免污染 MoveMapTo 等调用方持有的当前缩放值。
+                        if (!layerSwitchedOnce)
                         {
-                            TaskControl.Logger.LogInformation("识别大地图位置失败：检测到地下图层，切换到地上");
-                            using var raSwitch = CaptureToRectArea();
-                            raSwitch.Find(_assets.MapUndergroundToGroundButtonRo, rg => rg.Click());
-                            Sleep(300);
+                            using var raUnder = CaptureToRectArea();
+                            if (Bv.BigMapIsUnderground(raUnder))
+                            {
+                                TaskControl.Logger.LogInformation("识别大地图位置失败：检测到地下图层，切换到地上");
+                                using var raSwitch = CaptureToRectArea();
+                                raSwitch.Find(_assets.MapUndergroundToGroundButtonRo, rg => rg.Click());
+                                layerSwitchedOnce = true;  // 标记已切换，防止重复点击
+                                Sleep(300);
+                            }
                         }
                         using var raZoom = CaptureToRectArea();
                         double zoomNow = GetBigMapZoomLevel(raZoom);
@@ -2408,71 +2416,12 @@ public class TpTask
         if (matchRect == null)
         {
             Logger.LogWarning("切换区域失败：{Country}", areaName);
-            
-            // 新增：非独立地图失败恢复流程（独立地图仍走下方异常抛出分支）
-            bool isIndependentMap = areaName == MapTypes.TheChasm.GetDescription() 
-                || areaName == MapTypes.Enkanomiya.GetDescription() 
-                || areaName == MapTypes.SeaOfBygoneEras.GetDescription() 
-                || areaName == MapTypes.AncientSacredMountain.GetDescription() 
-                || areaName == MapTypes.TempleOfSpace.GetDescription();
-            
-            if (!isIndependentMap)
-            {
-                // Step 1: 关闭地图菜单弹出层
-                Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
-                Logger.LogInformation("区域切换失败，尝试关闭弹出层菜单（ESC）");
-                
-                // Step 2: 等待菜单关闭动画完成
-                if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
-                {
-                    await Delay(100, ct);
-                }
-                else
-                {
-                    await Delay(200, ct);
-                }
-                
-                // Step 3: 重新打开大地图
-                Simulation.SendInput.SimulateAction(GIActions.OpenMap);
-                Logger.LogInformation("区域切换失败，重新打开大地图（M 键）");
-                
-                // Step 4: 等待大地图界面稳定
-                if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
-                {
-                    await Delay(100, ct);
-                    if (!await WaitForBigMapUiOrTimeoutAsync(2000))
-                    {
-                        Logger.LogWarning("区域切换失败恢复：等待大地图界面超时（2000ms），额外等待1000ms");
-                        await Delay(1000, ct);
-                        if (!await WaitForBigMapUiOrTimeoutAsync(2000))
-                        {
-                            Logger.LogWarning("区域切换失败恢复：二次等待仍超时，地图界面可能未正常打开");
-                        }
-                    }
-                    await WaitMapStableOrTimeoutAsync(timeoutMs: 500);
-                }
-                else
-                {
-                    await Delay(300, ct);
-                    if (!await WaitForBigMapUiOrTimeoutAsync(2000))
-                    {
-                        Logger.LogWarning("区域切换失败恢复：等待大地图界面超时（2000ms），额外等待1000ms");
-                        await Delay(1000, ct);
-                        if (!await WaitForBigMapUiOrTimeoutAsync(2000))
-                        {
-                            Logger.LogWarning("区域切换失败恢复：二次等待仍超时，地图界面可能未正常打开");
-                        }
-                    }
-                }
-                
-                Logger.LogInformation("区域切换失败恢复流程完成，地图界面已重新稳定");
-            }
-            
-            // 独立地图失败：保持原有异常抛出逻辑（不进入上方 if）
             if (areaName == MapTypes.TheChasm.GetDescription() || areaName == MapTypes.Enkanomiya.GetDescription() || areaName == MapTypes.SeaOfBygoneEras.GetDescription() || areaName == MapTypes.AncientSacredMountain.GetDescription() || areaName == MapTypes.TempleOfSpace.GetDescription())
             {
                 throw new Exception($"切换独立地图区域[{areaName}]失败");
             }
+            // 非独立地图也抛出异常，不再静默恢复
+            throw new Exception($"切换区域[{areaName}]失败");
         }
         else
         {

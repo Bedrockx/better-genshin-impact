@@ -122,7 +122,7 @@ public class Genshin
         await tpTask.CheckInBigMapUi();
         await tpTask.SwitchRecentlyCountryMap(x, y, forceCountry);
         // finalZoomLevel=6（最缩小）：防止 MoveMapTo 自动放大，保持当前缩放让调用方自行控制
-        await tpTask.MoveMapTo(x, y, MapTypes.Teyvat.ToString(), finalZoomLevel: 6);
+        await tpTask.MoveMapTo(x, y, MapTypes.Teyvat.ToString(), finalZoomLevel: 6, enableEarlyStop: false);
         
         // 等待地图移动完成（画面稳定）
         // 快速拖动优化后，MoveMapTo 内部拖动结束时画面可能仍在渲染中。
@@ -157,7 +157,7 @@ public class Genshin
             // 直接切换地区
             await tpTask.SwitchArea(MapTypesExtensions.ParseFromName(mapName).GetDescription());
         }
-        await tpTask.MoveMapTo(x, y, mapName);
+        await tpTask.MoveMapTo(x, y, mapName, enableEarlyStop: false);
         
         // 等待地图移动完成（画面稳定）
         await Delay(500, CancellationContext.Instance.Cts.Token);
