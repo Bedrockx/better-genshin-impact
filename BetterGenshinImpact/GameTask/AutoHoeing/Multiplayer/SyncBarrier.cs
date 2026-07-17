@@ -81,6 +81,21 @@ public class SyncBarrier
                 }
             });
 
+            // 在等待 AllArrived 期间，每 5 秒重试一次上报到达，弥补网络波动导致的上报丢失或错过广播
+            const int retryIntervalMs = 5000;
+            while (true)
+            {
+                var completed = await Task.WhenAny(tcs.Task, Task.Delay(retryIntervalMs, linkedCts.Token));
+                if (completed == tcs.Task)
+                {
+                    // 收到 AllArrived（tcs.Task 完成）→ 退出循环
+                    break;
+                }
+                // 5 秒到了还没收到 AllArrived → 重试上报
+                _logger.LogDebug("[SyncBarrier] 等待中，重试上报到达: {SyncId}", syncPointId);
+                await _client.ReportArrivalAsync(syncPointId, expectedCount);
+            }
+
             var result = await tcs.Task;
             _logger.LogInformation("[SyncBarrier] 等待完成: {SyncId}，结果: {Result}（true=全员到达，false=超时放行）", syncPointId, result);
             return result;
