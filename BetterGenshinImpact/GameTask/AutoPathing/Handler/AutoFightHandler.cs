@@ -1,5 +1,6 @@
 ﻿using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.GameTask.AutoFight;
+using BetterGenshinImpact.GameTask.AutoFight.Factory;
 using BetterGenshinImpact.GameTask.Common;
 using System;
 using System.IO;
@@ -162,7 +163,7 @@ internal class AutoFightHandler : IActionHandler
                    if (taskParams.OnlyPickEliteDropsMode == "DisableAutoPickupForNonElite")
                    {
                        await RunnerContext.Instance.StopAutoPickRunTask(
-                           async () => await new AutoFightTask(taskParams).Start(ct),
+                           async () => await CombatTaskFactoryProvider.GetFactory(taskParams.CombatStrategyPath).CreateTask(taskParams).Start(ct),
                            5);
                        return;
                    }
@@ -172,7 +173,7 @@ internal class AutoFightHandler : IActionHandler
             
         }
         
-        var fightSoloTask = new AutoFightTask(taskParams);
+        var fightSoloTask = CombatTaskFactoryProvider.GetFactory(taskParams.CombatStrategyPath).CreateTask(taskParams);
         await fightSoloTask.Start(ct);
     }
 
