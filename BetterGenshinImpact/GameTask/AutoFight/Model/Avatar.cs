@@ -1881,266 +1881,117 @@ public class Avatar
         }
         else if (Name == "桑多涅")
         {
+            // 桑多涅重击特化逻辑（简化版）
+            // 按下重击后，以固定帧间隔循环执行以下操作：
+            // 1. 截取屏幕检测血条（红色连通域）
+            // 2. 若有血条存在，取离预瞄点(960, 480)最近的血条，移动鼠标对准
+            // 3. 若无血条，且不存在传奇血条（y 50~96）时，向右旋转搜索敌人
+            // 4. 绘制预瞄准星和血条框用于调试
             var dpi = TaskContext.Instance().DpiScale;
-            var cfg = TaskContext.Instance().Config.AutoFightConfig;
-            var preAimX = cfg.SandroneChargePreAimX;
-            var timeSeqStr = cfg.SandroneChargeTimeSequence;
-            var rotateSpeed = cfg.SandroneChargeRotateSpeed;
+            const int preAimX = 960;   // 预瞄准星 X 坐标（屏幕中心）
+            const int preAimY = 480;   // 预瞄准星 Y 坐标（屏幕垂直中心偏上）
+            const int frameIntervalMs = 50;  // 每帧间隔（与主循环帧率对齐）
 
-            // 旋转速度为0时禁用特化逻辑，使用标准重击
-            if (rotateSpeed == 0)
-            {
-                Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyDown);
-                Sleep(ms);
-                Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyUp);
-                return;
-            }
-
-            // 解析时间序列（逗号分隔，单位秒）
-            var seq = new List<double>();
-            if (!string.IsNullOrWhiteSpace(timeSeqStr))
-            {
-                foreach (var part in timeSeqStr.Split(new[] { ',', '，' }, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    if (double.TryParse(part.Trim(), out var sec))
-                        seq.Add(sec);
-                }
-            }
-
-            var startTime = DateTime.UtcNow;
-            var maxMs = ms;
-
+            // 按下重击键，进入蓄力状态
             Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyDown);
 
-            // 预计算累计时间边界（ms）
-            var boundaries = new double[seq.Count];
-            double sum = 0;
-            for (int i = 0; i < seq.Count; i++) { sum += seq[i] * 1000; boundaries[i] = sum; }
+            // 连续未找到血条的计时，超过1秒时提前退出
+            var lastSeenTargetTime = DateTime.UtcNow;
+            var startTime = DateTime.UtcNow;
+            var maxDurationMs = ms;
 
-            var prevSeg = -2;                // 上一帧所属段
-            var bloodFoundInOdd = false;     // 当前奇数段是否见过血条
-            var exitAfterEven = false;       // 等待偶数段结束退出
-            var lastSeenBlood = DateTime.UtcNow; // 序列耗尽后使用
-            var logged = false;              // 偶数段日志
-
-            while (!Ct.IsCancellationRequested && (DateTime.UtcNow - startTime).TotalMilliseconds < maxMs)
+            // 主循环：持续到取消或重击时间耗尽
+            // 使用 try/finally 确保异常时也会清理绘制并松开按键
+            try
             {
-                var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
-
-                // 确定当前段索引（-1 表示超出序列）
-                int seg = -1;
-                for (int i = 0; i < boundaries.Length; i++) { if (elapsed < boundaries[i]) { seg = i; break; } }
-
-                // 段切换处理
-                if (seg != prevSeg)
+                while (!Ct.IsCancellationRequested && (DateTime.UtcNow - startTime).TotalMilliseconds < maxDurationMs)
                 {
-                    if (prevSeg >= 0 && prevSeg % 2 == 0 && !bloodFoundInOdd && prevSeg + 1 < seq.Count)
+                    // 每帧截图一次，复用给 FindBloodBars 和绘制覆盖层
+                    using (var capture = CaptureToRectArea())
                     {
-                        // 奇数段无血条 → 执行完下一个偶数段后退出
-                        exitAfterEven = true;
-                    }
-                    bloodFoundInOdd = false;
-                    logged = false;
-                    prevSeg = seg;
-                }
+                        // 检测屏幕中的血条（红色连通域），结果坐标在 1500×900 裁剪空间内
+                        var bars = FindBloodBars(capture);
+                        // 更新动态传奇血条追踪
+                        UpdateLegendaryBarTracker(bars.Select(b => b.y));
+                        // 过滤掉 x <= 200 的非敌人血条（如 UI 元素、角色自身元素等误检）
+                        var valid = bars.Where(b => b.x > 200).ToList();
 
-                double segMs = seg >= 0 ? seq[seg] * 1000 : 0;
-                double segStart = seg > 0 ? boundaries[seg - 1] : 0;
-                double segElapsed = seg >= 0 ? elapsed - segStart : 0;
-                double progress = segMs > 0 ? segElapsed / segMs : 0;
-
-                // 传奇血条检测：跳过序列逻辑，使用OCR寻敌
-                var legendaryBars = FindBloodBars().Where(b => b.x > 200 && IsLegendaryBar(b.y)).ToList();
-                if (legendaryBars.Count > 0)
-                {
-                    if (!OcrSeekEnemy(dpi, cfg.SpecializedFrameIntervalMs, Ct, 900, 540))
-                    {
-                        Simulation.SendInput.Mouse.MoveMouseBy((int)(500 * rotateSpeed * dpi), 0);
-                    }
-                    Sleep(cfg.SpecializedFrameIntervalMs);
-                    continue;
-                }
-
-                switch (seg)
-                {
-                    case -1:
-                        // 序列耗尽后：持续对准 + 旋转搜索
-                        var exhaustedBars = FindBloodBars();
-                        var exhaustedValid = exhaustedBars.Where(b => b.x > 200 && b.y >= 96).ToList();
-                        using (var drawRegion = CaptureToRectArea())
+                        // 构建绘制列表，初始包含预瞄准星（红色方框，中心(960, 540)）
+                        var drawList = new System.Collections.Generic.List<View.Drawable.RectDrawable>
                         {
-                            var drawList = new List<View.Drawable.RectDrawable>
-                            {
-                                drawRegion.ToRectDrawable(new Rect(preAimX - 25, 540 - 25, 50, 50), "preAim", new System.Drawing.Pen(System.Drawing.Color.Red, 2))
-                            };
-                            if (exhaustedValid.Count > 0)
-                            {
-                                lastSeenBlood = DateTime.UtcNow;
-                                var nearest = exhaustedValid.OrderBy(b => Math.Abs((b.x + b.width / 2) - preAimX)).First();
-                                var offsetX = (nearest.x + nearest.width / 2) - preAimX;
-                                var offsetY = (nearest.y + nearest.height / 2) - 480;
-                                Simulation.SendInput.Mouse.MoveMouseBy((int)(offsetX * 0.5 * dpi), (int)(offsetY * 0.5 * dpi));
+                            capture.ToRectDrawable(new OpenCvSharp.Rect(preAimX - 25, 540 - 25, 50, 50), "preAim", new System.Drawing.Pen(System.Drawing.Color.Red, 2))
+                        };
 
-                                foreach (var b in exhaustedValid)
-                                {
-                                    var rect = new Rect(b.x, b.y, b.width, b.height);
-                                    if (b.x == nearest.x && b.y == nearest.y && b.width == nearest.width && b.height == nearest.height)
-                                        drawList.Add(drawRegion.ToRectDrawable(rect, "target", new System.Drawing.Pen(System.Drawing.Color.LimeGreen, 2)));
-                                    else
-                                        drawList.Add(drawRegion.ToRectDrawable(rect, "blood"));
-                                }
-                            }
-                            else
-                            {
-                                // 无血条时先用OCR替补
-                                if (!OcrSeekEnemy(dpi, cfg.SpecializedFrameIntervalMs, Ct, 900, 540))
-                                {
-                                    Simulation.SendInput.Mouse.MoveMouseBy((int)(500 * rotateSpeed * dpi), 0);
-                                    if ((DateTime.UtcNow - lastSeenBlood).TotalSeconds >= 1)
-                                    {
-                                        Logger.LogInformation("序列耗尽后超过1秒未找到血条，提前退出");
-                                        VisionContext.Instance().DrawContent.PutOrRemoveRectList("SandroneBloodBars", drawList);
-                                        goto done;
-                                    }
-                                }
-                                else
-                                {
-                                    lastSeenBlood = DateTime.UtcNow; // OCR命中，重置计时
-                                }
-                            }
-                            VisionContext.Instance().DrawContent.PutOrRemoveRectList("SandroneBloodBars", drawList);
-                        }
-                        break;
+                        // 检测是否存在传奇血条（y < 96 直接判定，y 96-200 使用动态追踪）
+                        bool hasLegendaryBar = bars.Any(b => IsLegendaryBar(b.y));
 
-                    default:
-                        if (seg % 2 == 0)
+                        if (valid.Count > 0 && !hasLegendaryBar)
                         {
-                            // 奇数段：瞄准阶段
-                            var bars = FindBloodBars();
-                            var valid = bars.Where(b => b.x > 200 && b.y >= 96).ToList();
-                            using (var drawRegion = CaptureToRectArea())
+                            // 有可瞄准的普通血条：更新最后见到目标的时间
+                            lastSeenTargetTime = DateTime.UtcNow;
+
+                            // 选择距离预瞄点(960, 480)最近的血条作为目标
+                            var nearest = valid.OrderBy(b => Math.Abs((b.x + b.width / 2) - preAimX) + Math.Abs((b.y + b.height / 2) - preAimY)).First();
+                            Logger.LogInformation("追踪血条: 裁剪坐标({X},{Y}) 大小({W}×{H})", nearest.x, nearest.y, nearest.width, nearest.height);
+                            // 计算准星到目标中心的偏移量（像素）
+                            var offsetX = (nearest.x + nearest.width / 2) - preAimX;
+                            var offsetY = (nearest.y + nearest.height / 2) - preAimY;
+                            // 以 0.35 系数移动鼠标（平滑跟踪，避免剧烈抖动）
+                            Simulation.SendInput.Mouse.MoveMouseBy((int)(offsetX * 0.35 * dpi), (int)(offsetY * 0.25 * dpi));
+
+                            // 普通血条框绘制：追踪目标用绿色框，其他血条用红色框
+                            foreach (var b in valid)
                             {
-                                var drawList = new List<View.Drawable.RectDrawable>
-                                {
-                                    drawRegion.ToRectDrawable(new Rect(preAimX - 25, 540 - 25, 50, 50), "preAim", new System.Drawing.Pen(System.Drawing.Color.Red, 2))
-                                };
-                                if (valid.Count > 0)
-                                {
-                                    bloodFoundInOdd = true;
-
-                                    int targetX;
-                                    (int x, int y, int w, int h) tracked = (0, 0, 0, 0);
-                                    // 后半段（closest）至少占1s
-                                    var secondHalfMs = Math.Max(1000.0, segMs * 0.5);
-                                    var splitThreshold = segMs > 0 ? Math.Max(0, 1.0 - secondHalfMs / segMs) : 0.5;
-                                    if (progress < splitThreshold)
-                                    {
-                                        var leftmost = valid.OrderBy(b => b.x).First();
-                                        targetX = leftmost.x + leftmost.width / 2;
-                                        tracked = (leftmost.x, leftmost.y, leftmost.width, leftmost.height);
-                                    }
-                                    else
-                                    {
-                                        var closest = valid.OrderBy(b => Math.Abs((b.x + b.width / 2) - preAimX)).First();
-                                        targetX = closest.x + closest.width / 2;
-                                        tracked = (closest.x, closest.y, closest.width, closest.height);
-                                    }
-
-                                    foreach (var b in valid)
-                                    {
-                                        var rect = new Rect(b.x, b.y, b.width, b.height);
-                                        if (b.x == tracked.x && b.y == tracked.y && b.width == tracked.w && b.height == tracked.h)
-                                            drawList.Add(drawRegion.ToRectDrawable(rect, "target", new System.Drawing.Pen(System.Drawing.Color.LimeGreen, 2)));
-                                        else
-                                            drawList.Add(drawRegion.ToRectDrawable(rect, "blood"));
-                                    }
-
-                                    var offset = targetX - preAimX;
-                                    Simulation.SendInput.Mouse.MoveMouseBy((int)(offset * 0.25 * dpi), 0);
-                                }
+                                var rect = new OpenCvSharp.Rect(b.x, b.y, b.width, b.height);
+                                if (b.x == nearest.x && b.y == nearest.y && b.width == nearest.width && b.height == nearest.height)
+                                    drawList.Add(capture.ToRectDrawable(rect, "target", new System.Drawing.Pen(System.Drawing.Color.LimeGreen, 2)));
                                 else
-                                {
-                                    Simulation.SendInput.Mouse.MoveMouseBy((int)(500 * rotateSpeed * dpi), 0);
-                                }
-                                VisionContext.Instance().DrawContent.PutOrRemoveRectList("SandroneBloodBars", drawList);
+                                    drawList.Add(capture.ToRectDrawable(rect, "blood"));
                             }
                         }
                         else
                         {
-                            // 偶数段：纯向右水平旋转
-                            if (!logged) { Logger.LogInformation("向右 转！"); logged = true; }
-                            Simulation.SendInput.Mouse.MoveMouseBy((int)(500 * rotateSpeed * dpi), 0);
-
-                            if (exitAfterEven && elapsed >= boundaries[seg])
+                            // 无血条或存在传奇血条：用 OCR 找伤害数字作为追踪目标
+                            var damageResult = FindDamageNumber(capture);
+                            if (damageResult.HasValue)
                             {
-                                Logger.LogInformation("奇数段无血条，偶数段完毕，提前退出");
-                                goto done;
+                                var (dcx, dcy, dtext) = damageResult.Value;
+                                // Logger.LogInformation("伤害数字追踪: 坐标({X},{Y}) 文本:{Text}", dcx, dcy, dtext);
+                                lastSeenTargetTime = DateTime.UtcNow;
+                                var offsetX = dcx - preAimX;
+                                var offsetY = dcy - preAimY;
+                                Simulation.SendInput.Mouse.MoveMouseBy((int)(offsetX * 0.35 * dpi), (int)(offsetY * 0.25 * dpi));
+                            }
+
+                            // OCR 无结果时：向右旋转搜索敌人
+                            if (!damageResult.HasValue)
+                            {
+                                // 不存在传奇血条时：连续超过1秒未找到目标，提前退出
+                                if (!hasLegendaryBar && (DateTime.UtcNow - lastSeenTargetTime).TotalSeconds >= 1.5)
+                                {
+                                    Logger.LogInformation("桑多涅重击特化：超过1.5秒未找到目标，提前退出");
+                                    View.Drawable.VisionContext.Instance().DrawContent.PutOrRemoveRectList("SandroneBloodBars", drawList);
+                                    break;
+                                }
+
+                                Simulation.SendInput.Mouse.MoveMouseBy((int)(1000 * dpi), 0);
                             }
                         }
-                        break;
+
+                        // 将本帧绘制列表提交到遮罩窗口显示
+                        View.Drawable.VisionContext.Instance().DrawContent.PutOrRemoveRectList("SandroneBloodBars", drawList);
+                    }
+
+                    // 等待一帧间隔后继续
+                    Sleep(frameIntervalMs);
                 }
-
-                Sleep(cfg.SpecializedFrameIntervalMs);
             }
-
-            done:
-            Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyUp);
-        }
-        else if (MavuikaMotorcycleCheckEnabled && Name == "玛薇卡")
-        {
-            Avatar? mwk = CombatScenes.SelectAvatar("玛薇卡");
-            
-            if (AutoFightSkill.AvatarSkillAsync(Logger, mwk, false, 1, Ct).Result)
+            finally
             {
-                Logger.LogWarning("玛薇卡E技能CD..");
-                return;
+                // 确保清理绘制并松开重击键
+                View.Drawable.VisionContext.Instance().DrawContent.RemoveRect("SandroneBloodBars");
+                Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyUp);
             }
-            
-            using var region2 = CaptureToRectArea();
-            if (!Bv.IsInMainUi(region2))
-            {
-                Logger.LogWarning("没有在主界面..");
-                return;
-            }
-            // 玛薇卡摩托状态检测开关（位置1：读注入的配置组/独立任务开关，非全局）。关闭时跳过检测与开摩托
-            //摩托状态才执行
-            Sleep(200);
-            using var region = CaptureToRectArea();
-            var pos = region.SrcMat.At<Vec3b>(991, 1678);
-            var pos2 = region.SrcMat.At<Vec3b>(991, 1728);
-            double colorDifference = Math.Sqrt(
-                Math.Pow(pos.Item0 - pos2.Item0, 2) + // 蓝通道差值的平方
-                Math.Pow(pos.Item1 - pos2.Item1, 2) + // 绿通道差值的平方
-                Math.Pow(pos.Item2 - pos2.Item2, 2)   // 红通道差值的平方
-            );
-            // var pixelValue = region.SrcMat.At<Vec3b>(32, 67);
-            // // 检查每个通道的值是否在允许的范围内
-            // var paimon = (!(Math.Abs(pixelValue[0] - 143) <= 10 &&
-            //                 Math.Abs(pixelValue[1] - 196) <= 10 &&
-            //                 Math.Abs(pixelValue[2] - 233) <= 10));
-
-            // Logger.LogInformation("玛薇卡蓄力颜色差值:{ColorDifference}", Math.Round(colorDifference, 2));
-            if (colorDifference >= 15) // 这个数值是通过观察大量截图得来的，摩托状态下差值一般在10-15之间，非摩托状态一般在20以上
-            {
-                Logger.LogWarning("{Name} 重击命令可能没有进入摩托状态，尝试开摩托！ {t}", Name,Math.Round(colorDifference, 2));
-                //点按E技能
-                Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                Sleep(200);
-                Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                Sleep(100);
-                Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                Sleep(200);
-                Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-            }
-            else
-            {
-                Logger.LogWarning("{Name} 当前处于摩托状态，执行重击 {t}", Name,Math.Round(colorDifference, 2));
-            }
-
-            // 重击普攻：不受开关影响，始终执行
-            Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyDown);
-            Sleep(ms, Ct); // 持续操作应该被cts取消
-            Simulation.SendInput.SimulateAction(GIActions.NormalAttack, KeyType.KeyUp);
         }
         else
         {
@@ -2523,11 +2374,7 @@ public class Avatar
         return _legendaryBarTracker.TryGetValue(y / 2 * 2, out var cnt) && cnt >= LegendaryBarTrackThreshold;
     }
 
-    /// <summary>
-    /// 检测当前帧视野内所有红色血条的位置和高度。
-    /// 照抄 AutoFightSeek 的色值 + 连通域逻辑，返回 (x, y, width, height) 列表。
-    /// </summary>
-    public static List<(int x, int y, int width, int height)> FindBloodBars()
+    public static List<(int x, int y, int width, int height)> FindBloodBars(ImageRegion? existingCapture = null)
     {
         var results = new List<(int x, int y, int width, int height)>();
 
@@ -2985,6 +2832,56 @@ public class Avatar
         }
 
         return (statusChars, allCounts, otherCounts, totals);
+    }
+    
+    /// <summary>
+    /// OCR 寻找伤害数字/反应文字作为追踪目标（备用寻敌）。
+    /// 在 450,240-1600,900 区域 OCR，过滤条件：
+    ///   - 有效项1：排除首位 '+'，去除非数字后纯数字 ≥4 位
+    ///   - 有效项2：文本包含反应关键词（免疫/蒸发/感电/结晶/扩散/绽放/冻结/超载/融化/燃烧/超导/激化），跳过数字过滤
+    /// 按 h²×文本字数 加权得到中心坐标，返回离加权中心最近的有效项。
+    /// </summary>
+    public static (int centerX, int centerY, string text)? FindDamageNumber(ImageRegion? existingCapture = null)
+    {
+        using var ra = existingCapture ?? CaptureToRectArea();
+        var ocrResults = ra.FindMulti(RecognitionObject.Ocr(450, 240, 1150, 660));
+
+        string[] reactionKeywords = ["免疫", "蒸发", "感电", "结晶", "扩散", "绽放", "冻结", "超载", "融化", "燃烧", "超导", "激化"];
+        var validItems = new List<(int cx, int cy, int area, string text)>();
+
+        foreach (var r in ocrResults)
+        {
+            var text = r.Text?.Trim();
+            if (string.IsNullOrEmpty(text)) continue;
+
+            // 有效项2：反应关键词（跳过所有过滤）
+            if (reactionKeywords.Any(k => text.Contains(k)))
+            {
+                validItems.Add((r.X + r.Width / 2, r.Y + r.Height / 2, r.Height * r.Height * text.Length, text));
+                continue;
+            }
+
+            // 有效项1：排除 '+' 开头
+            if (text[0] == '+') continue;
+
+            // 去除非数字，纯数字 ≥4 位
+            var digits = new string(text.Where(char.IsDigit).ToArray());
+            if (digits.Length >= 4)
+            {
+                validItems.Add((r.X + r.Width / 2, r.Y + r.Height / 2, r.Height * r.Height * text.Length, text));
+            }
+        }
+
+        if (validItems.Count == 0) return null;
+
+        int totalArea = validItems.Sum(i => i.area);
+        if (totalArea == 0) return null;
+
+        double avgX = (double)validItems.Sum(i => i.cx * i.area) / totalArea;
+        double avgY = (double)validItems.Sum(i => i.cy * i.area) / totalArea;
+
+        var closest = validItems.OrderBy(i => Math.Abs(i.cx - avgX) + Math.Abs(i.cy - avgY)).First();
+        return (closest.cx, closest.cy, closest.text);
     }
 
     /// <summary>
