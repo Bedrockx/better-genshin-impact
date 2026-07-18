@@ -2804,7 +2804,7 @@ public class PathExecutor
                                                                               || waypoint.MoveMode == MoveModeEnum.Jump.Code || (waypoint.MoveMode == MoveModeEnum.Climb.Code && distance < 20)) && avatar?.Name == "玛薇卡"));
             
 
-            if (avatar != null && isPoint)
+            if (avatar != null && isPoint && !yellowBlood)
             {
                 // 自动赶路的靠近节点模式
                 if (!hurryOnLogo && trackingLogo && 
