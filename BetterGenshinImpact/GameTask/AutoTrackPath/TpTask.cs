@@ -408,6 +408,15 @@ public class TpTask
             {
                 TaskControl.Logger.LogInformation("目标传送点有相近传送点，到目标传送点附近将缩放到{zoomLevel:0.00}", minZoomLevel);
                 await MoveMapTo(x, y, mapName, minZoomLevel,country);
+                // 补检查：MoveMapTo 内部可能因早停（mouseDistance < 收工阈值）跳过缩放，
+                // 此处确保缩放真正到位。
+                using var raStep4 = CaptureToRectArea();
+                double zoomAfterMove = GetBigMapZoomLevel(raStep4);
+                if (zoomAfterMove > minZoomLevel + _tpConfig.PrecisionThreshold)
+                {
+                    TaskControl.Logger.LogInformation("步骤4 补缩放：当前缩放 {CZ:0.00} > 目标 {MZ:0.00}，补执行缩放到位", zoomAfterMove, minZoomLevel);
+                    await AdjustMapZoomLevel(zoomAfterMove, minZoomLevel);
+                }
                 if (_tpConfig.MapMoveStepDivisor)
                 {
                     int timeoutMs = 800 + _tpConfig.StepIntervalMilliseconds * 10;
@@ -461,7 +470,27 @@ public class TpTask
             edgeZoomApplied = true;
         }
 
-        bigMapInAllMapRect = GetBigMapRect(mapName);
+        // 重试时（retryTimes > 0）强制缩放到 2.0，使传送点图标放大避免被大地图标记物（地脉花等）遮挡。
+        // 放在 pullZoomForEdgeRecognition 之后以覆盖其 5.5 拉升，确保点击前缩放到放大状态。
+        if (retryTimes > 0 && (_tpConfig.MapZoomEnabled || _tpConfig.MapMoveStepDivisor))
+        {
+            using var raRetry = CaptureToRectArea();
+            double zoomNow = GetBigMapZoomLevel(raRetry);
+            if (Math.Abs(zoomNow - 2.0) > _tpConfig.PrecisionThreshold)
+            {
+                await AdjustMapZoomLevel(zoomNow, 2.0);
+                await Delay(200, ct);
+                TaskControl.Logger.LogInformation("重试第{Retry}次：缩放拉到 2.0 放大传送点图标避免标记物遮挡", retryTimes);
+            }
+            // 重试时手动拉了缩放，需要重新计算 bigMapInAllMapRect
+            // 清除 edgeZoomApplied 标志，防止步骤 5.6 又把缩放降回 4.4
+            edgeZoomApplied = false;
+            bigMapInAllMapRect = GetBigMapRect(mapName);
+        }
+        else
+        {
+            bigMapInAllMapRect = GetBigMapRect(mapName);
+        }
         var retryCount = 0;
         do
         {
@@ -1005,7 +1034,6 @@ public class TpTask
                 // 传送点未激活或不存在 按ESC回到大地图界面
                 Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
                 await Delay(300, ct);
-                // throw; // 不抛出异常，继续重试
                 TaskControl.Logger.LogWarning(e.Message + "  重试");
                 // 联机锄地：传送失败重试视为"仍在合法传送中"，刷新 WorldStateMonitor 抑制计时窗口，
                 // 避免长传送被墙钟超时误判被踢出。单机 CurrentWorldStateMonitor==null → no-op。
@@ -1411,7 +1439,7 @@ public class TpTask
             mouseDistance = Math.Sqrt(totalMoveMouseX * totalMoveMouseX + totalMoveMouseY * totalMoveMouseY);
             if (_tpConfig.MapMoveStepDivisor)Simulation.SendInput.Mouse.LeftButtonUp();
         }
-    }
+        }
 
     /// <summary>
     /// 点击并移动鼠标
