@@ -434,7 +434,7 @@ namespace BetterGenshinImpact.GameTask.AutoFight
 
                     if (retryCount == 1)
                     {
-                        using var confirmRectArea = image.Find(AutoFightAssets.Instance.ConfirmRa);
+                        using var confirmRectArea = image.Find(AutoFightAssets.Get(image).ConfirmRa);
                         if (confirmRectArea.IsExist() || ct.IsCancellationRequested)
                         {
                             TaskControl.Logger.LogWarning("旋转寻敌：{t} 停止旋转", "页面错误");

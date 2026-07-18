@@ -84,6 +84,10 @@ public static class MiniMapPositionDiagnostics
             bool failed = resultPos is { X: 0, Y: 0 };
             var (meanBrightness, blackRatio) = ComputeBrightness(miniMap);
 
+            var systemInfo = TaskContext.Instance().SystemInfo;
+            var captureRect = systemInfo.ScaleMax1080PCaptureRect;
+            var mapAssets = MapAssets.Get(captureRect.Width, captureRect.Height);
+
             Logger.LogDebug(
                 "[小地图诊断] {Entry} 结果=({Rx:F1},{Ry:F1}) {FailTag} | 分支={Branch} | 锚点=({Px:F1},{Py:F1}) 连续失败={Fail} | 截图={W}x{H} 均亮度={Mean:F1} 近黑占比={Black:P0} | 区域={RectW}x{RectH}@({RectX},{RectY})",
                 entry,
@@ -94,8 +98,8 @@ public static class MiniMapPositionDiagnostics
                 consecutiveFail,
                 miniMap.Width, miniMap.Height,
                 meanBrightness, blackRatio,
-                MapAssets.Instance.MimiMapRect.Width, MapAssets.Instance.MimiMapRect.Height,
-                MapAssets.Instance.MimiMapRect.X, MapAssets.Instance.MimiMapRect.Y);
+                mapAssets.MimiMapRect.Width, mapAssets.MimiMapRect.Height,
+                mapAssets.MimiMapRect.X, mapAssets.MimiMapRect.Y);
 
             if (failed && DumpFailedFrame)
             {

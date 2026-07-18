@@ -933,7 +933,7 @@ public class TpTask
                 Logger.LogWarning("等待大地图界面超时（2000ms），可能地图尚未打开");
             }
             using var ra2 = CaptureToRectArea();
-            if (ra2.Find(QuickTeleportAssets.Instance.MapScaleButtonRo).IsExist())
+            if (ra2.Find(QuickTeleportAssets.Get(ra2).MapScaleButtonRo).IsExist())
             {
                 return true;
             }
@@ -983,7 +983,7 @@ public class TpTask
             try
             {
                 using var ra = CaptureToRectArea();
-                if (ra.Find(QuickTeleportAssets.Instance.MapScaleButtonRo).IsExist())
+                if (ra.Find(QuickTeleportAssets.Get(ra).MapScaleButtonRo).IsExist())
                 {
                     await Delay(10, ct);
                     return true;
@@ -1647,7 +1647,7 @@ public class TpTask
                             var pos4 = image2.SrcMat.At<Vec3b>(600,500);
                             if (pos3 == pos && pos4 == pos2)
                             {
-                                using var esc = image2.Find(QuickTeleportAssets.Instance.MapCloseButtonWhiteRo);
+                                using var esc = image2.Find(QuickTeleportAssets.Get(image2).MapCloseButtonWhiteRo);
                                 if (esc.IsExist())
                                 {
                                     TaskControl.Logger.LogWarning("地图遮挡，重新调整");
@@ -1729,7 +1729,7 @@ public class TpTask
                 using var ra = CaptureToRectArea();
                 var p1 = ra.SrcMat.At<Vec3b>(860, 500);
                 var p2 = ra.SrcMat.At<Vec3b>(860, 540);
-                if (ra.Find(QuickTeleportAssets.Instance.MapScaleButtonRo).IsExist() && prev1.HasValue && p1 == prev1.Value && p2 == prev2!.Value)
+                if (ra.Find(QuickTeleportAssets.Get(ra).MapScaleButtonRo).IsExist() && prev1.HasValue && p1 == prev1.Value && p2 == prev2!.Value)
                 {
                     if (++hits >= stableHits)
                     {
@@ -1910,7 +1910,7 @@ public class TpTask
                 try
                 {  
                     using var ra2 = CaptureToRectArea();
-                    using var mapScaleButtonRa2 = ra2.Find(QuickTeleportAssets.Instance.MapScaleButtonRo);
+                    using var mapScaleButtonRa2 = ra2.Find(QuickTeleportAssets.Get(ra2).MapScaleButtonRo);
                     if (mapScaleButtonRa2.IsExist())
                     {
                         rect = MapManager.GetMap(mapName, _mapMatchingMethod).GetBigMapRect(ra.CacheGreyMat);
@@ -2166,7 +2166,7 @@ public class TpTask
         {
             // 判断是否在地图界面
             using var ra = CaptureToRectArea();
-            using var mapScaleButtonRa = ra.Find(QuickTeleportAssets.Instance.MapScaleButtonRo);
+            using var mapScaleButtonRa = ra.Find(QuickTeleportAssets.Get(ra).MapScaleButtonRo);
             if (mapScaleButtonRa.IsExist())
             {
                 inMapUi = true;
@@ -2434,7 +2434,9 @@ public class TpTask
         if (_tpConfig.MapMoveStepDivisor && _tpConfig.FastDragRecognitionEnabled)
         {
             await Delay(100, ct);
-            await WaitForElementOrTimeoutAsync(QuickTeleportAssets.Instance.MapCloseButtonWhiteRo, timeoutMs:1000);
+            var systemInfo = TaskContext.Instance().SystemInfo;
+            var captureRect = systemInfo.ScaleMax1080PCaptureRect;
+            await WaitForElementOrTimeoutAsync(QuickTeleportAssets.Get(captureRect.Width, captureRect.Height).MapCloseButtonWhiteRo, timeoutMs:1000);
         }
         else
         {
@@ -2469,7 +2471,7 @@ public class TpTask
             matchRect.Click();
             TaskControl.Logger.LogInformation("切换到区域：{Country}", areaName);
             // 切换区域后，用该区域的固定中心点作为第一层先验（切换后大地图自动跳到区域中心）
-            if (MapLazyAssets.Instance.CountryPositions.TryGetValue(areaName, out var centerPos))
+            if (MapLazyAssets.Get().CountryPositions.TryGetValue(areaName, out var centerPos))
             {
                 _miniMapPriorGenshin = new Point2f((float)centerPos[0], (float)centerPos[1]);
                 _priorIsRegionCenter = true; // 区域中心点先验，用较大半径200

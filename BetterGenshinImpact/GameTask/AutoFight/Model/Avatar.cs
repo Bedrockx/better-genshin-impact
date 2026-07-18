@@ -212,7 +212,7 @@ public class Avatar
                 {
                     PathingConditionConfig.LastEatTime = DateTime.UtcNow;
                     Logger.LogWarning("自动吃药：尝试使用小道具恢复-n {t}", PathingConditionConfig.AutoEatCount);
-                    var confirmRectArea = region.Find(AutoFightAssets.Instance.ConfirmRa);
+                    var confirmRectArea = region.Find(AutoFightAssets.Get(region).ConfirmRa);
                     if (!confirmRectArea.IsEmpty())
                     {
                         PathingConditionConfig.AutoEatCount++;
@@ -393,7 +393,7 @@ public class Avatar
             
             Offset60Fix(i);
             
-            if (region.Find(AutoFightAssets.Instance.ConfirmRa).IsExist())
+            if (region.Find(AutoFightAssets.Get(region).ConfirmRa).IsExist())
             {
                 return;
             }
@@ -437,7 +437,7 @@ public class Avatar
             
             Offset60Fix(i);
             
-            var resultRa = region.Find(AutoFightAssets.Instance.ConfirmRa);
+            var resultRa = region.Find(AutoFightAssets.Get(region).ConfirmRa);
             if (resultRa.IsExist())
             {
                 if (i == 9)
@@ -448,13 +448,13 @@ public class Avatar
                 
                 using (var bitmap = CaptureToRectArea()) //复活界面检测，自动战斗期间，不进行BGI的复活检测，超出吃药上限后才会检测
                 {
-                    var confirmRa = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+                    var confirmRa = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
                     if (confirmRa.IsExist())
                     {
                         confirmRa.Click();
                         Task.Delay(500, Ct).Wait(500);
                         using var bitmap2 = CaptureToRectArea();
-                        var okRa = bitmap2.Find(AutoFightAssets.Instance.ConfirmRa);
+                        var okRa = bitmap2.Find(AutoFightAssets.Get(bitmap2).ConfirmRa);
                         {
                             if (okRa.IsExist())
                             {
@@ -514,7 +514,7 @@ public class Avatar
             using var region = CaptureToRectArea();
             // ThrowWhenDefeated(region, Ct);
             
-            var resultRa = region.Find(AutoFightAssets.Instance.ConfirmRa);
+            var resultRa = region.Find(AutoFightAssets.Get(region).ConfirmRa);
             if (resultRa.IsExist())
             {
                 Logger.LogError("复活窗口出现，尝试点击确认");
@@ -595,7 +595,7 @@ public class Avatar
 
             SimulateSwitchAction(Index);
             
-            if (region.Find(AutoFightAssets.Instance.ConfirmRa).IsExist())
+            if (region.Find(AutoFightAssets.Get(region).ConfirmRa).IsExist())
             {
                 return;
             }
@@ -1490,7 +1490,7 @@ public class Avatar
     /// <returns>OCR 识别到的 E 技能剩余 CD 秒数；无法识别为有效正数时返回 0</returns>
     public double ReadSkillCdSecondsByOcr(ImageRegion imageRegion)
     {
-        var eRa = imageRegion.DeriveCrop(AutoFightAssets.Instance.ECooldownRect);
+        var eRa = imageRegion.DeriveCrop(AutoFightAssets.Get(imageRegion).ECooldownRect);
         var eRaWhite = OpenCvCommonHelper.InRangeHsv(eRa.SrcMat, new Scalar(0, 0, 235), new Scalar(0, 25, 255));
         var text = OcrFactory.Paddle.OcrWithoutDetector(eRaWhite);
         var cd = StringUtils.TryParseDouble(text);

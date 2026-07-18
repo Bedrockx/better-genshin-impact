@@ -24,7 +24,7 @@ public partial class DomainSelector : UserControl
     /// </summary>
     private void RebuildCountries()
     {
-        var countries = MapLazyAssets.Instance.CountryToDomains.Keys.Reverse().ToList();
+        var countries = MapLazyAssets.Get().CountryToDomains.Keys.Reverse().ToList();
         if (CustomDomains != null && CustomDomains.Count > 0)
         {
             countries.Add("自定义");
@@ -109,7 +109,7 @@ public partial class DomainSelector : UserControl
         }
         else
         {
-            if (MapLazyAssets.Instance.CountryToDomains.TryGetValue(country, out var domains))
+            if (MapLazyAssets.Get().CountryToDomains.TryGetValue(country, out var domains))
             {
                 // Reverse the list for display
                 control.FilteredDomains = domains
@@ -150,7 +150,7 @@ public partial class DomainSelector : UserControl
         if (string.IsNullOrEmpty(domain)) return;
 
         // First try standard domain reverse lookup
-        var country = MapLazyAssets.Instance.GetCountryByDomain(domain);
+        var country = MapLazyAssets.Get().GetCountryByDomain(domain);
         if (country != null && country != control.SelectedCountry)
         {
             control.SelectedCountry = country;

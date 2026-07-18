@@ -2281,7 +2281,7 @@ public class AutoFightTask : ISoloTask
             {
                 // 优先检测复活弹窗，避免弹窗滤镜导致派蒙像素不匹配而误判战斗结束
                 using var popupCheck = CaptureToRectArea();
-                var reviveConfirmRa = popupCheck.Find(AutoFightAssets.Instance.ConfirmRa);
+                var reviveConfirmRa = popupCheck.Find(AutoFightAssets.Get(popupCheck).ConfirmRa);
                 if (reviveConfirmRa.IsExist())
                 {
                     TaskControl.Logger.LogInformation("派蒙模式：检测到复活弹窗，主动处理");
@@ -2291,7 +2291,7 @@ public class AutoFightTask : ISoloTask
 
                     // 检测弹窗是否仍在（复活药CD时确认无效，弹窗不会关闭）
                     using var popupCheck2 = CaptureToRectArea();
-                    var reviveExitRa = popupCheck2.Find(AutoFightAssets.Instance.ExitRa);
+                    var reviveExitRa = popupCheck2.Find(AutoFightAssets.Get(popupCheck2).ExitRa);
                     if (reviveExitRa.IsExist())
                     {
                         reviveExitRa.Click(); // 点击取消关闭弹窗
@@ -2319,7 +2319,7 @@ public class AutoFightTask : ISoloTask
                 }
 
                 using var bitmap = CaptureToRectArea();
-                var confirmRa = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+                var confirmRa = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
                 if (confirmRa.IsExist())
                 {
                     TaskControl.Logger.LogInformation("识别到确认界面，可能是误判，继续战斗");
@@ -2499,7 +2499,7 @@ public class AutoFightTask : ISoloTask
         try
         {
             using var ra = CaptureToRectArea();
-            foreach (var moraRewardRa in AutoFightAssets.Instance.MoraRewardRas)
+            foreach (var moraRewardRa in AutoFightAssets.Get(ra).MoraRewardRas)
             {
                 if (!int.TryParse(moraRewardRa.Name?.Replace("mora_", ""), out var templateMora) ||
                     !config.IsMoraValueEnabled(templateMora))
@@ -2532,7 +2532,7 @@ public class AutoFightTask : ISoloTask
         try
         {
             using var ra = CaptureToRectArea();
-            foreach (var experienceRa in AutoFightAssets.Instance.ExperienceRewardRas)
+            foreach (var experienceRa in AutoFightAssets.Get(ra).ExperienceRewardRas)
             {
                 var found = ra.Find(experienceRa);
                 if (!found.IsExist())
@@ -2567,7 +2567,9 @@ public class AutoFightTask : ISoloTask
     //基于万叶经验值判断是否拾取
     private static Task FindExp(CancellationToken cts2)
     {
-        var autoFightAssets = AutoFightAssets.Instance;
+        var systemInfo = TaskContext.Instance().SystemInfo;
+        var captureRect = systemInfo.ScaleMax1080PCaptureRect;
+        var autoFightAssets = AutoFightAssets.Get(captureRect.Width, captureRect.Height);
 
         try  
         {
@@ -2709,7 +2711,7 @@ public class AutoFightTask : ISoloTask
                     using (var ra = CaptureToRectArea())
                     {
                         // 先检测复活界面（优先级最高，因为复活界面弹出时派蒙不可见）
-                        var confirmRa = ra.Find(AutoFightAssets.Instance.ConfirmRa);
+                        var confirmRa = ra.Find(AutoFightAssets.Get(ra).ConfirmRa);
                         if (confirmRa.IsExist())
                         {
                             // 先点确认（尝试使用复活药）
@@ -2719,7 +2721,7 @@ public class AutoFightTask : ISoloTask
                             await Task.Delay(300, ct);
                             // 无论确认是否关闭了弹窗，都点一次取消位置（复活药CD时确认无效，需要取消关闭弹窗）
                             using var ra2 = CaptureToRectArea();
-                            var exitRa = ra2.Find(AutoFightAssets.Instance.ExitRa);
+                            var exitRa = ra2.Find(AutoFightAssets.Get(ra2).ExitRa);
                             if (exitRa.IsExist())
                             {
                                 exitRa.Click();
@@ -2927,14 +2929,14 @@ public class AutoFightTask : ISoloTask
             try
             {
                 using var bitmap = CaptureToRectArea();
-                var confirmRa = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+                var confirmRa = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
                 if (confirmRa.IsExist())
                 {
                     // 先点确认尝试复活，再点取消关闭弹窗
                     confirmRa.Click();
                     await Task.Delay(300, ct);
                     using var bitmap2 = CaptureToRectArea();
-                    var exitRa = bitmap2.Find(AutoFightAssets.Instance.ExitRa);
+                    var exitRa = bitmap2.Find(AutoFightAssets.Get(bitmap2).ExitRa);
                     if (exitRa.IsExist())
                     {
                         exitRa.Click();
@@ -3174,14 +3176,14 @@ public class AutoFightTask : ISoloTask
                         if (Bv.IsInRevivePrompt(bitmap))
                         {
                             // 先点确认尝试复活，再点取消关闭弹窗
-                            var confirmArea = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+                            var confirmArea = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
                             if (confirmArea.IsExist())
                             {
                                 confirmArea.Click();
                             }
                             await Task.Delay(300, ct);
                             using var bitmap2 = CaptureToRectArea();
-                            var exitArea = bitmap2.Find(AutoFightAssets.Instance.ExitRa);
+                            var exitArea = bitmap2.Find(AutoFightAssets.Get(bitmap2).ExitRa);
                             if (exitArea.IsExist())
                             {
                                 exitArea.Click();

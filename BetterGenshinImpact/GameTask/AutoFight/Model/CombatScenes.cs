@@ -152,7 +152,7 @@ public class CombatScenes : IDisposable
         try
         {
             // 队伍角色编号和侧面头像位置（用纠正后的 CurrentMultiGameStatus + 同源帧）
-            var (avatarIndexRectList, avatarSideIconRectList) = PartyAvatarSideIndexHelper.GetAllIndexRects(regionForRecognition, CurrentMultiGameStatus, _logger, _elementAssets, _systemInfo);
+            var (avatarIndexRectList, avatarSideIconRectList) = PartyAvatarSideIndexHelper.GetAllIndexRects(regionForRecognition, CurrentMultiGameStatus, _logger, _systemInfo);
             ExpectedTeamAvatarNum = avatarIndexRectList.Count;
 
         // 识别队伍

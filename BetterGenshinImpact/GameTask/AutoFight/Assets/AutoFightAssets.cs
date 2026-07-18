@@ -485,7 +485,7 @@ public sealed class AutoFightAssets
         }.InitTemplate();
     }
 
-    public static AutoFightAssets Get(Region region)
+    public static AutoFightAssets Get(GameTask.Model.Area.Region region)
     {
         return Cache.Get(region);
     }

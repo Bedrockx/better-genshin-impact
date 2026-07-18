@@ -143,6 +143,7 @@ public partial class AutoWoodTask : ISoloTask
 
     private partial class WoodStatisticsPrinter
     {
+        private readonly AutoWoodAssets assert = AutoWoodAssets.Instance;
         public bool ReachedWoodMaxCount;
         public int NothingCount;
         public int NothingWoodCount;

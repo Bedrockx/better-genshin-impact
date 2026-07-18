@@ -17,7 +17,6 @@ using System.Threading;
 
 using BetterGenshinImpact.GameTask.AutoFight.Assets;
 using BetterGenshinImpact.GameTask.AutoSkip.Assets;
-using BetterGenshinImpact.GameTask.GameLoading.Assets;
 using BetterGenshinImpact.Helpers.Extensions;
 using System.Text.RegularExpressions;
 using System.Threading;

@@ -490,7 +490,7 @@ public sealed class KazuhaCollectSyncCoordinator : IDisposable
                         else
                         {
                             // CharacterOrientation 输入是小地图 Mat，从全屏裁出
-                            using var miniMap = new OpenCvSharp.Mat(ra.SrcMat, MapAssets.Instance.MimiMapRect);
+                            using var miniMap = new OpenCvSharp.Mat(ra.SrcMat, MapAssets.Get(ra).MimiMapRect);
                             var theta = CharacterOrientation.Compute(miniMap); // 角度，0-360（角色面向）
                             (cx, cy) = KazuhaCollectPointDecisions.ComputeCollectPoint(
                                 pos.X, pos.Y, theta, forwardDistance: 1.0);

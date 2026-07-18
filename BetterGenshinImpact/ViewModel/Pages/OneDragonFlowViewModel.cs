@@ -11,6 +11,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using BetterGenshinImpact.Core.Config;
+using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.Core.Script.Group;
 using BetterGenshinImpact.GameTask;
@@ -41,7 +42,6 @@ using BetterGenshinImpact.Core.Simulator;
 using Vanara.PInvoke;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
 using static Vanara.PInvoke.User32;
-using BetterGenshinImpact.GameTask.AutoSkip.Assets;
 using BetterGenshinImpact.GameTask.AutoWood.Assets;
 using System.Threading;
 using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception;
@@ -658,7 +658,7 @@ public partial class OneDragonFlowViewModel : ViewModel
 
     [ObservableProperty] private List<string> _adventurersGuildCountry = ["挪德卡莱", "枫丹", "稻妻", "璃月", "蒙德"];
 
-[ObservableProperty] private List<string> _domainNameList = ["", ..MapLazyAssets.Get().DomainNameList];
+    [ObservableProperty] private List<string> _domainNameList = ["", ..MapLazyAssets.Get().DomainNameList];
 
     [ObservableProperty] private List<string> _completionActionList = ["无", "关闭游戏", "关闭软件", "关闭游戏和软件", "关机"];
 
@@ -674,8 +674,6 @@ public partial class OneDragonFlowViewModel : ViewModel
     
     private string _lastUid = ""; // 上一次切换的UID
     
-    [ObservableProperty] private List<string> _domainNameList = new List<string>();
-
     [ObservableProperty] private List<string> _customDomainList;
     
     public AllConfig Config { get; set; } = TaskContext.Instance().Config;
@@ -696,7 +694,7 @@ public partial class OneDragonFlowViewModel : ViewModel
                     .Where(domain => !DomainNameList.Contains(domain)));
             
             DomainNameList.AddRange(
-                    MapLazyAssets.Instance.DomainNameList
+                    MapLazyAssets.Get().DomainNameList
                     .Where(domain => !DomainNameList.Contains(domain))
             );
         }
@@ -2757,10 +2755,10 @@ public partial class OneDragonFlowViewModel : ViewModel
             
             for (int i = 0; i < 10; i++)
             {
-                using var closeRa = CaptureToRectArea().Find(AutoSkipAssets.Instance.PageCloseMainRo); 
+                using var closeRa = CaptureToRectArea().Find(RecognitionAssets.Get("AutoSkip", "PageCloseMain"));
                 if (!closeRa.IsEmpty())
                 {
-                    closeRa.ClickTo(closeRa.X + closeRa.Width*3, closeRa.X + closeRa.Height*4);
+                    closeRa.ClickTo(closeRa.X + closeRa.Width * 3, closeRa.X + closeRa.Height * 4);
                     await new ReturnMainUiTask().Start(cts);
                     break;
                 }

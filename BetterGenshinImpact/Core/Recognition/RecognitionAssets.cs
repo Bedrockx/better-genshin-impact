@@ -16,7 +16,8 @@ public static class RecognitionAssets
     public static RecognitionObject Get(string taskName, string objectName, Region region)
     {
         ArgumentNullException.ThrowIfNull(region);
-        return Get(taskName, objectName, region.Width, region.Height);
+        var captureRect = TaskContext.Instance().SystemInfo.ScaleMax1080PCaptureRect;
+        return Get(taskName, objectName, captureRect.Width, captureRect.Height);
     }
 
     public static RecognitionObject Get(string taskName, string objectName)

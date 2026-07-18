@@ -87,7 +87,7 @@ public class NavigationInstance
         {
             try
             {
-                var colorMat = new Mat(imageRegion.SrcMat, MapAssets.Instance.MimiMapRect);
+                var colorMat = new Mat(imageRegion.SrcMat, MapAssets.Get(imageRegion).MimiMapRect);
                 var captureTime = DateTime.UtcNow;
                 // [小地图诊断] 记录进入时的锚点（局部匹配的搜索中心）
                 var diagPrevX = _prevX;

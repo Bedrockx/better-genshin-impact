@@ -104,7 +104,8 @@ public sealed class PerRouteSwitchRolesProvider
             SkipSwitchParty = true,
             IsPairingPageOpen = () =>
             {
-                using var ra = CaptureToRectArea().Find(QuickTeleportAssets.Instance.MapCloseButtonRo);
+                using var capture = CaptureToRectArea();
+                using var ra = capture.Find(QuickTeleportAssets.Get(capture).MapCloseButtonRo);
                 return ra.IsExist();
             },
         };

@@ -1498,7 +1498,7 @@ public class PathExecutor
                 _returnMainUiTask.Start(ct).Wait(5000,ct);
                 using (var ra2 = CaptureToRectArea())
                 {
-                    var boon = ra2.Find(AutoFightAssets.Instance.NutritionBagRa);
+                    var boon = ra2.Find(AutoFightAssets.Get(ra2).NutritionBagRa);
                     if (boon.IsExist())
                     {
                         boon.Click();
@@ -1514,7 +1514,7 @@ public class PathExecutor
                 Delay(1500, ct).Wait();
                 using (var ra2 = CaptureToRectArea())
                 {
-                    var boon = ra2.Find(AutoFightAssets.Instance.NutritionBagRa);
+                    var boon = ra2.Find(AutoFightAssets.Get(ra2).NutritionBagRa);
                     if (boon.IsExist())
                     {
                         boon.Click();
@@ -2203,7 +2203,7 @@ public class PathExecutor
             
             using (var bitmap = CaptureToRectArea())
             {
-                var confirmRectArea = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+                var confirmRectArea = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
                 if (!confirmRectArea.IsEmpty())
                 {
                     Simulation.ReleaseAllKey();
@@ -2274,7 +2274,7 @@ public class PathExecutor
                 
                 using (var bitmap = CaptureToRectArea())
                 {
-                    var confirmRectArea = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+                    var confirmRectArea = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
                     if (!confirmRectArea.IsEmpty())
                     {
                         Simulation.ReleaseAllKey();
@@ -2347,7 +2347,7 @@ public class PathExecutor
 
         using (var bitmap = CaptureToRectArea())
         {
-            if (bitmap.Find(AutoFightAssets.Instance.PRa).IsExist())
+            if (bitmap.Find(AutoFightAssets.Get(bitmap).PRa).IsExist())
             {
                 return false;
             }
@@ -4081,7 +4081,7 @@ public class PathExecutor
 
         using (var bitmap = CaptureToRectArea())
         {
-            var confirmRectArea = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+            var confirmRectArea = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
             if (!confirmRectArea.IsEmpty())
             {
                 Simulation.ReleaseAllKey();
@@ -4132,7 +4132,7 @@ public class PathExecutor
 
         using (var bitmap = CaptureToRectArea())
         {
-            var confirmRectArea = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+            var confirmRectArea = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
             if (!confirmRectArea.IsEmpty())
             {
                 Simulation.ReleaseAllKey();
@@ -4381,11 +4381,11 @@ public class PathExecutor
         }
 
         // 一些异常界面处理
-        var cookRa = imageRegion.Find(AutoSkipAssets.Instance.CookRo);
-        var closeRa = imageRegion.Find(AutoSkipAssets.Instance.PageCloseMainRo);
+        var cookRa = imageRegion.Find(RecognitionAssets.Get("AutoSkip", "Cook", imageRegion));
+        var closeRa = imageRegion.Find(RecognitionAssets.Get("AutoSkip", "PageCloseMain", imageRegion));
         var closeRa2 = imageRegion.Find(ElementAssets.Instance.PageCloseWhiteRo);
-        var closeRa3 = imageRegion.Find(AutoSkipAssets.Instance.PageCloseRo);
-        var closeRa4 = imageRegion.Find(AutoFightAssets.Instance.ConfirmRa);
+        var closeRa3 = imageRegion.Find(RecognitionAssets.Get("AutoSkip", "PageClose", imageRegion));
+        var closeRa4 = imageRegion.Find(AutoFightAssets.Get(imageRegion).ConfirmRa);
         var anyFound = cookRa.IsExist() || closeRa.IsExist() || closeRa2.IsExist() || closeRa3.IsExist() || closeRa4.IsExist();
         if (anyFound)
         {
@@ -4414,11 +4414,10 @@ public class PathExecutor
     private async Task AutoSkip()
     {
         var ra = CaptureToRectArea();
-        var disabledUiButtonRa = ra.Find(GetAutoSkipRecognitionObject("DisabledUiButton", ra));
+        var disabledUiButtonRa = ra.Find(RecognitionAssets.Get("AutoSkip", "DisabledUiButton", ra));
         if (disabledUiButtonRa.IsExist())
         {
             Logger.LogWarning("进入剧情，自动点击剧情直到结束");
-
             if (_autoSkipTrigger == null)
             {
                 _autoSkipTrigger = new AutoSkipTrigger(new AutoSkipConfig
@@ -4430,13 +4429,11 @@ public class PathExecutor
                 });
                 _autoSkipTrigger.Init();
             }
-
             int noDisabledUiButtonTimes = 0;
-
             while (true)
             {
                 ra = CaptureToRectArea();
-                disabledUiButtonRa = ra.Find(GetAutoSkipRecognitionObject("DisabledUiButton", ra));
+                disabledUiButtonRa = ra.Find(RecognitionAssets.Get("AutoSkip", "DisabledUiButton", ra));
                 if (disabledUiButtonRa.IsExist())
                 {
                     _autoSkipTrigger.OnCapture(new CaptureContent(ra));
@@ -4451,7 +4448,6 @@ public class PathExecutor
                         break;
                     }
                 }
-
                 await Delay(210, ct);
             }
         }

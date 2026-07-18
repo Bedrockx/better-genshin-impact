@@ -338,7 +338,7 @@ public class AutoPartyTask
                         for (var i = 4; i > 0; i--)
                         {
                             var aa = RecognitionObject.Ocr(checkRa.Width * 0.5, checkRa.Height * 0.61 - 125 * (4 - i), checkRa.Width * 0.5, checkRa.Height * 0.4 - 30);
-                            var probe = AutoFightAssets.Instance.KickBtnRa.Clone();
+                            var probe = AutoFightAssets.Get(checkRa).KickBtnRa.Clone();
                             probe.RegionOfInterest = aa.RegionOfInterest;
                             if (checkRa.Find(probe).IsExist())
                             {
@@ -660,7 +660,7 @@ public class AutoPartyTask
                 return false;
 
             var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(
-                stableRa, AutoFightAssets.Instance, NullLogger.Instance);
+                stableRa, AutoFightAssets.Get(stableRa), NullLogger.Instance);
             return status.IsInMultiGame && !status.IsHost;
         }
         catch (Exception ex)
@@ -697,7 +697,7 @@ public class AutoPartyTask
             // 绕过第 2 层协调器交叉校验。退世界阶段协调器 CurrentRoomPlayerCount 滞留旧房间人数，
             // 交叉校验会把"已回到单人世界"(IsInMultiGame=false) 误翻转为 true，导致 5 次重试全失败。
             var status = PartyAvatarSideIndexHelper.DetectedMultiGameStatus(
-                stableRa, AutoFightAssets.Instance, NullLogger.Instance,
+                stableRa, AutoFightAssets.Get(stableRa), NullLogger.Instance,
                 applyAuthoritativeCrossValidation: false);
             return !status.IsInMultiGame;
         }
@@ -820,7 +820,7 @@ public class AutoPartyTask
                 .ToArray();
 
             // FindMulti 定位所有踢出按钮（ROI 已在 §改动 3/4 治本消除污染，天然覆盖完整右半屏 1P~4P 行）。
-            var kickRegions = ra.FindMulti(AutoFightAssets.Instance.KickBtnRa);
+            var kickRegions = ra.FindMulti(AutoFightAssets.Get(ra).KickBtnRa);
 
             // 无踢出按钮 = F2 内除房主外无其他成员（含单人房 / 只有房主自己），世界里没有陌生人。
             //   - 已满员（如单人 期望=1，1/1）→ 返回 AllAllowed，让主循环收敛开锄；
@@ -1086,7 +1086,7 @@ public class AutoPartyTask
                 checkRa.Height * 0.61 - 125 * (4 - i),
                 checkRa.Width * 0.5,
                 checkRa.Height * 0.4 - 30);
-            var probe = AutoFightAssets.Instance.KickBtnRa.Clone();
+            var probe = AutoFightAssets.Get(checkRa).KickBtnRa.Clone();
             probe.RegionOfInterest = aa.RegionOfInterest;
             if (checkRa.Find(probe).IsExist())
             {

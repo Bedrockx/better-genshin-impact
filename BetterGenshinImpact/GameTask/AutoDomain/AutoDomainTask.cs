@@ -112,6 +112,8 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
     private CancellationToken _ct;
 
+    private readonly Rect _captureRect = TaskContext.Instance().SystemInfo.ScaleMax1080PCaptureRect;
+
     private ObservableCollection<OneDragonFlowConfig> ConfigList = [];
     
     private readonly ReturnMainUiTask _returnMainUiTask = new();
@@ -402,6 +404,7 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 if ("芬德尼尔之顶".Equals(_taskParam.DomainName))
                 {
                     menuFound = await NewRetry.WaitForElementAppear(
+                        pickAssets.PickRo,
                         () => Simulation.SendInput.SimulateAction(GIActions.MoveBackward, KeyType.KeyDown),
                         _ct,
                         20,
@@ -1295,14 +1298,14 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                     TaskContext.Instance().PostMessageSimulator.SimulateAction(GIActions.OpenPaimonMenu);
                     Sleep(980, _ct);
                     var exitRara1 = CaptureToRectArea();
-                    var exitRectArea1 = exitRara1.Find(AutoFightAssets.Instance.BlackConfirmRa);
+                    var exitRectArea1 = exitRara1.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).BlackConfirmRa);
                     if (!exitRectArea1.IsEmpty())
                     {                    
                         Logger.LogInformation("没有可选择的树脂了，退出自动秘境");
                         exitRectArea1.Click();
                         Sleep(1500, _ct);
                         var exitRara2 = CaptureToRectArea();
-                        var exitRectArea2 = exitRara2.Find(AutoFightAssets.Instance.BlackConfirmRa);
+                        var exitRectArea2 = exitRara2.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).BlackConfirmRa);
                         if (exitRectArea2.IsEmpty())
                         {
                             Logger.LogInformation("自动秘境结束");
@@ -1331,10 +1334,10 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 {
                     Logger.LogInformation("自动秘境：检测到石化古树，领取奖励...");
                     
-                    var useCondensedResinRa = ra.Find(AutoFightAssets.Instance.UseCondensedResinRa); 
-                    var useOriginalResinRa = ra.Find(AutoFightAssets.Instance.UseOriginalResinRa); 
-                    var useMomentResinRa = ra.Find(AutoFightAssets.Instance.UseMomentResinRa); 
-                    var useFragileResinRa = ra.Find(AutoFightAssets.Instance.UseFragileResinRa);
+                    var useCondensedResinRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).UseCondensedResinRa); 
+                    var useOriginalResinRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).UseOriginalResinRa); 
+                    var useMomentResinRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).UseMomentResinRa); 
+                    var useFragileResinRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).UseFragileResinRa);
 
                     Sleep(100, _ct);
                     
@@ -1402,14 +1405,14 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                             TaskContext.Instance().PostMessageSimulator.SimulateAction(GIActions.OpenPaimonMenu);
                             Sleep(980, _ct);
                             var exitRara1 = CaptureToRectArea();
-                            var exitRectArea1 = exitRara1.Find(AutoFightAssets.Instance.BlackConfirmRa);
+                            var exitRectArea1 = exitRara1.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).BlackConfirmRa);
                             if (!exitRectArea1.IsEmpty())
                             {
                                 Logger.LogInformation("自动秘境：没有可选择的树脂了，退出自动秘境");
                                 exitRectArea1.Click();
                                 Sleep(1500, _ct);
                                 var exitRara2 = CaptureToRectArea();
-                                var exitRectArea2 = exitRara2.Find(AutoFightAssets.Instance.BlackConfirmRa);
+                                var exitRectArea2 = exitRara2.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).BlackConfirmRa);
                                 if (exitRectArea2.IsEmpty())
                                 {
                                     Logger.LogInformation("自动秘境结束");
@@ -1456,14 +1459,14 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                                 TaskContext.Instance().PostMessageSimulator.SimulateAction(GIActions.OpenPaimonMenu);
                                 Sleep(980, _ct);
                                 var exitRara1 = CaptureToRectArea();
-                                var exitRectArea1 = exitRara1.Find(AutoFightAssets.Instance.BlackConfirmRa);
+                                var exitRectArea1 = exitRara1.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).BlackConfirmRa);
                                 if (!exitRectArea1.IsEmpty())
                                 {
                                     Logger.LogInformation("自动秘境：没有可用树脂或次数到达限制，退出自动秘境");
                                     exitRectArea1.Click();
                                     Sleep(1500, _ct);
                                     var exitRara2 = CaptureToRectArea();
-                                    var exitRectArea2 = exitRara2.Find(AutoFightAssets.Instance.BlackConfirmRa);
+                                    var exitRectArea2 = exitRara2.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).BlackConfirmRa);
                                     if (exitRectArea2.IsEmpty())
                                     {
                                         Logger.LogInformation("自动秘境结束");
@@ -1567,16 +1570,16 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 var done = skipAnimationStringArea.LastOrDefault(t =>
                     Regex.IsMatch(t.Text, this.skipAnimationString));//跳过动画按钮文字
                 
-                using var confirmRectArea = ra.Find(AutoFightAssets.Instance.ConfirmRa);//继续按键
+                var innerConfirmRectArea = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).ConfirmRa);//继续按键
                 
-                if (!confirmRectArea.IsEmpty() && done != null) //顶部树脂显示和确认按键不同步，双层确认
+                if (!innerConfirmRectArea.IsEmpty() && done != null) //顶部树脂显示和确认按键不同步，双层确认
                 {
                     Sleep(1050, _ct);
                     if (isLastTurn)
                     {
                         // 最后一回合 退出
                         Logger.LogInformation("最后一回合，退出秘境");
-                        var exitRectArea = ra.Find(AutoFightAssets.Instance.ExitRa);
+                        var exitRectArea = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).ExitRa);
                         if (!exitRectArea.IsEmpty())
                         {
                             exitRectArea.Click();
@@ -1587,7 +1590,7 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                     if (!recognizeResin)
                     {
                         Logger.LogInformation("领取奖励完成，退出秘境");
-                        confirmRectArea.Click();
+                        innerConfirmRectArea.Click();
                         return true;
                     }
                     
@@ -1623,14 +1626,14 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                         {
                             Simulation.ReleaseAllKey();
                             var exitRara = CaptureToRectArea();
-                            var exitRectArea = exitRara.Find(AutoFightAssets.Instance.ExitRa);
+                            var exitRectArea = exitRara.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).ExitRa);
                             if (!exitRectArea.IsEmpty())
                             {
                                 Logger.LogInformation("自动秘境：树脂不足或次数到达限制，退出秘境");
                                 exitRectArea.Click();
                                 Sleep(1500, _ct);
                                 var exitRara2 = CaptureToRectArea();
-                                var exitRectArea2 = exitRara2.Find(AutoFightAssets.Instance.BlackConfirmRa);
+                                var exitRectArea2 = exitRara2.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).BlackConfirmRa);
                                 if (exitRectArea2.IsEmpty())
                                 {
                                     Logger.LogInformation("自动秘境结束");
@@ -1647,7 +1650,7 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                         return false;
                     } 
                     
-                    // var skipAnimationRa = ra.Find(AutoFightAssets.Instance.SkipanimationRa); //检测是否打开跳过动画
+                    // var skipAnimationRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).SkipanimationRa); //检测是否打开跳过动画
                     // if (skipAnimationRa.IsEmpty())
                     // {
                     //     Logger.LogInformation("检测到跳过动画未启动，启用跳过");
@@ -1708,12 +1711,12 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
         var originalResinCount = 0; //原粹树脂
         var fragileResinCount = 0; //脆弱树脂
         var momentResinCount = 0; //须臾树脂
-        var autoFightAssets = AutoFightAssets.Instance;
+        var autoFightAssets = AutoFightAssets.Get(_captureRect.Width, _captureRect.Height);
 
         using (var ra = CaptureToRectArea())
         {
             // 浓缩树脂，//可以识别 √
-            var condensedResinCountRa = ra.Find(AutoFightAssets.Instance.CondensedResinCountRa);
+            var condensedResinCountRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).CondensedResinCountRa);
             if (!condensedResinCountRa.IsEmpty())
             {
                 // 图像右侧就是浓缩树脂数量
@@ -1747,7 +1750,7 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             }
 
             // 原粹树脂
-            var originalResinCountRa = ra.Find(AutoFightAssets.Instance.OriginalResinCountRa);
+            var originalResinCountRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).OriginalResinCountRa);
             if (!originalResinCountRa.IsEmpty())
             {
                 // Logger.LogInformation("测试LOG：检测到原粹树脂图标");
@@ -1811,7 +1814,7 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             
 
             // 脆弱树脂 //可以识别 √
-            var fragileResinCountRa = ra.Find(AutoFightAssets.Instance.FragileResinCountRa); 
+            var fragileResinCountRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).FragileResinCountRa); 
             if (!fragileResinCountRa.IsEmpty())
             {
                 // Logger.LogInformation("测试LOG：检测到脆弱树脂图标");
@@ -1826,7 +1829,7 @@ public class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             {
                 // Logger.LogInformation("测试LOG：未检测到脆弱树脂图标");
                 // 须臾树脂
-                var momentResinCountRa = ra.Find(AutoFightAssets.Instance.MomentResinCountRa); 
+                var momentResinCountRa = ra.Find(AutoFightAssets.Get(_captureRect.Width, _captureRect.Height).MomentResinCountRa); 
                 if (!momentResinCountRa.IsEmpty()) {
                     Logger.LogInformation("测试LOG：检测到须臾树脂图标");
                     using (var countArea = ra.DeriveCrop(momentResinCountRa.X + momentResinCountRa.Width, momentResinCountRa.Y,

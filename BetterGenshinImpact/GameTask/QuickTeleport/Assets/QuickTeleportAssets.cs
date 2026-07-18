@@ -71,6 +71,18 @@ public sealed class QuickTeleportAssets
             Threshold = 0.9
         }.InitTemplate();
 
+        TeleportButtonRo = new RecognitionObject
+        {
+            Name = "GoTeleport",
+            RecognitionType = RecognitionTypes.TemplateMatch,
+            TemplateImageMat = GameTaskManager.LoadAssetImage("QuickTeleport", "GoTeleport.png", captureSize.Width, captureSize.Height),
+            RegionOfInterest = new Rect((int)(1440 * AssetScale),
+                CaptureRect.Height - (int)(120 * AssetScale),
+                (int)(100 * AssetScale),
+                (int)(120 * AssetScale)),
+            DrawOnWindow = false
+        }.InitTemplate();
+
         MapCloseButtonRo = new RecognitionObject
         {
             Name = "MapCloseButton",
@@ -153,7 +165,7 @@ public sealed class QuickTeleportAssets
         }.InitTemplate();
     }
 
-    public static QuickTeleportAssets Get(Region region)
+    public static QuickTeleportAssets Get(GameTask.Model.Area.Region region)
     {
         return Cache.Get(region);
     }

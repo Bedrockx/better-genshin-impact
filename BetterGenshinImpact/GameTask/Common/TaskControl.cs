@@ -111,7 +111,7 @@ public class TaskControl
                 { 
                     _lastCheckTimeEnter = DateTime.UtcNow;
                     using var qq = CaptureToRectArea();
-                    using var okRa = qq.Find(AutoFightAssets.Instance.ConfirmRaZ);
+                    using var okRa = qq.Find(AutoFightAssets.Get(qq).ConfirmRaZ);
                     using var enterRa = qq.Find(AutoWoodAssets.Instance.ExitSwitchRo);
                     //如果现在是4点到4点5分内
                     if (DateTime.UtcNow.Hour == 4 && DateTime.UtcNow.Minute >= 0 && DateTime.UtcNow.Minute < 3)
@@ -624,7 +624,7 @@ public class TaskControl
     {
         // 第 1 次尝试（正常路径，零延迟、零日志、零副作用）
         var image = gameCapture?.Capture();
-        if (image != null) return image;
+        if (image != null) return image.Frame;
 
         // 进入恢复等待循环：≤ MaxRecoveryWait（30s）
         // 决议见 spec capture-failure-suspend-signal / bugfix.md §5 D1-D6
@@ -694,7 +694,7 @@ public class TaskControl
                     Logger.LogWarning(
                         "[CaptureGameImage] 截图恢复，等待耗时 {Elapsed}ms",
                         (int)sw.Elapsed.TotalMilliseconds);
-                    return image;
+                    return image.Frame;
                 }
 
                 // D3：每 5s 打一条 Debug 进度，避免刷屏

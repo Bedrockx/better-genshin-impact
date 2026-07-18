@@ -292,14 +292,14 @@ public class AutoFightJsonTask : ISoloTask
         var evaluator = new ConditionEvaluator(combatScenes, () => CaptureToRectArea());
 
 // 基于经验值的战后拾取检测
-        ExperienceDetector? expDetector = null;
-        if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpBasedPickupEnabled)
-        {
-            using var gameCaptureRegion = CaptureToRectArea();
-            var expRos = AutoFightAssets.Get(gameCaptureRegion).ExperienceRecognitionObjects;
-            expDetector = new ExperienceDetector(expRos, cts2.Token);
-            expDetector.Start();
-        }
+        // ExperienceDetector? expDetector = null;
+        // if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpBasedPickupEnabled)
+        // {
+        //     using var gameCaptureRegion = CaptureToRectArea();
+        //     var expRos = AutoFightAssets.Get(gameCaptureRegion).ExperienceRecognitionObjects;
+        //     expDetector = new ExperienceDetector(expRos, cts2.Token);
+        //     expDetector.Start();
+        // }
 
         // 战斗前动作
         await RunPreActions(combatScenes, evaluator);
@@ -1445,7 +1445,9 @@ public class AutoFightJsonTask : ISoloTask
             try
             {
                 _isExperiencePickup = false;
-                var autoFightAssets = AutoFightAssets.Instance;
+                var systemInfo = TaskContext.Instance().SystemInfo;
+                var captureRect = systemInfo.ScaleMax1080PCaptureRect;
+                var autoFightAssets = AutoFightAssets.Get(captureRect.Width, captureRect.Height);
                 var experienceRas = new[]
                 {
                    autoFightAssets.InitializeRecognitionObject(60),

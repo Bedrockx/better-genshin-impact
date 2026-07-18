@@ -151,7 +151,7 @@ public static class AutoFightEndDetection
             {
                 // 优先检测复活弹窗，避免弹窗滤镜导致派蒙像素不匹配而误判战斗结束
                 using var popupCheck = CaptureToRectArea();
-                var reviveConfirmRa = popupCheck.Find(AutoFightAssets.Instance.ConfirmRa);
+                var reviveConfirmRa = popupCheck.Find(AutoFightAssets.Get(popupCheck).ConfirmRa);
                 if (reviveConfirmRa.IsExist())
                 {
                     var autoEatEnabled = TaskContext.Instance().Config.AutoEatConfig.Enabled;
@@ -164,7 +164,7 @@ public static class AutoFightEndDetection
 
                         // 检测弹窗是否仍在（复活药CD时确认无效，弹窗不会关闭）
                         using var popupCheck2 = CaptureToRectArea();
-                        var reviveExitRa = popupCheck2.Find(AutoFightAssets.Instance.ExitRa);
+                        var reviveExitRa = popupCheck2.Find(AutoFightAssets.Get(popupCheck2).ExitRa);
                         if (reviveExitRa.IsExist())
                         {
                             reviveExitRa.Click(); // 点击取消关闭弹窗
@@ -179,7 +179,7 @@ public static class AutoFightEndDetection
                     {
                         // 自动吃药关闭时，直接关闭弹窗，走回神像逻辑
                         Logger.LogInformation("派蒙模式：检测到复活弹窗，自动吃药已关闭，关闭弹窗去神像");
-                        var reviveExitRa = popupCheck.Find(AutoFightAssets.Instance.ExitRa);
+                        var reviveExitRa = popupCheck.Find(AutoFightAssets.Get(popupCheck).ExitRa);
                         if (reviveExitRa.IsExist())
                         {
                             reviveExitRa.Click(); // 点击取消关闭弹窗
@@ -202,7 +202,7 @@ public static class AutoFightEndDetection
 
                 // 确认界面检测（防止背包/地图等界面误判）
                 using var bitmap = CaptureToRectArea();
-                var confirmRa = bitmap.Find(AutoFightAssets.Instance.ConfirmRa);
+                var confirmRa = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
                 if (confirmRa.IsExist())
                 {
                     Logger.LogInformation("识别到确认界面，可能是误判，继续战斗");
