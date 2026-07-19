@@ -282,7 +282,18 @@ public class AutoFightJsonTask : ISoloTask
 
         // 基于经验值的战后拾取检测
         _staticFightEnded = false;
-        if (_taskParam.ExpKazuhaPickup) FindExp(cts2.Token);
+        if (_taskParam.ExpKazuhaPickup)
+        {
+            var systemInfo = TaskContext.Instance().SystemInfo;
+            var captureRect = systemInfo.ScaleMax1080PCaptureRect;
+            var autoFightAssets = AutoFightAssets.Get(captureRect.Width, captureRect.Height);
+            var ros = autoFightAssets.InitializeRecognitionObjects();
+            if (ros.Count > 0)
+            {
+                _expDetector = new ExperienceDetector(ros, cts2.Token);
+                _expDetector.Start();
+            }
+        }
 
         var fightEndFlag = false;
         var timeOutFlag = false;
@@ -536,6 +547,9 @@ public class AutoFightJsonTask : ISoloTask
     private static volatile bool _staticFightEnded = false;
     private static readonly object PickLock = new object();
     private static volatile bool _isExperiencePickup = false;
+
+    // 新增：ExperienceDetector 实例引用，用于替换 FindExp 静态方法
+    private ExperienceDetector? _expDetector;
 
     /// <summary>执行单个 JSON 动作节点</summary>
     private async Task ExecuteAction(CombatScenes combatScenes, JsonAction action)
@@ -1180,16 +1194,25 @@ public class AutoFightJsonTask : ISoloTask
     private async Task PostFightPickup(CombatScenes combatScenes, bool timeOutFlag, string lastFightName)
     {
         // 基于经验值检测结果的拾取判断
-        if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpKazuhaPickup && !_isExperiencePickup 
+        if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpKazuhaPickup && _expDetector != null && !_expDetector.HasDetectedExperience 
             && (combatScenes.GetAvatars().Select(a => a.Name).Contains("枫原万叶") || combatScenes.GetAvatars().Select(a => a.Name).Contains("琴")))
         {
             Logger.LogInformation("基于经验值判断：等待经验值检测结果");
             var waitMs = _taskParam.FinishDetectConfig.RotationMode && _taskParam.FinishDetectConfig.RotateFindEnemyEnabled ? 1800 : 1000;
-            while (!_isExperiencePickup && waitMs > 0)
+            while (!_expDetector.HasDetectedExperience && waitMs > 0)
             {
                 await Delay(100, _ct);
                 waitMs -= 100;
             }
+        }
+
+        // 回写 _isExperiencePickup 保持兼容（后续拾取逻辑仍读 _isExperiencePickup）
+        if (_expDetector != null)
+        {
+            await _expDetector.StopAsync();
+            _isExperiencePickup = _expDetector.HasDetectedExperience;
+            _expDetector.Dispose();
+            _expDetector = null;
         }
 
         var shouldPickup = !_taskParam.ExpKazuhaPickup || _isExperiencePickup;
@@ -1435,72 +1458,4 @@ public class AutoFightJsonTask : ISoloTask
         AssertUtils.CheckGameResolution("自动战斗");
     }
 
-    /// <summary>
-    /// 后台检测经验值数字出现
-    /// </summary>
-    private static Task FindExp(CancellationToken cts2)
-    {
-        return Task.Run(() =>
-        {
-            try
-            {
-                _isExperiencePickup = false;
-                var systemInfo = TaskContext.Instance().SystemInfo;
-                var captureRect = systemInfo.ScaleMax1080PCaptureRect;
-                var autoFightAssets = AutoFightAssets.Get(captureRect.Width, captureRect.Height);
-                var experienceRas = new[]
-                {
-                   autoFightAssets.InitializeRecognitionObject(60),
-                   autoFightAssets.InitializeRecognitionObject(58),
-                   autoFightAssets.InitializeRecognitionObject(57),
-                };
-
-                while (!_isExperiencePickup && !_staticFightEnded && !cts2.IsCancellationRequested)
-                {
-                    try
-                    {
-                        cts2.ThrowIfCancellationRequested();
-
-                        NewRetry.WaitForAction(() =>
-                         {
-                             using (var ra = CaptureToRectArea())
-                             {
-                                 _isExperiencePickup = experienceRas.Any(experienceRa =>
-                                 {
-                                     using var isExist = ra.Find(experienceRa);
-                                     if (!isExist.IsExist())
-                                     {
-                                         return false;
-                                     }
-
-                                     var pixelValue1 = ra.SrcMat.At<Vec3b>(isExist.Y, isExist.X - 147);
-                                     var expLogo = pixelValue1[0] == 253 && pixelValue1[1] == 247 && pixelValue1[2] == 172;
-
-                                     return expLogo;
-                                 });
-                             }
-                             return _isExperiencePickup;
-                         }, cts2, 1, 100).Wait();
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine(ex.Message);
-                    }
-
-                    if (!_isExperiencePickup && !_staticFightEnded)
-                    {
-                        Thread.Sleep(200);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogDebug("经验值检测任务异常结束：{Msg}", ex.Message);
-            }
-        }, cts2);
     }
-}

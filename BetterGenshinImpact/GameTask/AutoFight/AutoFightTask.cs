@@ -24,7 +24,6 @@ using Microsoft.Extensions.DependencyInjection;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
 using BetterGenshinImpact.GameTask.Common;
 using BetterGenshinImpact.GameTask.AutoFight.Assets;
-using BetterGenshinImpact.View.Drawable;
 using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
 using Vanara.PInvoke;
@@ -68,6 +67,9 @@ public class AutoFightTask : ISoloTask
     public static volatile  bool FightEndFlag = false;
     
     private static volatile bool _isExperiencePickup = false;
+    
+    // 新增：ExperienceDetector 实例引用，用于替换 FindExp 静态方法
+    private ExperienceDetector? _expDetector;
 
     public static bool IsTpForRecover {get; set;} = false;
 
@@ -905,7 +907,18 @@ public class AutoFightTask : ISoloTask
 
             #region 基于战斗检测经验值开关万叶拾取功能同步任务
             
-            if (_taskParam.ExpKazuhaPickup) FindExp(cts2.Token);
+            if (_taskParam.ExpKazuhaPickup)
+            {
+                var systemInfo = TaskContext.Instance().SystemInfo;
+                var captureRect = systemInfo.ScaleMax1080PCaptureRect;
+                var autoFightAssets = AutoFightAssets.Get(captureRect.Width, captureRect.Height);
+                var ros = autoFightAssets.InitializeRecognitionObjects();
+                if (ros.Count > 0)
+                {
+                    _expDetector = new ExperienceDetector(ros, cts2.Token);
+                    _expDetector.Start();
+                }
+            }
             
             #endregion
             
@@ -1670,18 +1683,28 @@ public class AutoFightTask : ISoloTask
             }
         }
 
-        if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpKazuhaPickup && !_isExperiencePickup && (combatScenes.GetAvatars().Select( a => a.Name).Contains("枫原万叶") || combatScenes.GetAvatars().Select( a => a.Name).Contains("琴")))
+        if (_taskParam.KazuhaPickupEnabled && _taskParam.ExpKazuhaPickup && _expDetector != null && !_expDetector.HasDetectedExperience && (combatScenes.GetAvatars().Select( a => a.Name).Contains("枫原万叶") || combatScenes.GetAvatars().Select( a => a.Name).Contains("琴")))
         {
             TaskControl.Logger.LogInformation("基于怪物经验判断：{text} 经验值显示","等待");
 
             var ms = _taskParam.FinishDetectConfig.RotationMode && _taskParam.FinishDetectConfig.RotateFindEnemyEnabled ? 1800:1000;
-            while (!_isExperiencePickup && ms > 0)
+            while (!_expDetector.HasDetectedExperience && ms > 0)
             {
                 // Logger.LogError("战斗人次低于配置人次，且未检测到经验值显示，继续等待经验值显示，剩余等待时间{ms}ms-11", ms);
                 ms -= 100;
                 await Delay(100, ct);
             }
         }
+        
+        // 回写 _isExperiencePickup 保持兼容（后续拾取逻辑仍读 _isExperiencePickup）
+        if (_expDetector != null)
+        {
+            await _expDetector.StopAsync();
+            _isExperiencePickup = _expDetector.HasDetectedExperience;
+            _expDetector.Dispose();
+            _expDetector = null;
+        }
+        
         FightEndFlag = true; 
 
         if ((_taskParam.BattleThresholdForLoot >= 2 && countFight < _taskParam.BattleThresholdForLoot) && (!_taskParam.ExpKazuhaPickup || !_isExperiencePickup))
@@ -2577,90 +2600,6 @@ public class AutoFightTask : ISoloTask
         }
 
         return false;
-    }
-    
-    //基于万叶经验值判断是否拾取
-    private static Task FindExp(CancellationToken cts2)
-    {
-        var systemInfo = TaskContext.Instance().SystemInfo;
-        var captureRect = systemInfo.ScaleMax1080PCaptureRect;
-        var autoFightAssets = AutoFightAssets.Get(captureRect.Width, captureRect.Height);
-
-        try  
-        {
-            Task.Run(() =>
-            {
-                _isExperiencePickup = false;
-                var expLogo = false;
-                
-                var experienceRas = new[]
-                {
-                   autoFightAssets.InitializeRecognitionObject(60), 
-                   autoFightAssets.InitializeRecognitionObject(58), 
-                   autoFightAssets.InitializeRecognitionObject(57),
-                };
-                
-                while (!(_isExperiencePickup || FightEndFlag) && !cts2.IsCancellationRequested)
-                {
-                    try
-                    {
-                        cts2.ThrowIfCancellationRequested();
-
-                        var result = NewRetry.WaitForAction(() =>
-                        {
-                            using (var ra = CaptureToRectArea())
-                            {
-                                _isExperiencePickup = experienceRas.Any(experienceRa => 
-                                {
-                                    var isExist = ra.Find(experienceRa);
-                                    if (!isExist.IsExist())
-                                    {
-                                        return false;
-                                    }
-                
-                                    var pixelValue1 = ra.SrcMat.At<Vec3b>(isExist.Y, isExist.X - 147); //经验值图标，在2K以上时匹配度0.6，这个经验值颜色尤为重要
-                                    expLogo = pixelValue1[0] == 253 && pixelValue1[1] == 247 && pixelValue1[2] == 172;
-
-                                    return expLogo;
-                                });
-                            }
-                            return _isExperiencePickup;
-                        }, cts2, 1, 100).Result;
-                    }
-                    catch (OperationCanceledException ex)
-                    {
-                        Console.WriteLine($"检测经验发生异常: {ex.Message}");
-                    }
-                    catch (Exception ex)
-                    {
-                        // Console.WriteLine($"检测怪物经验发生异常: {ex.Message}");
-                    }
-                    
-                    if (_isExperiencePickup) Logger.LogInformation("基于怪物经验判断：识别到 {text1} 经验值，{text2} 万叶拾取","精英","启用" );
-
-                }
-                
-                cts2.ThrowIfCancellationRequested();
-                
-            }, cts2); 
-        }
-        catch (OperationCanceledException ex)
-        {
-            Console.WriteLine($"检测经验发生异常: {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"检测怪物经验发生异常: {ex.Message}");
-        }
-        finally
-        {
-            VisionContext.Instance().DrawContent.ClearAll();
-            GC.Collect();//释放内存
-            GC.WaitForPendingFinalizers();//释放内存
-            // FightEndFlag = true; 
-        }
-        
-        return Task.CompletedTask;
     }
     
     private static readonly MedicineState _medicineState = new();

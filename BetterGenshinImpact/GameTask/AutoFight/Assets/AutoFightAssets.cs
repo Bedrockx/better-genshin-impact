@@ -450,6 +450,20 @@ public sealed class AutoFightAssets
         MoraRewardRas = InitializeMoraRewardRecognitionObjects();
     }
     
+    /// <summary>
+    /// 创建经验值模板列表（一次性加载，供 ExperienceDetector 使用）
+    /// </summary>
+    public IReadOnlyList<RecognitionObject> InitializeRecognitionObjects()
+    {
+        var experienceValues = new[] { 60, 58, 57 };
+        var list = new List<RecognitionObject>();
+        foreach (var exp in experienceValues)
+        {
+            list.Add(InitializeRecognitionObject(exp));
+        }
+        return list.AsReadOnly();
+    }
+
     public RecognitionObject InitializeRecognitionObject(int experience)
     {
         // 保留原万叶拾取检测范围；奖励结束检测使用独立的较小 ROI，不能互相覆盖。
