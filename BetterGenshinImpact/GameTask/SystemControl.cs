@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Vanara.PInvoke;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
 using Microsoft.Extensions.Logging;
 
@@ -112,142 +113,30 @@ public class SystemControl
 
     public static nint FindHandleByProcessName(params string[] names)
     {
-        var currentUser = Environment.UserName;
+        var currentSessionId = Process.GetCurrentProcess().SessionId;
         foreach (var name in names)
         {
-            var pros = Process.GetProcessesByName(name);
-            // Logger.LogError($"FindHandleByProcessName_ee: Searching for Process Name={name}, Found={pros.Length}, Current User={currentUser}");
-            if (pros.Length == 0)
-                continue;
-
-            // 优先选择属于当前登录用户且有主窗口句柄的进程
-            foreach (var p in pros)
+            foreach (var p in Process.GetProcessesByName(name))
             {
                 try
                 {
-                    var owner = GetProcessOwnerName(p.Id);
-                    if (!string.IsNullOrEmpty(owner))
-                    {
-                        // owner 可能是 "DOMAIN\User" 或 "User"，只比较用户名部分
-                        var ownerUser = owner.Contains("\\") ? owner.Split('\\').Last() : owner;
-                        if (string.Equals(ownerUser, currentUser, StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (p.MainWindowHandle != IntPtr.Zero)
-                                return p.MainWindowHandle;
-                        }
-                    }
+                    if (p.SessionId == currentSessionId)
+                        return p.MainWindowHandle;
                 }
-                catch
+                catch (InvalidOperationException)
                 {
-                    // 忽略无法访问的进程，继续尝试其他进程
+                    // 进程已退出，跳过
+                }
+                finally
+                {
+                    p.Dispose();
                 }
             }
-
-            // 回退：返回首个有主窗口句柄的进程
-            var fallback = pros.FirstOrDefault(pp => pp.MainWindowHandle != IntPtr.Zero);
-            //log输出结果信息
-            Debug.WriteLine( $"FindHandleByProcessName: Process Name={name}, Found={pros.Length}, Fallback Handle={(fallback != null ? fallback.MainWindowHandle.ToString() : "None")}");
-            // Logger.LogError( $"FindHandleByProcessName: Process Name={name}, Found={pros.Length}, Fallback Handle={(fallback != null ? fallback.MainWindowHandle.ToString() : "None")}");
-            if (fallback != null)
-                return fallback.MainWindowHandle;
         }
 
         return 0;
     }
     
-    private static string? GetProcessOwnerName(int processId)
-{
-    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
-    const uint TOKEN_QUERY = 0x0008;
-    const int TokenUser = 1;
-
-    IntPtr hProcess = IntPtr.Zero;
-    IntPtr hToken = IntPtr.Zero;
-    IntPtr tokenInfo = IntPtr.Zero;
-
-    try
-    {
-        hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
-        if (hProcess == IntPtr.Zero)
-            return null;
-
-        if (!OpenProcessToken(hProcess, TOKEN_QUERY, out hToken) || hToken == IntPtr.Zero)
-            return null;
-
-        // 先获取所需缓冲区大小
-        if (!GetTokenInformation(hToken, TokenUser, IntPtr.Zero, 0, out var requiredLength))
-        {
-            var err = Marshal.GetLastWin32Error();
-            if (err != 122) // ERROR_INSUFFICIENT_BUFFER
-                return null;
-        }
-
-        tokenInfo = Marshal.AllocHGlobal(requiredLength);
-        if (!GetTokenInformation(hToken, TokenUser, tokenInfo, requiredLength, out _))
-            return null;
-
-        var tokenUser = Marshal.PtrToStructure<TOKEN_USER>(tokenInfo);
-        var sid = tokenUser.User.Sid;
-        if (sid == IntPtr.Zero)
-            return null;
-
-        uint nameLen = 0;
-        uint domainLen = 0;
-        int sidUse;
-        // 第一次调用以获取长度
-        _ = LookupAccountSid(null, sid, null, ref nameLen, null, ref domainLen, out sidUse);
-
-        var nameSb = new StringBuilder((int)nameLen);
-        var domainSb = new StringBuilder((int)domainLen);
-        if (LookupAccountSid(null, sid, nameSb, ref nameLen, domainSb, ref domainLen, out sidUse))
-        {
-            var domain = domainSb.ToString();
-            var name = nameSb.ToString();
-            return string.IsNullOrEmpty(domain) ? name : $"{domain}\\{name}";
-        }
-    }
-    catch (Exception ex)
-    {
-        Debug.WriteLine($"GetProcessOwnerName 异常: {ex.Message}");
-    }
-    finally
-    {
-        if (tokenInfo != IntPtr.Zero) Marshal.FreeHGlobal(tokenInfo);
-        if (hToken != IntPtr.Zero) CloseHandle(hToken);
-        if (hProcess != IntPtr.Zero) CloseHandle(hProcess);
-    }
-
-    return null;
-}
-    
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SID_AND_ATTRIBUTES
-    {
-        public IntPtr Sid;
-        public int Attributes;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct TOKEN_USER
-    {
-        public SID_AND_ATTRIBUTES User;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool GetTokenInformation(IntPtr TokenHandle, int TokenInformationClass, IntPtr TokenInformation, int TokenInformationLength, out int ReturnLength);
-
-    [DllImport("advapi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern bool LookupAccountSid(string lpSystemName, IntPtr Sid, StringBuilder Name, ref uint cchName, StringBuilder ReferencedDomainName, ref uint cchReferencedDomainName, out int peUse);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr hObject);
-
     public static nint FindHandleByWindowName()
     {
         var handle = (nint)User32.FindWindow("UnityWndClass", "原神");
@@ -461,16 +350,31 @@ public class SystemControl
     {
         try
         {
+            var currentSessionId = Process.GetCurrentProcess().SessionId;
             var processNames = TaskContext.Instance().GetGenshinGameProcessNameList();
-            var processes = processNames
-                .SelectMany(Process.GetProcessesByName)
-                .GroupBy(p => p.Id)
-                .Select(g => g.First())
-                .ToArray();
-
-            if (processes.Length > 0)
+            var processes = new List<Process>();
+            foreach (var name in processNames)
             {
-                foreach (var process in processes)
+                foreach (var p in Process.GetProcessesByName(name))
+                {
+                    try
+                    {
+                        if (p.SessionId == currentSessionId)
+                            processes.Add(p);
+                        else
+                            p.Dispose();
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        p.Dispose();
+                    }
+                }
+            }
+            var targets = processes.GroupBy(p => p.Id).Select(g => g.First()).ToArray();
+
+            if (targets.Length > 0)
+            {
+                foreach (var process in targets)
                 {
                     try
                     {
