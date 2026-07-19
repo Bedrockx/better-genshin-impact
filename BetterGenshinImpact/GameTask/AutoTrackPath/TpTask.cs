@@ -330,6 +330,12 @@ public class TpTask
                                            Math.Pow(nTpPoints[0].Y - nTpPoints[1].Y, 2));
         // 确保不会点错传送点的最小缩放，保证至少为 1.0
         var minZoomLevel = Math.Max(disBetweenTpPoints / 30, 1.0);
+        // 旧日之海地图在缩放低于 2.0 时画面变暗，导致亮度检测失败触发死循环。
+        // 钳制 minZoomLevel 下限为 2.0，确保缩放等级不低于 2.0。
+        if (mapName == "SeaOfBygoneEras")
+        {
+            minZoomLevel = Math.Max(minZoomLevel, 2.0);
+        }
 
         // 特殊相邻传送点命中判定基准（决策 e）：用最近真实传送点坐标，独立于 force 的 (x,y)。仅取值，无 IO。
         double adjBaseX = nTpPoints[0].X;
@@ -1089,7 +1095,12 @@ public class TpTask
     {
         // 参数初始化
         using var ra1 = CaptureToRectArea();
-        double minZoomLevel = Math.Min(finalZoomLevel, _tpConfig.MinZoomLevel);
+        // 旧日之海地图上用户配置优先于 2.0 下限：取 Math.Max(finalZoomLevel, _tpConfig.MinZoomLevel)
+        // 确保用户配置（如 3.0）不被钳制后的 finalZoomLevel（2.0）压低。
+        // 非旧日之海地图保持原有 Math.Min 行为不变。
+        double minZoomLevel = mapName == "SeaOfBygoneEras"
+            ? Math.Max(finalZoomLevel, _tpConfig.MinZoomLevel)
+            : Math.Min(finalZoomLevel, _tpConfig.MinZoomLevel);
         double maxZoomLevel = _tpConfig.MaxZoomLevel;
         double currentZoomLevel = GetBigMapZoomLevel(ra1);
         int exceptionTimes = 0;
@@ -1388,7 +1399,7 @@ public class TpTask
                 using var ra = CaptureToRectArea().SrcMat;
                 double brightness = Cv2.Mean(ra).Val0;
                 TaskControl.Logger.LogDebug("地图亮度:{brightness}", brightness);
-                if (brightness < (mapName=="SeaOfBygoneEras" ? 35:50))
+                if (brightness < (mapName=="SeaOfBygoneEras" ? 32:50))
                 {
                     falseCount++;
                 
