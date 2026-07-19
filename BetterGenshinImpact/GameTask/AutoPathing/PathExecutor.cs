@@ -45,7 +45,7 @@ using BetterGenshinImpact.GameTask.Common.Job;
 
 namespace BetterGenshinImpact.GameTask.AutoPathing;
 
-public class PathExecutor
+public partial class PathExecutor
 {
     private readonly CameraRotateTask _rotateTask;
     private readonly TrapEscaper _trapEscaper;
@@ -2545,7 +2545,10 @@ public class PathExecutor
         bool mwktiao = true;
         bool mwktiaoIn = false;
         var isFlyingIn = false;
-        
+
+        // 新版赶路状态（跨帧保持 RotationStableCount）
+        var hurryOnState = new HurryOnState();
+
         string nextAvatarIndexStop = "";
         Avatar? avatar = null;
         if (_combatScenes is not null)
@@ -2816,6 +2819,33 @@ public class PathExecutor
 
             if (avatar != null && isPoint && !yellowBlood)
             {
+                // 新赶路系统启用时跳过旧版赶路逻辑
+                bool skipOldHurry = PartyConfig.UseNewHurrySystem;
+                
+                // 新赶路系统分支
+                if (PartyConfig.UseNewHurrySystem)
+                {
+                    
+                    // 初始化赶路配置（首次使用时）
+                    if (string.IsNullOrEmpty(_hurryOnAvatar))
+                    {
+                        InitHurryOnConfig();
+                    }
+
+                    // 使用外部创建的 hurryOnState 实例（跨帧保持 RotationStableCount）
+                    // diff 在本循环迭代的旋转阶段计算，首次进入时传递 0（旋转尚未发生，视为稳定状态）
+                    var hurryOnResult = await TryHurryOnAsync(0, waypoint, distance, screen2, num, hurryOnState);
+                    if (hurryOnResult)
+                    {
+                        // 赶路已处理，跳过当前帧的后续逻辑
+                        continue;
+                    }
+                    
+                    // 新版赶路未触发，跳过旧版赶路逻辑，避免两套系统冲突
+                }
+                else
+                {
+                // 以下为旧赶路系统逻辑（仅在 UseNewHurrySystem=false 时执行）
                 // 自动赶路的靠近节点模式
                 if (!hurryOnLogo && trackingLogo && 
                     (PartyConfig.TravelMode == "精准靠近" && distance < (!string.IsNullOrEmpty(nextWaypoint?.Action) ? 30 : avatar.Name == "瓦雷莎" ? 30 : 25) //精准靠近
@@ -2997,7 +3027,7 @@ public class PathExecutor
                 }
                 
                 //自动赶路
-                if (hurryOnLogo&& !yellowBlood && !string.IsNullOrEmpty(_hurryOnAvatar) &&
+                if (!skipOldHurry && hurryOnLogo&& !yellowBlood && !string.IsNullOrEmpty(_hurryOnAvatar) &&
                     distance >  (PartyConfig.Distance) && (hurryOnBool ?? false))
                 {
                     //判断是否在飞行状态
@@ -3354,7 +3384,8 @@ public class PathExecutor
                         }
                     }
                 }
-                
+                }
+            
                 //接近战斗点，确保行走位不是丝血
                 if (waypoint?.Action == ActionEnum.Fight.Code && distance < 30 && _combatScenes?.GetAvatars().Count > 1)
                 {

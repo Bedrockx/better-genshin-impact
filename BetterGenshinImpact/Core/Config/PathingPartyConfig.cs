@@ -177,7 +177,9 @@ public partial class PathingPartyConfig : ObservableObject
     private int _distance = 45;
     
     [JsonIgnore]
-    public List<string> HurryOnAvatarList { get; } = ["","自动","玛薇卡","瓦雷莎","希诺宁"];
+    public List<string> HurryOnAvatarList => UseNewHurrySystem
+        ? ["","自动","玛薇卡","闲云","桑多涅","恰斯卡","流浪者","伊法","希诺宁"]
+        : ["","自动","玛薇卡","瓦雷莎","希诺宁"];
     
     [JsonIgnore]
     public List<string> TravelModeList { get; } = ["精准靠近","连续赶路"];
@@ -206,6 +208,21 @@ public partial class PathingPartyConfig : ObservableObject
         }
     }
     
+    [ObservableProperty]
+    private bool _useNewHurrySystem = false;
+
+    [ObservableProperty]
+    private bool _switchToWalkEnabled = false;
+
+    [ObservableProperty]
+    private bool _mwkJumpFlyEnabled = true;
+
+    [ObservableProperty]
+    private double _mwkJumpFlyIntervalSeconds = 1.0;
+
+    [ObservableProperty]
+    private double _approachStopDistance = 25;
+
     [ObservableProperty]
     private string? _recoverAvatarIndex = null;
     

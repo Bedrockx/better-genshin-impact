@@ -288,7 +288,7 @@
                                          Grid.Column="1"
                                          IsChecked="{Binding PathingConfig.IsVisitStatueBeforeSwitchParty}" />
                     </Grid>
-                    <Grid Margin="016,16,16,0">
+                    <Grid Margin="016,16,16,0" Visibility="{Binding PathingConfig.UseNewHurrySystem, Converter={StaticResource BooleanToVisibilityRevertConverter}}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -448,6 +448,227 @@
                         </ui:TextBox>
                         
                     </Grid>
+                <!-- 新版赶路系统（实验性） -->
+                <ui:CardExpander Margin="16,5,16,10" 
+                                 ContentPadding="0"
+                                 IsExpanded="{Binding PathingConfig.UseNewHurrySystem, Mode=TwoWay}">
+                    <ui:CardExpander.Header>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="新版赶路系统（莫酱版/公版）"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="支持闲云、桑多涅、恰斯卡、伊法、流浪者等更多角色"
+                                          TextWrapping="Wrap" />
+                            <ui:ToggleSwitch Grid.Row="0"
+                                             Grid.RowSpan="2"
+                                             Grid.Column="1"
+                                             Margin="0,0,24,0"
+                                             IsChecked="{Binding PathingConfig.UseNewHurrySystem, Mode=TwoWay}" />
+                        </Grid>
+                    </ui:CardExpander.Header>
+                    <StackPanel Visibility="{Binding PathingConfig.UseNewHurrySystem, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid Margin="16,16,16,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="赶路角色"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="选择赶路角色，支持玛薇卡、希诺宁、闲云、桑多涅、恰斯卡、伊法、流浪者"
+                                          TextWrapping="Wrap" />
+                            <ComboBox Grid.Row="0"
+                                      Grid.RowSpan="2"
+                                      Grid.Column="1"
+                                      MinWidth="120"
+                                      ItemsSource="{Binding PathingConfig.HurryOnAvatarList}"
+                                      SelectedItem="{Binding PathingConfig.HurryOnAvatar}" />
+                        </Grid>
+
+                        <Grid Margin="16,0,16,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="赶路模式"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="精准靠近：适合采集，节点间减速 / 连续赶路：适合锄地"
+                                          TextWrapping="Wrap" />
+                            <ComboBox Grid.Row="0"
+                                      Grid.RowSpan="2"
+                                      Grid.Column="1"
+                                      Width="120"
+                                      ItemsSource="{Binding PathingConfig.TravelModeList}"
+                                      SelectedItem="{Binding PathingConfig.TravelMode}" />
+                        </Grid>
+
+                        <Grid Margin="16,0,16,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="赶路最小距离"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="大于此距离时触发赶路技能"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBox Grid.Row="0"
+                                        Grid.RowSpan="2"
+                                        Grid.Column="1"
+                                        MinWidth="60"
+                                        Height="35"
+                                        HorizontalContentAlignment="Center"
+                                        Text="{Binding PathingConfig.Distance}" />
+                        </Grid>
+
+                        <Grid Margin="16,0,16,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="接近停止距离"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="接近节点到该距离时停止赶路，切换到步行或切人"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBox Grid.Row="0"
+                                        Grid.RowSpan="2"
+                                        Grid.Column="1"
+                                        MinWidth="60"
+                                        Height="35"
+                                        HorizontalContentAlignment="Center"
+                                        Text="{Binding PathingConfig.ApproachStopDistance}" />
+                        </Grid>
+
+                        <Grid Margin="16,0,16,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="切人步行"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="接近节点时自动切到非赶路角色步行靠近，避免赶路角色E技能穿模"
+                                          TextWrapping="Wrap" />
+                            <ui:ToggleSwitch Grid.Row="0"
+                                             Grid.RowSpan="2"
+                                             Grid.Column="1"
+                                             IsChecked="{Binding PathingConfig.SwitchToWalkEnabled, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid Margin="16,0,16,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="跳飞赶路"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="玛薇卡：远距离时跳飞赶路"
+                                          TextWrapping="Wrap" />
+                            <ui:ToggleSwitch Grid.Row="0"
+                                             Grid.RowSpan="2"
+                                             Grid.Column="1"
+                                             IsChecked="{Binding PathingConfig.MwkJumpFlyEnabled, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid Margin="16,0,16,16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="跳飞间隔（秒）"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="两次跳飞之间的最小间隔，默认1秒"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBox Grid.Row="0"
+                                        Grid.RowSpan="2"
+                                        Grid.Column="1"
+                                        MinWidth="60"
+                                        Height="35"
+                                        HorizontalContentAlignment="Center"
+                                        Text="{Binding PathingConfig.MwkJumpFlyIntervalSeconds}" />
+                        </Grid>
+                    </StackPanel>
+                </ui:CardExpander>
                     <Grid Margin="16">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
