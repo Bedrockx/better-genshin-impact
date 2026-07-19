@@ -70,6 +70,15 @@ public class AutoFightTask : ISoloTask
     private static volatile bool _isExperiencePickup = false;
 
     public static bool IsTpForRecover {get; set;} = false;
+
+    /// <summary>
+    /// 当前 AutoFightTask 实例中 TakeMedicineEnabled 的静态代理。
+    /// 供 Avatar.ThrowWhenDefeated 判断"是否应该关闭复苏弹窗去七天神像复活"。
+    /// 默认 false（无 AutoFightTask 实例运行时行为保守：不吃药→去神像）。
+    /// 由构造函数从 _taskParam.TakeMedicineEnabled 赋值。
+    /// 详见 .kiro/specs/throw-when-defeated-autoeat-check-fix/design.md §2.1。
+    /// </summary>
+    public static bool IsTakeMedicineEnabled = false;
     
     public static volatile  bool FightEndTotoly = false;
 
@@ -394,6 +403,10 @@ public class AutoFightTask : ISoloTask
         }
 
         _finishDetectConfig = new TaskFightFinishDetectConfig(_taskParam.FinishDetectConfig);
+
+        // 从 _taskParam.TakeMedicineEnabled 设置静态代理字段，
+        // 供 Avatar.ThrowWhenDefeated 判断复苏弹窗处理逻辑。
+        IsTakeMedicineEnabled = _taskParam.TakeMedicineEnabled;
         
     }
     public CombatScenes GetCombatScenesWithRetry(CancellationToken ct = default)

@@ -187,7 +187,7 @@ public class Avatar
         if (!AutoFightTask.IsTpForRecover && Bv.IsInRevivePrompt(region))
         {
             // 关闭自动吃药时，直接关闭弹窗去神像（同公版逻辑）
-            if (!TaskContext.Instance().Config.AutoEatConfig.Enabled)
+            if (!AutoFightTask.IsTakeMedicineEnabled)
             {
                 Logger.LogWarning("检测到复苏界面，自动吃药已关闭，前往七天神像复活");
                 Simulation.SendInput.Keyboard.KeyPress(User32.VK.VK_ESCAPE);
