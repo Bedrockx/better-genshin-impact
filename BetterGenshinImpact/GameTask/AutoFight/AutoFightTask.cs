@@ -1080,9 +1080,10 @@ public class AutoFightTask : ISoloTask
                                         fightEndFlag = true;
                                         break;
                                     }
-                                    Logger.LogInformation("自动EQ战斗：执行序号 {name} 首E技能", useSkillListWithF);
+                                   
                                     var avatarFirst = combatScenes.SelectAvatar(useSkillListWithF);
-                                
+                                    Logger.LogInformation("自动EQ战斗：执行序号 {name} 首E技能 {cd}", useSkillListWithF,avatarFirst.GetSkillCdSeconds());
+                                    
                                     // 先尝试切换角色，成功再单独 await 技能执行结果
                                     if (avatarFirst.TrySwitch(15))
                                     {
@@ -1134,6 +1135,7 @@ public class AutoFightTask : ISoloTask
                                             countFight++;
                                             if (useE && !await AutoFightSkill.AvatarSkillAsync(Logger, avatarQ, false, 1, cts2.Token))
                                             {
+                                                Logger.LogInformation("自动EQ战斗：使用序号 {name} 角色E技能 {cd}", num,avatarQ.GetSkillCdSeconds());
                                                 avatarQ.UseSkill(avatarQHold);
                                                 if (useA)
                                                 {

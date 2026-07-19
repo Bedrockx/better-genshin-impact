@@ -1166,6 +1166,9 @@ public class Avatar
                     Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyPress);
                     Thread.Sleep(200);
                     Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyPress);
+                    ManualSkillCd = 16.3;
+                    OcrSkillCd = OcrSkillCd = DateTime.UtcNow.AddSeconds(16.3);
+                    LastSkillTime = DateTime.UtcNow;
                 }
                 else if (Name == "恰斯卡")
                 {
