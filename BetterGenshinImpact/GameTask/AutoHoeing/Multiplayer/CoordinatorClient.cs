@@ -1311,9 +1311,15 @@ public class CoordinatorClient : IAsyncDisposable
                 _logger.LogInformation("[联机] 同步点全员未到，进入等待: {SyncId}", syncId);
 
             // 在等待 AllArrived 期间，每 5 秒重试一次上报到达，弥补网络波动导致的上报丢失或错过广播
+            // 注意：重试循环必须正确响应 linkedCts 超时取消，否则 Task.Delay(cancelledToken) 会
+            // 被 Task.WhenAny 吃掉异常，导致循环无法被 catch (OperationCanceledException) 捕获，
+            // 进入无限重试（日志中同一毫秒出现大量重复"等待中，重试上报到达"即为该症状）。
             const int retryIntervalMs = 5000;
             while (true)
             {
+                // 每次循环迭代前检查超时/取消，确保 linkedCts 取消后立即退出而不是继续重试
+                linkedCts.Token.ThrowIfCancellationRequested();
+
                 var completed = await Task.WhenAny(tcs.Task, Task.Delay(retryIntervalMs, linkedCts.Token));
                 if (completed == tcs.Task)
                 {

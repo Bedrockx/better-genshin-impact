@@ -853,6 +853,16 @@ public class PathExecutor
                                 {
                                     AutoFightTask.FightWaypoint = waypoint;
                                     PathingConditionConfig.CombatScenesGoBackUp = _combatScenes;//把地图追踪的战斗CD等同步给战斗节点
+                                    
+                                    Task.Run( () =>{
+                                        var screen2 = CaptureToRectArea();
+                                        if (_lastWaypoint?.Action != MoveModeEnum.Fly.Code && Bv.GetMotionStatus(screen2) == MotionStatus.Fly)
+                                        {
+                                            Logger.LogWarning("战斗状态下落攻击");
+                                            Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                                        }
+                                    });
+                                    
                                 }
                                 else
                                 {
@@ -890,12 +900,6 @@ public class PathExecutor
                                         {
                                             Logger.LogInformation("地图追踪：继承自动战斗队伍Cd信息...");
                                             _combatScenes = PathingConditionConfig.CombatScenesGoBackUp;
-                                            var screen2 = CaptureToRectArea();
-                                            if (_lastWaypoint?.Action != MoveModeEnum.Fly.Code && Bv.GetMotionStatus(screen2) == MotionStatus.Fly)
-                                            {
-                                                Logger.LogWarning("战斗状态下落攻击");
-                                                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
-                                            }
                                             // foreach (var avatar in _combatScenes.GetAvatars())
                                             // {
                                             //     Logger.LogInformation("队伍角色 {Name} 当前剩余E技能CD：{Cd} 秒",
