@@ -464,12 +464,12 @@
                     <ui:TextBlock Grid.Row="0"
                                   Grid.Column="0"
                                   FontTypography="Body"
-                                  Text="日志字体缩放率"
+                                  Text="遮罩 UI 缩放率"
                                   TextWrapping="Wrap" />
                     <ui:TextBlock Grid.Row="1"
                                   Grid.Column="0"
                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                  Text="调整遮罩窗口日志文字的大小（0.5-3.0 倍）"
+                                  Text="调整遮罩窗口文字的大小（日志、FPS、状态指示等），0.5-3.0 倍"
                                   TextWrapping="Wrap" />
                     <Slider Grid.Row="0"
                             Grid.Column="1"
@@ -490,6 +490,46 @@
                                FontSize="14"
                                MinWidth="40"
                                Text="{Binding Config.MaskWindowConfig.LogFontScale, StringFormat=F2}" />
+                </Grid>
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Row="0"
+                                  Grid.Column="0"
+                                  FontTypography="Body"
+                                  Text="指标栏缩放率"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBlock Grid.Row="1"
+                                  Grid.Column="0"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="独立调整指标栏（CPU占用、帧率、处理耗时等）文字的大小，0.5-3.0 倍"
+                                  TextWrapping="Wrap" />
+                    <Slider Grid.Row="0"
+                            Grid.Column="1"
+                            Width="200"
+                            Margin="0,0,12,0"
+                            VerticalAlignment="Center"
+                            Minimum="0.5"
+                            Maximum="3.0"
+                            TickFrequency="0.1"
+                            IsSnapToTickEnabled="True"
+                            Value="{Binding Config.MaskWindowConfig.MetricsFontScale, Mode=TwoWay}" />
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="2"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Left"
+                               Margin="0,0,36,0"
+                               FontFamily="Cascadia Mono, Consolas, Courier New, monospace"
+                               FontSize="14"
+                               MinWidth="40"
+                               Text="{Binding Config.MaskWindowConfig.MetricsFontScale, StringFormat=F2}" />
                 </Grid>
             </StackPanel>
         </ui:CardExpander>
