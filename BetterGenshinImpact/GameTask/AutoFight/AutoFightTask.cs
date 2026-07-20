@@ -2364,7 +2364,7 @@ public class AutoFightTask : ISoloTask
                     _totolyEndCount = 0;
                     return false;
                 }
-
+                
                 TaskControl.Logger.LogInformation("{t}：识别到战斗结束",
                     _taskParam.FinishDetectConfig.EndModel && _taskParam.FinishDetectConfig.RotateFindEnemyEnabled
                         ? "派蒙模式"
@@ -2632,6 +2632,7 @@ public class AutoFightTask : ISoloTask
         const int reviveRetryIntervalMs = 1500; // 死亡吃药重试间隔
         var cdRetryCount = 0; // CD重试计数器
         const int maxCdRetries = 5; // CD最多重试5次（约2.5秒），超过后计为失败
+        var lastNutritionBagClickTime = DateTime.MinValue; // 营养袋关闭点击计时，每2秒执行一次
 
         try
         {
@@ -2781,6 +2782,13 @@ public class AutoFightTask : ISoloTask
                                 Simulation.ReleaseAllKey();
                             }
                         }
+                        
+                        // 每2秒关闭一次营养袋界面（避免高频点击干扰其他操作）
+                        if ((DateTime.UtcNow - lastNutritionBagClickTime).TotalMilliseconds >= 2000)
+                        {
+                            ra.Find(AutoFightAssets.Get(ra).NutritionBagRa).ClickTo(0,-200);
+                            lastNutritionBagClickTime = DateTime.UtcNow;
+                        }
                     }
 
                     // 执行吃药/复活
@@ -2884,6 +2892,7 @@ public class AutoFightTask : ISoloTask
             {
                 using var bitmap = CaptureToRectArea();
                 var confirmRa = bitmap.Find(AutoFightAssets.Get(bitmap).ConfirmRa);
+                var boon = bitmap.Find(AutoFightAssets.Get(bitmap).NutritionBagRa);
                 if (confirmRa.IsExist())
                 {
                     // 先点确认尝试复活，再点取消关闭弹窗
@@ -2896,11 +2905,12 @@ public class AutoFightTask : ISoloTask
                         exitRa.Click();
                         await Task.Delay(200, ct);
                     }
-                    if (!await AutoFightSkill.MedicinalCdAsync(Logger, false, 1, ct))
-                    {
-                        Simulation.SendInput.SimulateAction(GIActions.QuickUseGadget);
-                        Simulation.ReleaseAllKey();
-                    }
+                }
+
+                if (boon.IsExist())
+                {
+                    Logger.LogWarning("关闭小道具页面2");
+                    boon.ClickTo(0,-200);
                 }
             }
             catch
