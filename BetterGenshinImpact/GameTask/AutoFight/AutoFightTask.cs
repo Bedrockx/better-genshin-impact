@@ -2786,7 +2786,11 @@ public class AutoFightTask : ISoloTask
                         // 每2秒关闭一次营养袋界面（避免高频点击干扰其他操作）
                         if ((DateTime.UtcNow - lastNutritionBagClickTime).TotalMilliseconds >= 2000)
                         {
-                            ra.Find(AutoFightAssets.Get(ra).NutritionBagRa).ClickTo(0,-200);
+                            var nutritionBag = ra.Find(AutoFightAssets.Get(ra).NutritionBagRa);
+                            if (nutritionBag.IsExist())
+                            {
+                                nutritionBag.ClickTo(0,-200);
+                            }
                             lastNutritionBagClickTime = DateTime.UtcNow;
                         }
                     }

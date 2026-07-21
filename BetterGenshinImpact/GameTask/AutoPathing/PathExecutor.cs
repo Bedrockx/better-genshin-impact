@@ -1433,7 +1433,11 @@ public partial class PathExecutor
         
         using (var ra = CaptureToRectArea())
         {
-            ra.Find(AutoFightAssets.Get(ra).NutritionBagRa).ClickTo(0,-200);
+            var nutritionBag = ra.Find(AutoFightAssets.Get(ra).NutritionBagRa);
+            if (nutritionBag.IsExist())
+            {
+                nutritionBag.ClickTo(0,-200);
+            }
             using var bloodtRect = ra.DeriveCrop(1817, 781, 4, 14);
             using var mask = OpenCvCommonHelper.Threshold(bloodtRect.SrcMat,new Scalar(185, 225, 95), new Scalar(200, 240, 110));//new Scalar(192, 233, 102), new Scalar(193, 233, 103
             using var labels = new Mat();
