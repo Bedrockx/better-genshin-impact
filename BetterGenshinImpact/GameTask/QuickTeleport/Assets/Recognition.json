@@ -11,7 +11,7 @@
       "template": "MapScaleButton.png",
       "roi": "rect(30 * s, 440 * s, 40 * s, 200 * s)",
       "useMask": true,
-      "maskColor": "0, 255, 0",
+      "maskColor": "#00FF00",
       "threshold": 0.9,
       "draw": true
     },
@@ -45,7 +45,7 @@
       "roi": "rect(cw - 120 * s, 250 * s, 90 * s, 570 * s)",
       "use3Channels": true,
       "useMask": true,
-      "maskColor": "0, 255, 0",
+      "maskColor": "#00FF00",
       "threshold": 0.8,
       "draw": true
     },
@@ -55,7 +55,7 @@
       "roi": "rect(cw - 120 * s, 250 * s, 90 * s, 570 * s)",
       "use3Channels": true,
       "useMask": true,
-      "maskColor": "0, 255, 0",
+      "maskColor": "#00FF00",
       "threshold": 0.85,
       "draw": true
     }
