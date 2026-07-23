@@ -101,6 +101,13 @@ public partial class AutoFightConfig : ObservableObject
     [ObservableProperty] private int _specializedFrameIntervalMs = 50;
 
     /// <summary>
+    /// 恰斯卡子弹识别阈值（默认 0.8）。
+    /// Jaccard 相似度 * √覆盖率 低于此值时判定为"空"弹。
+    /// 值越高越容易判空（减少误报），值越低越容易识别出元素（可能误判）。
+    /// </summary>
+    [ObservableProperty] private double _chascaBulletThreshold = 0.8;
+
+    /// <summary>
     /// 桑多涅（Sandrone）重击时间序列（字符串，格式待定）。
     /// </summary>
     [ObservableProperty] private string _sandroneChargeTimeSequence = "";

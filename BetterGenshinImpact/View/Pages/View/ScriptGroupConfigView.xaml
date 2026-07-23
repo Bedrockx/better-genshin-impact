@@ -1691,6 +1691,32 @@
                                             Margin="0,0,12,0"
                                             Text="{Binding PathingConfig.AutoFightConfig.SpecializedFrameIntervalMs, Mode=TwoWay}" />
                             </Grid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
+                                              Text="恰斯卡子弹识别阈值"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="Jaccard相似度×√覆盖率低于此值判空，默认0.8（越高越容易判空，越低越易识别元素）"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBox Grid.Row="0"
+                                            Grid.RowSpan="2"
+                                            Grid.Column="1"
+                                            Width="60"
+                                            Margin="0,0,12,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ChascaBulletThreshold, Mode=TwoWay}" />
+                            </Grid>
                             <!-- 桑多涅特化配置 -->
                             <Grid Margin="0,12,0,0">
                                 <Grid.RowDefinitions>
