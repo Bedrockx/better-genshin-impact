@@ -1651,6 +1651,32 @@
                                 <ui:TextBlock Grid.Row="0"
                                               Grid.Column="0"
                                               FontTypography="Body"
+                                              Text="恰斯卡：子弹识别阈值"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBlock Grid.Row="1"
+                                              Grid.Column="0"
+                                              Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                              Text="Jaccard相似度判定阈值，越高越严格，默认0.8"
+                                              TextWrapping="Wrap" />
+                                <ui:TextBox Grid.Row="0"
+                                            Grid.RowSpan="2"
+                                            Grid.Column="1"
+                                            Width="60"
+                                            Margin="0,0,12,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ChascaBulletThreshold, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBlock Grid.Row="0"
+                                              Grid.Column="0"
+                                              FontTypography="Body"
                                               Text="恰斯卡：旋转次数上限"
                                               TextWrapping="Wrap" />
                                 <ui:TextBlock Grid.Row="1"

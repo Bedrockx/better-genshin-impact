@@ -2820,7 +2820,8 @@ public class Avatar
             var counts = new Dictionary<string, int>();
             allCounts[i] = counts;
 
-            if (bestElem < 0 || bestScore < 0.15)
+            var threshold = TaskContext.Instance().Config.AutoFightConfig.ChascaBulletThreshold;
+            if (bestElem < 0 || bestScore < threshold)
             {
                 statusChars[i] = '空';
                 otherCounts[i] = totalPixels;
