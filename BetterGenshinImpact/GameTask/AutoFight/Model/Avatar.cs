@@ -222,17 +222,27 @@ public class Avatar
     /// </summary>
     private static bool SwimmingConfirm(Region region)
     {
-        using var imageRegion = region.ToImageRegion();
-        using var cropped = imageRegion.DeriveCrop(1819, 1025, 9, 11);
-        using var mask = OpenCvCommonHelper.Threshold(cropped.SrcMat, new Scalar(242, 223, 39), new Scalar(255, 233, 44));
-        using var labels = new Mat();
-        using var stats = new Mat();
-        using var centroids = new Mat();
+        // ToImageRegion 对已是 ImageRegion 的输入直接返回原对象（调用方持有），
+        // 仅当输入不是 ImageRegion 时才创建并释放临时对象，避免误释放调用方仍在使用的区域
+        ImageRegion? owned = null;
+        var imageRegion = region as ImageRegion ?? (owned = region.ToImageRegion());
+        try
+        {
+            using var cropped = imageRegion.DeriveCrop(1819, 1025, 9, 11);
+            using var mask = OpenCvCommonHelper.Threshold(cropped.SrcMat, new Scalar(242, 223, 39), new Scalar(255, 233, 44));
+            using var labels = new Mat();
+            using var stats = new Mat();
+            using var centroids = new Mat();
 
-        var numLabels = Cv2.ConnectedComponentsWithStats(mask, labels, stats, centroids,
-            connectivity: PixelConnectivity.Connectivity4, ltype: MatType.CV_32S);
-        
-        return numLabels > 1;
+            var numLabels = Cv2.ConnectedComponentsWithStats(mask, labels, stats, centroids,
+                connectivity: PixelConnectivity.Connectivity4, ltype: MatType.CV_32S);
+
+            return numLabels > 1;
+        }
+        finally
+        {
+            owned?.Dispose();
+        }
     }
 
     /// <summary>
@@ -425,7 +435,7 @@ public class Avatar
     {
         // 剪裁出IndexRect区域
         using var indexRa = region.DeriveCrop(rect);
-        using var mat = indexRa.CacheGreyMat;
+        var mat = indexRa.CacheGreyMat; // 缓存归属 indexRa，随 indexRa 一并释放
         var count = OpenCvCommonHelper.CountGrayMatColor(mat, 251, 255);
         if (count * 1.0 / (mat.Width * mat.Height) > 0.5)
         {
