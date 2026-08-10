@@ -121,6 +121,27 @@ public partial class PathingPartyConfig : ObservableObject
     [ObservableProperty]
     private int _useGadgetIntervalMs = 0;
 
+    /// <summary>
+    /// 动作执行完成后的等待时间（毫秒），默认 1000。
+    /// 战斗、简易策略、纳西妲收集、挖矿、钓鱼、退出重登等 action 执行完后统一等待该时长。
+    /// </summary>
+    [ObservableProperty]
+    private int _actionFinishedDelayMs = 1000;
+
+    /// <summary>
+    /// 传送到分段路径前序点位前的等待时间（毫秒），默认 1000。
+    /// 当上一个分段的最后点位不是传送/战斗/纳西妲收集/拾取周围时，传送前等待该时长。
+    /// </summary>
+    [ObservableProperty]
+    private int _teleportBeforeDelayMs = 1000;
+
+    /// <summary>
+    /// 到达目标点后的停顿时间（毫秒），默认 1000。
+    /// 精确接近（MoveCloseTo）结束后等待该时长再执行后续动作。
+    /// </summary>
+    [ObservableProperty]
+    private int _arriveTargetDelayMs = 1000;
+
     // 启用进入剧情自动脱离
     [ObservableProperty]
     private bool _autoSkipEnabled = true;
