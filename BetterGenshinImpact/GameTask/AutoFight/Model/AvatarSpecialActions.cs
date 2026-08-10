@@ -36,6 +36,25 @@ public static class AvatarSpecialAction
     private const double OverheatThreshold = 0.5;
 
     /// <summary>
+    /// 恰斯卡子弹框特征模型：识别子弹框是否存在（子弹框不存在时恰斯卡处于喷射状态）
+    /// TODO: 特征待训练后填充（1组特征），当前留空（Features 为空时 Score 返回 0.5，恒判定为"子弹框存在/非喷射"）
+    /// </summary>
+    private static readonly FeatureScorerExportData _chascaBulletBoxModel = new()
+    {
+        Features =
+        {
+            // TODO: 子弹框特征（1组），训练后填充
+        }
+    };
+
+    /// <summary>
+    /// 恰斯卡六槽位 × 五元素（风火水雷冰）子弹特征模型（6×5=30组）
+    /// 索引：第一维为槽位 0-5；第二维对应 ChascaBulletType 的 Anemo/Pyro/Hydro/Electro/Cryo（1-5）
+    /// TODO: 特征待训练后填充，当前留空（模型为 null 时识别跳过，对应槽位判定为空）
+    /// </summary>
+    private static readonly FeatureScorerExportData?[,] _chascaBulletModels = new FeatureScorerExportData?[6, 5];
+
+    /// <summary>
     /// 桑多涅特化叠加层目标框共享画笔（避免每帧新建 Pen 导致 GDI+ 句柄抖动）
     /// </summary>
     private static readonly System.Drawing.Pen _targetPen = new(System.Drawing.Color.LimeGreen, 2);
@@ -235,16 +254,57 @@ public static class AvatarSpecialAction
                     var chascaStableTime = visConfig.ChascaStableTime;
                     var dpi = TaskContext.Instance().DpiScale;
                     // 距离上一次事件的时间：启动进入第二步/识别到伤害数字/上一次旋转/上一次子弹列表变化/上一次喷射动画
-                    // TODO: 子弹列表变化与喷射动画的更新时间点待识别逻辑实现后补充
+                    // 子弹列表变化与喷射动画的更新时间点在帧内子弹识别处补充
                     var lastEventTime = DateTime.UtcNow;
                     // 退出条件状态：第二步开始时间（10秒超时）、累计旋转（距上次识别到目标后超过一圈）
                     var startTime = DateTime.UtcNow;
                     float? prevAngle = null;
                     double cumulativeRotation = 0;
+                    // 子弹序列变化跟踪：至多保存两个历史子弹序列（每帧识别结果），用于检测子弹列表变化
+                    ChascaBulletType[]? bulletSeq1 = null;
+                    ChascaBulletType[]? bulletSeq2 = null;
+                    DateTime bulletSeq1Time = DateTime.UtcNow;
+                    DateTime bulletSeq2Time = DateTime.UtcNow;
                     while (!avatar.Ct.IsCancellationRequested)
                     {
+                        // 退出条件1：10秒超时
+                        if ((DateTime.UtcNow - startTime).TotalSeconds >= 10)
+                        {
+                            // 仍在飞行：松开左键 → 长按 E 落地 → 循环截图检测直到识别到 CD → 松开 E
+                            Simulation.SendInput.Mouse.LeftButtonUp();
+                            Sleep(300, avatar.Ct);
+                            Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyDown);
+                            try
+                            {
+                                // 长按 E 落地，循环截图检测直到 E 进入 CD（落地完成），2 秒超时兜底防止卡死
+                                var landStartTime = DateTime.UtcNow;
+                                while (!avatar.Ct.IsCancellationRequested && (DateTime.UtcNow - landStartTime).TotalSeconds < 2)
+                                {
+                                    if (ReadEskillCdForChasca() > 0)
+                                    {
+                                        break;
+                                    }
+                                    Sleep(100, avatar.Ct);
+                                }
+                            }
+                            finally
+                            {
+                                Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyUp);
+                            }
+                            break;
+                        }
+
                         using (var capture = CaptureToRectArea())
                         {
+                            // 退出条件2：不处于飞行状态（已下车）
+                            if (!ChascaIsFlyingByPixel(capture.SrcMat))
+                            {
+                                // 已下车：松开左键并等待 300ms 即可
+                                Simulation.SendInput.Mouse.LeftButtonUp();
+                                Sleep(300, avatar.Ct);
+                                break;
+                            }
+
                             // 获取当前视角朝向并记录
                             var angle = CameraOrientation.Compute(capture.SrcMat);
                             orientationHistory.Add((angle, DateTime.UtcNow));
@@ -260,6 +320,32 @@ public static class AvatarSpecialAction
 
                             // 恰斯卡子弹识别：六个槽位的元素状态（空/风/火/水/雷/冰）
                             var bullets = RecognizeChascaBullets(capture);
+
+                            // 子弹框识别：子弹框不存在（<0.5）时视为正在进行子弹喷射，更新时间
+                            if (ChascaIsSpraying(capture))
+                            {
+                                lastEventTime = DateTime.UtcNow;
+                            }
+                            else
+                            {
+                                // 子弹变化跟踪：当前帧序列与已存序列比较，无相同序列则更新时间，并替换两个历史序列中较旧的
+                                var seqSame = (bulletSeq1 != null && bullets.SequenceEqual(bulletSeq1))
+                                           || (bulletSeq2 != null && bullets.SequenceEqual(bulletSeq2));
+                                if (!seqSame)
+                                {
+                                    lastEventTime = DateTime.UtcNow;
+                                    if (bulletSeq1 == null || (bulletSeq2 != null && bulletSeq2Time < bulletSeq1Time))
+                                    {
+                                        bulletSeq1 = bullets;
+                                        bulletSeq1Time = DateTime.UtcNow;
+                                    }
+                                    else
+                                    {
+                                        bulletSeq2 = bullets;
+                                        bulletSeq2Time = DateTime.UtcNow;
+                                    }
+                                }
+                            }
 
                             // 血条识别：区分传奇血条与普通血条
                             // FindBloodBars 内部自动更新传奇血条跨帧追踪（与持续索敌共用静态追踪器，
@@ -301,7 +387,7 @@ public static class AvatarSpecialAction
                                 else
                                 {
                                     // 未识别到伤害数字：依赖子弹状态判断当前是否需要移动视角
-                                    // TODO: 子弹状态的具体识别判断待实现（留空）
+                                    // 子弹喷射（子弹框不存在）与子弹序列变化已在帧首更新 lastEventTime
                                     // 距离上一次事件超过恰斯卡稳定时间时，进行一次水平向右旋转
                                     // 旋转实现参考恰斯卡 charge 分段变速中的水平旋转（rateX=0.7, rateY=0）
                                     if ((DateTime.UtcNow - lastEventTime).TotalSeconds > chascaStableTime)
@@ -312,31 +398,38 @@ public static class AvatarSpecialAction
                                 }
                             }
 
-                            // 退出条件2：不处于飞行状态（已下车）
-                            if (!ChascaIsFlyingByPixel(capture.SrcMat))
+                            // 退出条件3：距上次识别到伤害数字或血条后，旋转超过一圈（360°）
+                            // 依赖本帧朝向的累计旋转，放在截图块内（朝向记录之后）
+                            if (Math.Abs(cumulativeRotation) >= 360)
                             {
+                                // 仍在飞行：松开左键 → 长按 E 落地 → 循环截图检测直到识别到 CD → 松开 E
+                                Simulation.SendInput.Mouse.LeftButtonUp();
+                                Sleep(300, avatar.Ct);
+                                Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyDown);
+                                try
+                                {
+                                    // 长按 E 落地，循环截图检测直到 E 进入 CD（落地完成），10 秒超时兜底防止卡死
+                                    var landStartTime = DateTime.UtcNow;
+                                    while (!avatar.Ct.IsCancellationRequested && (DateTime.UtcNow - landStartTime).TotalSeconds < 10)
+                                    {
+                                        if (ReadEskillCdForChasca() > 0)
+                                        {
+                                            break;
+                                        }
+                                        Sleep(100, avatar.Ct);
+                                    }
+                                }
+                                finally
+                                {
+                                    Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyUp);
+                                }
                                 break;
                             }
-                        }
-
-                        // 退出条件1：10秒超时
-                        if ((DateTime.UtcNow - startTime).TotalSeconds >= 10)
-                        {
-                            break;
-                        }
-
-                        // 退出条件3：距上次识别到伤害数字或血条后，旋转超过一圈（360°）
-                        if (Math.Abs(cumulativeRotation) >= 360)
-                        {
-                            break;
                         }
 
                         // 每帧末尾等待帧间间隔
                         Sleep(frameIntervalMs);
                     }
-
-                    // 第三步：下车与后处理（尚未实现）
-                    // TODO: 第三步（下车与后处理）实现
 
                     return true;
                 }
@@ -631,12 +724,41 @@ public static class AvatarSpecialAction
     }
 
     /// <summary>
+    /// 恰斯卡是否处于喷射状态：子弹框不存在时为喷射
+    /// 当前特征未填充（Score 返回 0.5），恒不判定为喷射
+    /// </summary>
+    private static bool ChascaIsSpraying(ImageRegion capture)
+    {
+        // 子弹框特征未填充时 Score 返回 0.5，< 0.5 恒为 false（不判定为喷射）
+        return ImageFeatureScorer.Score(_chascaBulletBoxModel, capture.SrcMat) < 0.5;
+    }
+
+    /// <summary>
     /// 恰斯卡飞行子弹识别：识别六个子弹槽位的元素状态
-    /// TODO: 识别逻辑待实现，当前直接返回全空
+    /// 每个槽位对五种子弹特征逐一评分，最高分 &gt;= 0.5 时判定为该元素，否则为空
+    /// 当前特征未填充（模型全空），所有槽位判定为空
     /// </summary>
     private static ChascaBulletType[] RecognizeChascaBullets(ImageRegion capture)
     {
-        return new ChascaBulletType[6];
+        var result = new ChascaBulletType[6];
+        for (int slot = 0; slot < 6; slot++)
+        {
+            double bestScore = 0.5; // 命中阈值：低于 0.5 视为空
+            var bestType = ChascaBulletType.Empty;
+            for (int element = 0; element < 5; element++)
+            {
+                var model = _chascaBulletModels[slot, element];
+                if (model == null || model.Features.Count == 0) continue; // 特征未填充，跳过
+                var score = ImageFeatureScorer.Score(model, capture.SrcMat);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestType = (ChascaBulletType)(element + 1); // Anemo=1 ... Cryo=5
+                }
+            }
+            result[slot] = bestType;
+        }
+        return result;
     }
 }
 
