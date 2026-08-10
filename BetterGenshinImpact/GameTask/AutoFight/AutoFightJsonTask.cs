@@ -23,6 +23,7 @@ using BetterGenshinImpact.GameTask.AutoPick.Assets;
 using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
 using BetterGenshinImpact.GameTask.Common;
+using BetterGenshinImpact.GameTask.AutoPathing;
 using BetterGenshinImpact.GameTask.AutoPathing.Handler;
 using BetterGenshinImpact.GameTask.AutoPathing.Model;
 
@@ -78,6 +79,11 @@ public class AutoFightJsonTask : ISoloTask
 
     // 战斗点位
     public static WaypointForTrack? FightWaypoint { get; set; } = null;
+
+    /// <summary>
+    /// 战斗中回点：上一轮启动的异步坐标快照任务（串行不叠加，取完即弃）
+    /// </summary>
+    private Task<Point2f>? _backToFightPositionTask;
 
     private AutoFightTask.TaskFightFinishDetectConfig _finishDetectConfig;
 
@@ -195,6 +201,9 @@ public class AutoFightJsonTask : ISoloTask
     
             AutoFightSeek.RotationCount = 0;
             AutoFightTask.FightStatusFlag = true;
+            // 每场新战斗重置游泳回点与结束请求标志，避免跨战斗残留
+            AutoFightTask.FightEndRequested = false;
+            AutoFightTask.SwimBackToFightPerformed = false;
     
             var fightEndFlag = false;
             var timeOutFlag = false;
@@ -279,10 +288,16 @@ public class AutoFightJsonTask : ISoloTask
                             timeOutFlag = true;
                             break;
                         }
-    
+
+                        // 战斗中回点：消费上一轮异步坐标快照结果（距离超过触发距离则同步执行回点动作，阻塞战斗）
+                        await CheckBackToFight(cts2.Token);
+
                         // 每次循环开始：截图一次，供所有条件求值复用
                         using var capture = CaptureToRectArea();
                         evaluator.SetCachedCapture(capture);
+
+                        // 战斗中回点：本轮截图拷贝后启动异步坐标获取（不阻塞战斗，后台任务用后释放拷贝）
+                        StartBackToFightPositionTask(capture, cts2.Token);
 
                         var anyExecuted = false;
 
@@ -385,13 +400,13 @@ public class AutoFightJsonTask : ISoloTask
                                 anyExecuted = true;
                                 lastFightName = action.Character ?? "";
     
-                                if (_fightEndFlag) break;
+                                if (_fightEndFlag || AutoFightTask.FightEndRequested) break;
 
                                 // 执行完第一个满足条件的动作后重新判断
                                 break;
                             }
     
-                        if (fightEndFlag || _fightEndFlag) break;
+                        if (fightEndFlag || _fightEndFlag || AutoFightTask.FightEndRequested) break;
     
                         if (!anyExecuted)
                         {
@@ -522,7 +537,7 @@ public class AutoFightJsonTask : ISoloTask
                 cmd.Execute(combatScenes, lastSubCmd);
                 lastSubCmd = cmd;
 
-                if (_fightEndFlag) break;
+                if (_fightEndFlag || AutoFightTask.FightEndRequested) break;
 
                 // 仅由 check 指令触发战斗结束检测
                 if (cmd.Method == Method.Check && _taskParam.FightFinishDetectEnabled)
@@ -832,6 +847,123 @@ public class AutoFightJsonTask : ISoloTask
         if (_taskParam is { PickDropsAfterFightEnabled: true })
         {
             await new ScanPickTask().Start(_ct);
+        }
+    }
+
+    /// <summary>
+    /// 战斗中回点：消费上一轮异步坐标快照结果
+    /// 上一轮获取成功且与战斗点距离超过触发距离时，立即重新截图二次确认，仍超则同步执行共用回点动作（阻塞战斗）；
+    /// 获取失败/回点失败或超时仅输出日志，不去七天神像，继续战斗
+    /// </summary>
+    private async Task CheckBackToFight(CancellationToken ct)
+    {
+        if (_taskParam.BackToFightDistance < 0 || AutoFightTask.FightWaypoint is null)
+        {
+            return;
+        }
+
+        if (_backToFightPositionTask is null || !_backToFightPositionTask.IsCompleted)
+        {
+            // 上一轮坐标尚未算出（或未启动），跳过本轮检测，下一轮再看上一轮结果
+            return;
+        }
+
+        try
+        {
+            var pos = await _backToFightPositionTask;
+            if (pos == new Point2f())
+            {
+                return; // 坐标识别失败，跳过本轮检测
+            }
+
+            var waypoint = AutoFightTask.FightWaypoint;
+            var distance = Navigation.GetDistance(waypoint, pos);
+            if (distance <= _taskParam.BackToFightDistance)
+            {
+                return; // 未超过回点触发距离
+            }
+
+            // 二次确认：立即重新截图再获取一次，避免同帧误判
+            using var reCapture = CaptureToRectArea();
+            var pos2 = GetPositionFromImage(reCapture.SrcMat, waypoint);
+            if (pos2 == new Point2f() || Navigation.GetDistance(waypoint, pos2) <= _taskParam.BackToFightDistance)
+            {
+                return;
+            }
+
+            Logger.LogInformation("战斗中回点，距离战斗点距离{Distance}", Math.Round(distance, 1));
+
+            // 同步执行共用回点动作（阻塞战斗循环）；失败/超时仅输出日志，不去七天神像，继续战斗
+            Avatar.BackToFightWaypoint(waypoint, _taskParam.BackToFightTimeoutMs, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "战斗中回点检测异常");
+        }
+        finally
+        {
+            _backToFightPositionTask.Dispose();
+            _backToFightPositionTask = null;
+        }
+    }
+
+    /// <summary>
+    /// 战斗中回点：本轮截图拷贝后启动异步坐标获取任务（后台线程使用拷贝的截图，不阻塞战斗循环，用后释放）
+    /// </summary>
+    private void StartBackToFightPositionTask(ImageRegion capture, CancellationToken ct)
+    {
+        if (_taskParam.BackToFightDistance < 0 || AutoFightTask.FightWaypoint is null)
+        {
+            return;
+        }
+        if (_backToFightPositionTask is not null && !_backToFightPositionTask.IsCompleted)
+        {
+            return; // 上一轮任务仍在运行，不重复启动
+        }
+
+        // 拷贝截图，后台任务只持有拷贝，主循环截图的释放不影响坐标识别
+        var snapshot = capture.SrcMat.Clone();
+        if (ct.IsCancellationRequested)
+        {
+            snapshot.Dispose();
+            return;
+        }
+
+        var waypoint = AutoFightTask.FightWaypoint;
+        _backToFightPositionTask = Task.Run(() =>
+        {
+            try
+            {
+                using (snapshot)
+                {
+                    lock (Avatar.NavigationLock)
+                    {
+                        using var imageRegion = new ImageRegion(snapshot, 0, 0);
+                        return Navigation.GetPositionStable(imageRegion, waypoint.MapName, waypoint.MapMatchMethod);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "战斗中回点：坐标获取失败");
+                return default;
+            }
+        }, ct);
+    }
+
+    /// <summary>
+    /// 使用给定截图同步获取当前位置坐标（与异步快照共用 Navigation 互斥锁，避免并发读写识别状态）
+    /// </summary>
+    private static Point2f GetPositionFromImage(Mat mat, WaypointForTrack waypoint)
+    {
+        lock (Avatar.NavigationLock)
+        {
+            using var imageRegion = new ImageRegion(mat, 0, 0);
+            return Navigation.GetPositionStable(imageRegion, waypoint.MapName, waypoint.MapMatchMethod);
         }
     }
 

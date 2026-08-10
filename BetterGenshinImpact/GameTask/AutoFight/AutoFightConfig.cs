@@ -207,6 +207,18 @@ public partial class AutoFightConfig : ObservableObject
     private bool _swimmingEnabled = true;
 
     /// <summary>
+    /// 战斗中回点触发距离（游戏内距离，默认-1禁用；大于0时战斗中与战斗点距离超过该值则回点），仅 JSON 策略生效
+    /// </summary>
+    [ObservableProperty]
+    private double _backToFightDistance = -1;
+
+    /// <summary>
+    /// 单次回点超时（毫秒），整段回点动作（转向+移动）的总预算，默认2000，仅 JSON 策略生效
+    /// </summary>
+    [ObservableProperty]
+    private int _backToFightTimeoutMs = 2000;
+
+    /// <summary>
     /// 基于经验值判断是否执行战后拾取（检测到精英怪经验值图标时才拾取）
     /// </summary>
     [ObservableProperty]
