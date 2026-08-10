@@ -1663,6 +1663,24 @@
                                             Margin="0,0,36,0"
                                             Text="{Binding PathingConfig.AutoFightConfig.LockLostWaitTime}" />
                             </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="恰斯卡稳定时间（秒）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="恰斯卡飞行索敌时，距离上一次事件超过该时间仍无法识别到目标则旋转索敌"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ChascaStableTime}" />
+                            </Grid>
                             <Grid Margin="16,8,16,16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

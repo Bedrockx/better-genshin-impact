@@ -23,6 +23,7 @@ public sealed record VisualRecognitionConfig(
     int TargetingDetectionInterval = 50,
     bool DrawRecognitionResults = true,
     double LockLostWaitTime = 0.5,
+    double ChascaStableTime = 0.5,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
@@ -229,6 +230,7 @@ public static class AvatarRecognition
                 Math.Clamp(param.TargetingDetectionInterval, 1, 200),
                 param.DrawRecognitionResults,
                 param.LockLostWaitTime,
+                param.ChascaStableTime,
                 param.DamageNumberRecognitionMode);
         }
 
@@ -237,6 +239,7 @@ public static class AvatarRecognition
             Math.Clamp(config.TargetingDetectionInterval, 1, 200),
             config.DrawRecognitionResults,
             config.LockLostWaitTime,
+            config.ChascaStableTime,
             config.DamageNumberRecognitionMode);
     }
 

@@ -69,6 +69,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         TargetingDetectionInterval = autoFightConfig.TargetingDetectionInterval;
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
+        ChascaStableTime = autoFightConfig.ChascaStableTime;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
@@ -104,6 +105,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public int TargetingDetectionInterval { get; set; } = 50;
     public bool DrawRecognitionResults { get; set; } = true;
     public double LockLostWaitTime { get; set; } = 0.5;
+    public double ChascaStableTime { get; set; } = 0.5;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -203,6 +205,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         TargetingDetectionInterval = autoFightConfig.TargetingDetectionInterval;
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
+        ChascaStableTime = autoFightConfig.ChascaStableTime;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
     }
