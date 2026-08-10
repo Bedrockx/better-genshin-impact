@@ -21,6 +21,9 @@ bld/
 [Oo]bj/
 [Ll]og/
 
+# WPF 编译临时项目文件
+*_wpftmp.csproj
+
 # Mine
 Tmp/
 /packages/
