@@ -14,7 +14,6 @@ using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.Core.Script.Group;
 using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
-using BetterGenshinImpact.GameTask.Common.Job;
 using BetterGenshinImpact.Helpers;
 using BetterGenshinImpact.Helpers.Ui;
 using BetterGenshinImpact.Service;
@@ -669,7 +668,6 @@ public partial class OneDragonFlowViewModel : ViewModel
         // 检查和最终结束的任务
         await new TaskRunner().RunThreadAsync(async () =>
         {
-            await new CheckRewardsTask().Start(CancellationContext.Instance.Cts.Token);
             await Task.Delay(500);
             if (CancellationContext.Instance.IsManualStop is false)
             {
