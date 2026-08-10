@@ -47,6 +47,8 @@ public partial class PathExecutor
     private readonly TrapEscaper _trapEscaper;
     private readonly BlessingOfTheWelkinMoonTask _blessingOfTheWelkinMoonTask = new();
     private AutoSkipTrigger? _autoSkipTrigger;
+    // 上一个走过的路径点（用于卡死脱困时回头走，只在本类内使用，避免改动MoveTo签名）
+    private WaypointForTrack? _prevTrackWaypoint;
     public int SuccessFight = 0;
     //路径追踪完全走完所有路径结束的标识
     public bool SuccessEnd = false;
@@ -80,7 +82,6 @@ public partial class PathExecutor
     private DateTime _useGadgetLastUseTime = DateTime.MinValue;
 
     private const int RetryTimes = 2;
-    private int _inTrap = 0;
 
 
     //记录当前相关点位数组
@@ -183,6 +184,7 @@ public partial class PathExecutor
                         Navigation.SetPrevPosition((float)waypoints[0].X, (float)waypoints[0].Y);
                     }
 
+                    _prevTrackWaypoint = null;
                     foreach (var waypoint in waypoints) // 一条路径
                     {
                         CurWaypoint = (waypoints.FindIndex(wps => wps == waypoint), waypoint);
@@ -242,6 +244,7 @@ public partial class PathExecutor
                                 await AfterMoveToTarget(waypoint);
                             }
                         }
+                        _prevTrackWaypoint = waypoint;
                     }
 
                     if (waypoints == waypointsList.Last())
@@ -767,9 +770,8 @@ public partial class PathExecutor
         Logger.LogDebug("粗略接近途经点，位置({x2},{y2})", $"{waypoint.GameX:F1}", $"{waypoint.GameY:F1}");
         await WaitUntilRotatedTo(targetOrientation, 5);
         moveToStartTime = DateTime.UtcNow;
-        var lastPositionRecord = DateTime.UtcNow;
+        _trapEscaper.Reset(); // 每个点位开始时清空卡死检测状态
         var fastMode = false;
-        var prevPositions = new List<Point2f>();
         var fastModeColdTime = DateTime.MinValue;
         var prevNotTooFarPosition = position;
         int num = 0, distanceTooFarRetryCount = 0, consecutiveRotationCountBeyondAngle = 0;
@@ -815,6 +817,7 @@ public partial class PathExecutor
             if (distance < 4)
             {
                 Logger.LogDebug("到达路径点附近");
+                _trapEscaper.Reset(); // 到达点位，清空卡死计数
                 break;
             }
 
@@ -864,35 +867,11 @@ public partial class PathExecutor
                 prevNotTooFarPosition = position;
             }
 
-            // 非攀爬状态下，检测是否卡死（脱困触发器）
-            if (waypoint.MoveMode != MoveModeEnum.Climb.Code)
+            // 非攀爬状态下，检测是否卡死（脱困触发器，检测与分轮脱困逻辑见TrapEscaper）
+            if (waypoint.MoveMode != MoveModeEnum.Climb.Code &&
+                await _trapEscaper.CheckAndEscape(waypoint, _prevTrackWaypoint, position, additionalTimeInMs))
             {
-                if ((DateTime.UtcNow - lastPositionRecord).TotalMilliseconds > 1000 + additionalTimeInMs)
-                {
-                    lastPositionRecord = DateTime.UtcNow;
-                    prevPositions.Add(position);
-                    if (prevPositions.Count > 8)
-                    {
-                        var delta = prevPositions[^1] - prevPositions[^8];
-                        if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 3)
-                        {
-                            _inTrap++;
-                            if (_inTrap > 2)
-                            {
-                                throw new RetryException("此路线出现3次卡死，重试一次路线或放弃此路线！");
-                            }
-
-                            Logger.LogWarning("疑似卡死，尝试脱离...");
-
-                            //调用脱困代码，由TrapEscaper接管移动
-                            await _trapEscaper.RotateAndMove();
-                            await _trapEscaper.MoveTo(waypoint);
-                            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-                            Logger.LogInformation("卡死脱离结束");
-                            continue;
-                        }
-                    }
-                }
+                continue;
             }
 
             // 旋转视角
