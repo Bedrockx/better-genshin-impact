@@ -204,7 +204,7 @@ public partial class PathExecutor
                                 }
                                 else
                                 {
-                                    await Delay(1000, ct);
+                                    await Delay(PartyConfig.TeleportBeforeDelayMs, ct);
                                 }
                             }
                             await HandleTeleportWaypoint(waypoint);
@@ -1118,8 +1118,8 @@ public partial class PathExecutor
 
         Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
 
-        // 到达目的地后停顿一秒
-        await Delay(1000, ct);
+        // 到达目的地后停顿
+        await Delay(PartyConfig.ArriveTargetDelayMs, ct);
     }
 
     private async Task BeforeMoveCloseToTarget(WaypointForTrack waypoint)
@@ -1176,7 +1176,7 @@ public partial class PathExecutor
             {
                 SuccessFight++;
             }
-            await Delay(1000, ct);
+            await Delay(PartyConfig.ActionFinishedDelayMs, ct);
         }
     }
 
