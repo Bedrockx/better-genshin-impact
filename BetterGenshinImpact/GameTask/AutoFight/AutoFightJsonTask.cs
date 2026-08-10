@@ -885,7 +885,7 @@ public class AutoFightJsonTask : ISoloTask
 
             // 二次确认：立即重新截图再获取一次，避免同帧误判
             using var reCapture = CaptureToRectArea();
-            var pos2 = GetPositionFromImage(reCapture.SrcMat, waypoint);
+            var pos2 = GetPositionFromImage(reCapture, waypoint);
             if (pos2 == new Point2f() || Navigation.GetDistance(waypoint, pos2) <= _taskParam.BackToFightDistance)
             {
                 return;
@@ -934,17 +934,22 @@ public class AutoFightJsonTask : ISoloTask
         }
 
         var waypoint = AutoFightTask.FightWaypoint;
+        // 不传 ct 给 Task.Run：取消只影响识别结果，保证 lambda 一定执行、snapshot 一定被释放，避免取消竞态泄漏
         _backToFightPositionTask = Task.Run(() =>
         {
+            if (ct.IsCancellationRequested)
+            {
+                snapshot.Dispose();
+                return default;
+            }
+
             try
             {
-                using (snapshot)
+                lock (Avatar.NavigationLock)
                 {
-                    lock (Avatar.NavigationLock)
-                    {
-                        using var imageRegion = new ImageRegion(snapshot, 0, 0);
-                        return Navigation.GetPositionStable(imageRegion, waypoint.MapName, waypoint.MapMatchMethod);
-                    }
+                    // snapshot 由 ImageRegion 独占拥有并释放，避免双重释放
+                    using var imageRegion = new ImageRegion(snapshot, 0, 0);
+                    return Navigation.GetPositionStable(imageRegion, waypoint.MapName, waypoint.MapMatchMethod);
                 }
             }
             catch (Exception ex)
@@ -952,17 +957,17 @@ public class AutoFightJsonTask : ISoloTask
                 Logger.LogError(ex, "战斗中回点：坐标获取失败");
                 return default;
             }
-        }, ct);
+        });
     }
 
     /// <summary>
     /// 使用给定截图同步获取当前位置坐标（与异步快照共用 Navigation 互斥锁，避免并发读写识别状态）
+    /// 直接使用调用方持有的 ImageRegion，不包装外部 Mat，避免误释放调用方截图
     /// </summary>
-    private static Point2f GetPositionFromImage(Mat mat, WaypointForTrack waypoint)
+    private static Point2f GetPositionFromImage(ImageRegion imageRegion, WaypointForTrack waypoint)
     {
         lock (Avatar.NavigationLock)
         {
-            using var imageRegion = new ImageRegion(mat, 0, 0);
             return Navigation.GetPositionStable(imageRegion, waypoint.MapName, waypoint.MapMatchMethod);
         }
     }
