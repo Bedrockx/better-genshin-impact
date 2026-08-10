@@ -62,8 +62,9 @@ public class GameLoadingTrigger : ITaskTrigger
     private List<Region> _latestLoadingOcrRegions = [];
     /// <summary>
     /// 非联动启动时是否已尝试过返回主界面（首次尝试失败后，后续循环走原有逻辑）
+    /// 使用 static：任务结束后 LoadInitialTriggers 会重建本触发器实例，static 可避免标志丢失导致重复尝试
     /// </summary>
-    private bool _linkedStartReturnMainUiTried = false;
+    private static bool _linkedStartReturnMainUiTried = false;
 
     public GameLoadingTrigger()
     {
