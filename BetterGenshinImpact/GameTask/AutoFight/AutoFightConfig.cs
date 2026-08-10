@@ -231,6 +231,13 @@ public partial class AutoFightConfig : ObservableObject
     private double _lockLostWaitTime = 0.5;
 
     /// <summary>
+    /// 恰斯卡稳定时间（秒）：距离上一次事件（进入第二步/识别到伤害数字/旋转/子弹变化/喷射动画）
+    /// 超过该时间仍无法识别到目标时，执行一次水平向右旋转索敌
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaStableTime = 0.5;
+
+    /// <summary>
     /// 索敌识别间隔（毫秒）
     /// </summary>
     [ObservableProperty]
