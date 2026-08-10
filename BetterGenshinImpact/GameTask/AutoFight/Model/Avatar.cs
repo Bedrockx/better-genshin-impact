@@ -153,54 +153,20 @@ public class Avatar
                     return;
                 }
                 
+                if (AutoFightTask.SwimBackToFightPerformed)
+                {
+                    // 单次战斗已游泳回点过一次，再次检测到游泳直接结束战斗（不再回点、不去七天神像）
+                    Logger.LogWarning("游泳检测：本场战斗已回点过一次，再次检测到游泳，结束战斗");
+                    AutoFightTask.FightEndRequested = true;
+                    return;
+                }
+
                 Logger.LogInformation("游泳检测：尝试回到战斗地点");
-                
-                using (AvatarRecognition.BeginExclusiveOperation())
-                {
-                // 保存原始 MoveMode，用于 finally 还原
-                var originalMoveMode = AutoFightTask.FightWaypoint.MoveMode;
-                // 链接外部取消令牌，确保外部取消时能及时响应；using 确保自动 Dispose
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                
-                try
-                {
-                    var pathExecutor = new PathExecutor(cts.Token);
-                    
-                    // FaceTo 朝向战斗点，超时 2 秒
-                    cts.CancelAfter(2000);
-                    pathExecutor.FaceTo(AutoFightTask.FightWaypoint).GetAwaiter().GetResult();
-                    
-                    // 重置超时，MoveTo 超时 15 秒
-                    cts.CancelAfter(15000);
-                    // 使用 Climb 模式：MoveTo 内部对 Climb 模式跳过卡死脱困检测，避免水中 TrapEscaper 死循环
-                    AutoFightTask.FightWaypoint.MoveMode = MoveModeEnum.Climb.Code;
-                    Simulation.SendInput.Mouse.RightButtonDown();
-                    pathExecutor.MoveTo(AutoFightTask.FightWaypoint).GetAwaiter().GetResult();
-                    Logger.LogInformation("游泳检测：移动结束");
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (OperationCanceledException)
-                {
-                    Logger.LogWarning("游泳检测：回到战斗地点超时");
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "游泳检测：回到战斗地点异常");
-                }
-                finally
-                {
-                    // 确保所有资源和状态在任何路径都被正确清理
-                    cts.Cancel(); // 终止 PathExecutor 内部截屏循环
-                    AutoFightTask.FightWaypoint.MoveMode = originalMoveMode;
-                    AutoFightTask.FightWaypoint = null;
-                    Simulation.SendInput.Mouse.RightButtonUp();
-                    Simulation.ReleaseAllKey();
-                }
-                }
-                
+
+                // 共用回点动作：FaceTo + MoveTo（Climb 模式），整段 15 秒超时预算，保持原游泳检测回点的移动时长上限
+                BackToFightWaypoint(AutoFightTask.FightWaypoint, 15000, ct);
+                AutoFightTask.SwimBackToFightPerformed = true;
+
                 using var bitmap2 = CaptureToRectArea();
                 if (!SwimmingConfirm(bitmap2))
                 {
@@ -233,6 +199,57 @@ public class Avatar
             connectivity: PixelConnectivity.Connectivity4, ltype: MatType.CV_32S);
         
         return numLabels > 1;
+    }
+
+    /// <summary>
+    /// 保护 Navigation 访问的回点/坐标快照互斥锁（避免回点动作与战斗中异步坐标获取并发读写 NavigationInstance 状态）
+    /// </summary>
+    internal static readonly object NavigationLock = new();
+
+    /// <summary>
+    /// 回到战斗点位（共用回点动作：游泳检测回点与战斗中距离回点共用）
+    /// 同步阻塞执行；超时或异常仅输出日志并返回，由调用方决定是否继续兜底（如游泳检测失败后去七天神像）
+    /// 属于独占视角操作：全程持有 BeginExclusiveOperation，回点期间禁用战斗中持续索敌（其每帧检查 _skipSeekCount 跳过）
+    /// 内部调用 PathExecutor.MoveToTargetLightweight 轻量实现：循环截图判断坐标、朝向目标点、按住 W 前进、到点/超时判断
+    /// 注意：不主动清空 AutoFightTask.FightWaypoint，距离回点可在本场战斗中任意次数触发
+    /// </summary>
+    /// <param name="waypoint">回点目标（战斗点位）</param>
+    /// <param name="timeoutMs">整段回点动作（转向+移动）的总超时预算，毫秒</param>
+    /// <param name="ct">外部取消令牌</param>
+    public static void BackToFightWaypoint(WaypointForTrack waypoint, int timeoutMs, CancellationToken ct)
+    {
+        lock (NavigationLock)
+        {
+            using (AvatarRecognition.BeginExclusiveOperation())
+            {
+                try
+                {
+                    // 轻量级回点移动：循环截图判断坐标，朝向目标点并按住 W 前进，直到到达目标点附近或超时
+                    var reached = PathExecutor.MoveToTargetLightweight(waypoint, timeoutMs, ct).GetAwaiter().GetResult();
+                    if (reached)
+                    {
+                        Logger.LogInformation("回点动作：移动结束");
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (OperationCanceledException)
+                {
+                    Logger.LogWarning("回点动作：回到战斗地点超时");
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "回点动作：回到战斗地点异常");
+                }
+                finally
+                {
+                    // 确保所有资源和状态在任何路径都被正确清理
+                    Simulation.ReleaseAllKey();
+                }
+            }
+        }
     }
 
     /// <summary>
