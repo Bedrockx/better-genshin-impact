@@ -278,7 +278,7 @@ public partial class AutoFightConfig : ObservableObject
     /// 恰斯卡平滑转动预期转速（度/秒）：平滑旋转时以视角-时间序列实测转速与该值比对，按比例自适应调节步进力度
     /// </summary>
     [ObservableProperty]
-    private double _chascaSmoothRotateSpeed = 120;
+    private double _chascaSmoothRotateSpeed = 80;
 
     /// <summary>
     /// 恰斯卡单次旋转角度（度）：未勾选平滑转动时，传奇血条存在（有目标）时单次旋转该角度；
@@ -286,6 +286,20 @@ public partial class AutoFightConfig : ObservableObject
     /// </summary>
     [ObservableProperty]
     private double _chascaRotateStepAngle = 50;
+
+    /// <summary>
+    /// 恰斯卡朝向目标转动力度X（水平系数）：血条/伤害数字可见时，朝目标偏移的水平力度系数。
+    /// 默认 0.2625（桑多涅逻辑 0.35 的四分之三）
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaAimForceX = 0.2625;
+
+    /// <summary>
+    /// 恰斯卡朝向目标转动力度Y（垂直系数）：血条/伤害数字可见时，朝目标偏移的垂直力度系数。
+    /// 默认 0.1875（桑多涅逻辑 0.25 的四分之三）
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaAimForceY = 0.1875;
 
     /// <summary>
     /// 索敌识别间隔（毫秒）
