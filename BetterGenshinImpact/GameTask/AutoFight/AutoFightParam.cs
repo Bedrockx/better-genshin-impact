@@ -111,7 +111,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public double ChascaStableTime { get; set; } = 0.5;
     public double ChascaPressStrength { get; set; } = 1;
     public double ChascaInitialRotateX { get; set; } = 1000;
-    public double ChascaBulletThreshold { get; set; } = 0.5;
+    public double ChascaBulletThreshold { get; set; } = 0.8;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>

@@ -26,7 +26,7 @@ public sealed record VisualRecognitionConfig(
     double ChascaStableTime = 0.5,
     double ChascaPressStrength = 1,
     double ChascaInitialRotateX = 1000,
-    double ChascaBulletThreshold = 0.5,
+    double ChascaBulletThreshold = 0.8,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
