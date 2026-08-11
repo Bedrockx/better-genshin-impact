@@ -1024,7 +1024,7 @@
                                                   Text="恰斯卡子弹识别阈值（0-1）"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="恰斯卡子弹槽位元素特征评分需超过该值才判定为对应元素，否则视为空（默认0.5）"
+                                                  Text="恰斯卡子弹槽位元素特征评分需超过该值才判定为对应元素，否则视为空（默认0.8）"
                                                   TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ui:TextBox Grid.Column="1"

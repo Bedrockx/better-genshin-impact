@@ -251,7 +251,7 @@ public partial class AutoFightConfig : ObservableObject
     /// 恰斯卡子弹识别阈值（0-1）：子弹槽位元素特征评分需超过该值才判定为对应元素，否则视为空
     /// </summary>
     [ObservableProperty]
-    private double _chascaBulletThreshold = 0.5;
+    private double _chascaBulletThreshold = 0.8;
 
     /// <summary>
     /// 索敌识别间隔（毫秒）
