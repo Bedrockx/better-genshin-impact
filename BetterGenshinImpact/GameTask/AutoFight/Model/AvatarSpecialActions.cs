@@ -1334,8 +1334,11 @@ public static class AvatarSpecialAction
                     bool smoothRotateEnabled = visConfig.ChascaSmoothRotateEnabled;
                     // 旋转请求标志（主循环写、旋转器线程读，经 Volatile 访问保证可见性）
                     bool smoothRotateRequested = false;
-                    // 平滑旋转步进水平力度（px/步，主循环初始化、旋转器线程读取并调节，经 Volatile 访问）
+                    // 平滑旋转步进水平力度（px/步，主循环初始化、旋转器线程读取并调节，经 Volatile 访问）。
+                    // 仅在首次进入平滑旋转时初始化，暂停后恢复时沿用上次保存的力度断点（由 EMA 持续调节）
                     int smoothStepX = 0;
+                    // 平滑旋转力度是否已初始化（仅主循环线程访问）：保证断点只初始化一次，暂停恢复不重置
+                    bool smoothStepInitialized = false;
                     // 当前是否存在传奇血条（主循环每帧更新、旋转器线程读取，经 Volatile 访问）：
                     // 传奇血条存在（瞄准目标）时按配置转速旋转，无目标（无传奇血条）时转速翻倍
                     bool smoothRotateLegendary = false;
@@ -1343,6 +1346,13 @@ public static class AvatarSpecialAction
                     // 否则等待一个帧间隔后 continue 跳过（避免忙等）
                     smoothRotateTask = Task.Run(() =>
                     {
+                        // 增量消费主循环记录的活跃段样本（仅旋转器线程访问）：
+                        // 游标 + 上一个已消费样本 + 转速 EMA（°/s，平滑相邻样本瞬时转速的识别噪声）。
+                        // 每个新样本与上一个时间连续（两次采样均在平滑旋转期间）时计算一次瞬时转速并做一次
+                        // 小幅度 EMA 修正，每点有且仅使用一次；不连续（暂停后恢复）时重置基线，首个样本仅作起点
+                        int lastConsumedIndex = -1;
+                        (float Angle, DateTime Time)? lastConsumedSample = null;
+                        double emaSpeed = 0;
                         while (!smoothRotateCts.Token.IsCancellationRequested)
                         {
                             // 不满足旋转条件：等待一个帧间隔后跳过
@@ -1355,31 +1365,51 @@ public static class AvatarSpecialAction
                             double expectedSmoothRotateSpeed = Volatile.Read(ref smoothRotateLegendary)
                                 ? visConfig.ChascaSmoothRotateSpeed
                                 : visConfig.ChascaSmoothRotateSpeed * 2;
-                            // 先从主循环维护的视角-时间序列评估实际转速，与预期转速比对后按比例调节步进力度（限幅防振荡）
-                            double actualSpeed = 0;
+                            // 增量消费主循环新增的活跃段样本：样本由主循环仅在平滑旋转活跃段写入，
+                            // 暂停段的静止样本不入列。每个新样本与上一个已消费样本时间连续（间隔约一个主循环帧，
+                            // 说明两次采样均在平滑旋转期间）时，用两点计算一次瞬时转速并做一次小幅度 EMA 修正；
+                            // 时间不连续（暂停后恢复的首个样本）仅重置基线，不修正
                             lock (orientationHistory)
                             {
-                                if (orientationHistory.Count >= 5)
+                                int count = orientationHistory.Count;
+                                if (count > lastConsumedIndex + 1)
                                 {
-                                    var oldest = orientationHistory[orientationHistory.Count - 5];
-                                    var newest = orientationHistory[orientationHistory.Count - 1];
-                                    double span = (newest.Time - oldest.Time).TotalSeconds;
-                                    if (span > 0.05)
+                                    for (int i = lastConsumedIndex + 1; i < count; i++)
                                     {
-                                        double dAngle = newest.Angle - oldest.Angle;
-                                        if (dAngle > 180) dAngle -= 360;
-                                        else if (dAngle < -180) dAngle += 360;
-                                        actualSpeed = Math.Abs(dAngle) / span;
+                                        var sample = orientationHistory[i];
+                                        if (lastConsumedSample.HasValue)
+                                        {
+                                            double dt = (sample.Time - lastConsumedSample.Value.Time).TotalSeconds;
+                                            // 时间连续判定：正常相邻样本间隔约一个主循环帧，超过 0.25s 视为跨段（暂停恢复）
+                                            if (dt > 0.05 && dt <= 0.25)
+                                            {
+                                                double dAngle = sample.Angle - lastConsumedSample.Value.Angle;
+                                                if (dAngle > 180) dAngle -= 360;
+                                                else if (dAngle < -180) dAngle += 360;
+                                                double instSpeed = Math.Abs(dAngle) / dt;
+                                                // 转速 EMA（新值 30% 权重）：平滑相邻样本瞬时转速的识别噪声
+                                                emaSpeed = emaSpeed > 0 ? emaSpeed * 0.7 + instSpeed * 0.3 : instSpeed;
+                                                // 转速过低（初始力度过小或画面静止）时也按低速评估，避免永不进入自适应而空转
+                                                if (emaSpeed > 0.1)
+                                                {
+                                                    double factor = Math.Clamp(expectedSmoothRotateSpeed / Math.Max(emaSpeed, 0.5), 0.2, 5.0);
+                                                    if (Math.Abs(factor - 1) > 0.1)
+                                                    {
+                                                        // 步进力度按乘法 EMA 渐近（new = current × factor^0.2）：
+                                                        // 在乘法域平滑调节，放大/缩小对称互逆（factor 与其倒数调整恰好互为倒数，
+                                                        // 单次最多放大 5^0.2≈1.38 倍、最小缩小 0.2^0.2≈0.72 倍），
+                                                        // 避免线性插值造成放大远大于缩小的不对称
+                                                        double current = Volatile.Read(ref smoothStepX);
+                                                        double newStep = Math.Clamp(current * Math.Pow(factor, 0.2), 1, 2000);
+                                                        Volatile.Write(ref smoothStepX, (int)newStep);
+                                                    }
+                                                }
+                                            }
+                                            // 不连续（暂停后恢复）：此样本仅作新基线，不参与转速计算
+                                        }
+                                        lastConsumedSample = sample;
                                     }
-                                }
-                            }
-                            if (actualSpeed > 1)
-                            {
-                                double factor = Math.Clamp(expectedSmoothRotateSpeed / actualSpeed, 0.2, 5.0);
-                                if (Math.Abs(factor - 1) > 0.1)
-                                {
-                                    Volatile.Write(ref smoothStepX,
-                                        (int)Math.Clamp(Volatile.Read(ref smoothStepX) * factor, 1, 2000));
+                                    lastConsumedIndex = count - 1;
                                 }
                             }
                             // 按调节后的步进力度小角度旋转一次
@@ -1449,11 +1479,16 @@ public static class AvatarSpecialAction
                                 break;
                             }
 
-                            // 获取当前视角朝向并记录（加锁：平滑旋转器线程会并发读取该序列评估转速）
+                            // 获取当前视角朝向（每帧计算，用于下方累计旋转判定），
+                            // 仅当平滑旋转活跃（请求标志为 true）时才记录到序列：暂停段的静止样本不入列，
+                            // 保证旋转器评估窗口内的视角变化完全由平滑旋转自身产生
                             var angle = CameraOrientation.Compute(capture.SrcMat);
-                            lock (orientationHistory)
+                            if (Volatile.Read(ref smoothRotateRequested))
                             {
-                                orientationHistory.Add((angle, DateTime.UtcNow));
+                                lock (orientationHistory)
+                                {
+                                    orientationHistory.Add((angle, DateTime.UtcNow));
+                                }
                             }
                             // 累计旋转（距上次识别到目标后重新计数）：相邻帧角度差归一化到 (-180,180] 后累加
                             float delta = 0;
@@ -1633,11 +1668,17 @@ public static class AvatarSpecialAction
                                         {
                                             if (!Volatile.Read(ref smoothRotateRequested))
                                             {
-                                                // 首次进入平滑旋转：按当前校准力度换算约 10° 步进（无校准样本时取初始力度 10%）
-                                                double stepDeg = 10;
-                                                Volatile.Write(ref smoothStepX,
-                                                    (int)Math.Max(1, lastMedianRatio > 0 ? stepDeg / lastMedianRatio : rotateX * 0.1));
-                                                Logger.LogInformation("恰斯卡特化：平滑转动开始（每步约{F0}°，转速自适应调节）", stepDeg);
+                                                // 平滑旋转启动：仅在首次进入时初始化步进力度作为自适应过渡起点，
+                                                // 按当前校准力度换算约 10° 步进（无校准样本时取初始力度 10%）；
+                                                // 暂停后恢复时沿用上次保存的力度断点（不重置，由 EMA 继续调节）
+                                                if (!smoothStepInitialized)
+                                                {
+                                                    double stepDeg = 10;
+                                                    Volatile.Write(ref smoothStepX,
+                                                        (int)Math.Max(1, lastMedianRatio > 0 ? stepDeg / lastMedianRatio : rotateX * 0.1));
+                                                    smoothStepInitialized = true;
+                                                    Logger.LogInformation("恰斯卡特化：平滑转动开始（每步约{F0}°，转速自适应调节）", stepDeg);
+                                                }
                                             }
                                             Volatile.Write(ref smoothRotateRequested, true);
                                         }
