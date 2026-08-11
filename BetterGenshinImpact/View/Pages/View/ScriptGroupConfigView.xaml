@@ -1645,6 +1645,27 @@
                                                  Margin="0,0,36,0"
                                                  IsChecked="{Binding PathingConfig.AutoFightConfig.EnableCombatTargeting, Mode=TwoWay}" />
                             </Grid>
+                            <!-- 合并冲突提示：恰斯卡特化 PR (#11) 在下方"脱锁等待时间"Grid 之后插入恰斯卡配置 Grid，
+                                 本项放在"战斗中持续索敌"Grid 之后以错开合并位置，冲突时保留两侧 Grid 即可 -->
+                            <Grid Margin="16,4,16,16"
+                                  Visibility="{Binding PathingConfig.AutoFightConfig.EnableCombatTargeting, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="无目标自动结束战斗（秒）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="持续索敌期间连续该秒数未检测到敌人血条或伤害数字时主动结束战斗；0 为关闭"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.EndFightWhenNoTargetSeconds}" />
+                            </Grid>
                             <Grid Margin="16,4,16,16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
