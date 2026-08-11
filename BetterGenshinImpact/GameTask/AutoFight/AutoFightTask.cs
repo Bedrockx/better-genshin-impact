@@ -53,6 +53,13 @@ public class AutoFightTask : ISoloTask
     private readonly double _dpi = TaskContext.Instance().DpiScale;
     
     public static bool FightStatusFlag { get; set; } = false;
+
+    /// <summary>
+    /// 持续索敌"无目标自动结束战斗"请求标志：
+    /// 由 AvatarRecognition.ContinuousTargetingLoopAsync 在连续 N 秒未检测到敌人血条或伤害数字时置位，
+    /// CheckFightFinish 消费该标志后返回战斗结束（消费后复位，仅触发一次）。
+    /// </summary>
+    public static bool NoTargetEndRequested { get; set; } = false;
     
     private static readonly object PickLock = new object(); 
     
@@ -542,6 +549,8 @@ public class AutoFightTask : ISoloTask
 
         // 在持续索敌循环启动前标记战斗进行中，避免索敌循环因 FightStatusFlag 仍为 false 而立即退出
         FightStatusFlag = true;
+        // 重置上一场战斗可能残留的"无目标自动结束"请求，避免跨战斗误触发
+        NoTargetEndRequested = false;
 
         // 启动持续索敌循环（异步后台运行，与战斗任务并发）
         // 使用独立的 CancellationTokenSource，以便在战后独立取消索敌循环，不影响 cts2 关联的其他组件（如 expDetector）
@@ -915,6 +924,16 @@ public class AutoFightTask : ISoloTask
     public static async Task<bool> CheckFightFinish(TaskFightFinishDetectConfig finishDetectConfig,
         CancellationToken ct, int delayTime = 1500, int detectDelayTime = 450)
     {
+        // 持续索敌"无目标自动结束战斗"请求：连续 N 秒未检测到敌人血条或伤害数字时主动结束战斗
+        // （由 ContinuousTargetingLoopAsync 置位，这里消费并复位，保证只触发一次）
+        if (NoTargetEndRequested)
+        {
+            NoTargetEndRequested = false;
+            LastFightFinishCheckTime = DateTime.Now;
+            Logger.LogInformation("无目标自动结束战斗：持续索敌连续未检测到敌人目标，结束当前战斗");
+            return true;
+        }
+
         // 开战后一段时间阻断战斗结束检查：距离开战时间小于配置值时，提前返回并视为战斗未结束
         if (finishDetectConfig.BlockCheckBeforeBattleSeconds > 0 &&
             (DateTime.Now - FightStartTime).TotalSeconds < finishDetectConfig.BlockCheckBeforeBattleSeconds)
