@@ -231,6 +231,13 @@ public partial class AutoFightConfig : ObservableObject
     private double _lockLostWaitTime = 0.5;
 
     /// <summary>
+    /// 启用恰斯卡特化逻辑：勾选后启用恰斯卡飞行索敌特化（长按 E 骑乘蓄力），
+    /// 关闭后恰斯卡长按 E 走通用逻辑，且下方恰斯卡独有配置项不显示。默认开启
+    /// </summary>
+    [ObservableProperty]
+    private bool _chascaSpecializationEnabled = true;
+
+    /// <summary>
     /// 恰斯卡稳定时间（秒）：距离上一次事件（进入第二步/识别到伤害数字/旋转/子弹变化/喷射动画）
     /// 超过该时间仍无法识别到目标时，执行一次水平向右旋转索敌
     /// </summary>
@@ -302,6 +309,19 @@ public partial class AutoFightConfig : ObservableObject
     /// </summary>
     [ObservableProperty]
     private double _chascaAimForceY = 0.1875;
+
+    /// <summary>
+    /// 恰斯卡子弹喷射下压力度（像素）：识别到子弹喷射时执行一次快速下压（垂直向下移动）的力度，
+    /// 触发内置 1 秒冷却（硬编码）。默认 100
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaSprayPressForce = 100;
+
+    /// <summary>
+    /// 恰斯卡回转角度（度）：识别到子弹变化停止平滑旋转时回转的角度。默认 15
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaRollbackAngle = 15;
 
     /// <summary>
     /// 索敌识别间隔（毫秒）

@@ -80,6 +80,8 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
         ChascaAimForceX = autoFightConfig.ChascaAimForceX;
         ChascaAimForceY = autoFightConfig.ChascaAimForceY;
+        ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
+        ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
@@ -126,6 +128,8 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public double ChascaRotateStepAngle { get; set; } = 50;
     public double ChascaAimForceX { get; set; } = 0.2625;
     public double ChascaAimForceY { get; set; } = 0.1875;
+    public double ChascaSprayPressForce { get; set; } = 100;
+    public double ChascaRollbackAngle { get; set; } = 15;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -236,6 +240,8 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
         ChascaAimForceX = autoFightConfig.ChascaAimForceX;
         ChascaAimForceY = autoFightConfig.ChascaAimForceY;
+        ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
+        ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
     }

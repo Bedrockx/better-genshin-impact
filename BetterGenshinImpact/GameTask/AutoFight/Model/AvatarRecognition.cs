@@ -34,6 +34,8 @@ public sealed record VisualRecognitionConfig(
     double ChascaRotateStepAngle = 50,
     double ChascaAimForceX = 0.2625,
     double ChascaAimForceY = 0.1875,
+    double ChascaSprayPressForce = 100,
+    double ChascaRollbackAngle = 15,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
@@ -251,6 +253,8 @@ public static class AvatarRecognition
                 param.ChascaRotateStepAngle,
                 param.ChascaAimForceX,
                 param.ChascaAimForceY,
+                param.ChascaSprayPressForce,
+                param.ChascaRollbackAngle,
                 param.DamageNumberRecognitionMode);
         }
 
@@ -270,6 +274,8 @@ public static class AvatarRecognition
             config.ChascaRotateStepAngle,
             config.ChascaAimForceX,
             config.ChascaAimForceY,
+            config.ChascaSprayPressForce,
+            config.ChascaRollbackAngle,
             config.DamageNumberRecognitionMode);
     }
 
