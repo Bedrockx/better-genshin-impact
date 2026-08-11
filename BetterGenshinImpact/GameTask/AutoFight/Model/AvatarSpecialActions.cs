@@ -1682,8 +1682,10 @@ public static class AvatarSpecialAction
                                         cumulativeRotation = 0; // 识别到子弹喷射，累计旋转重新计数
                                         stableTimeMultiplier = 2; // 喷射后下一次稳定时间判定阈值翻倍
                                         // 识别到子弹喷射：快速下压一次（力度可配置），内置 1 秒冷却（硬编码）；
+                                        // 仅本帧没有找到普通血条或伤害数字时执行（进入本分支前伤害数字已判空，
+                                        // valid.Count == 0 即本帧无普通血条，避免传奇+普通血条共存时误下压）；
                                         // 先下压再停止平滑旋转，避免与回转循环并发移动鼠标
-                                        if ((DateTime.UtcNow - lastSprayPressTime).TotalSeconds >= 1)
+                                        if (valid.Count == 0 && (DateTime.UtcNow - lastSprayPressTime).TotalSeconds >= 1)
                                         {
                                             lastSprayPressTime = DateTime.UtcNow;
                                             Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(visConfig.ChascaSprayPressForce * dpi));
@@ -1824,6 +1826,8 @@ public static class AvatarSpecialAction
                         // 保证异常路径下左键与 E 键均释放，避免按键卡住
                         Simulation.SendInput.Mouse.LeftButtonUp();
                         Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyUp);
+                        // 整个恰斯卡特化逻辑结束后，最终点按一次鼠标中键（退出骑乘）
+                        Simulation.SendInput.Mouse.MiddleButtonClick();
                     }
                 }
             }
