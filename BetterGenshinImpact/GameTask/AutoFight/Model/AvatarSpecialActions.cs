@@ -1256,6 +1256,12 @@ public static class AvatarSpecialAction
             // 恰斯卡长按 E：骑乘蓄力瞄准
             case "恰斯卡":
             {
+                // 未勾选"启用恰斯卡特化逻辑"时不走特化，回退通用 UseSkill 逻辑
+                if (!TaskContext.Instance().Config.AutoFightConfig.ChascaSpecializationEnabled)
+                {
+                    return false;
+                }
+
                 using (AvatarRecognition.BeginExclusiveOperation())
                 {
                     // 平滑旋转控制（声明于 try 外，保证 finally 中可取消独立异步旋转循环）
@@ -1336,6 +1342,8 @@ public static class AvatarSpecialAction
                     bool smoothRotateRequested = false;
                     // 往回转补偿进行中标志（回转循环写、主循环读，经 Volatile 访问）：回转期间主循环协作空转，避免鼠标操作冲突
                     bool rollbackActive = false;
+                    // 子弹喷射快速下压的上次触发时间（1 秒内置冷却，硬编码）
+                    DateTime lastSprayPressTime = DateTime.MinValue;
                     // 平滑旋转步进水平力度（px/步，主循环初始化、旋转器线程读取并调节，经 Volatile 访问）。
                     // 仅在首次进入平滑旋转时初始化，暂停后恢复时沿用上次保存的力度断点（由 EMA 持续调节）
                     int smoothStepX = 0;
@@ -1457,7 +1465,7 @@ public static class AvatarSpecialAction
                     // 局部函数：停止平滑旋转，并对子弹识别延迟导致的过冲做往回转补偿。
                     // 子弹识别存在延迟，识别到"应停止旋转"（子弹喷射/序列变化）时视角实际已多转，
                     // 故以与正转相同的步进节奏（16ms）与断点力度（smoothStepX，方向取反）持续往回转，
-                    // 每步用视角识别判断是否到达目标点（停止角度-30°）±5°，到达后退出（不再一次性转固定角度）。
+                    // 每步用视角识别判断是否到达目标点（停止角度-15°）±5°，到达后退出（不再一次性转固定角度）。
                     // 回转在独立异步循环中执行，不阻塞主循环：主循环检测 rollbackActive 后协作空转避免鼠标操作冲突
                     void StopSmoothRotate()
                     {
@@ -1474,7 +1482,7 @@ public static class AvatarSpecialAction
                                 using (var cap = CaptureToRectArea())
                                 {
                                     double stopAngle = CameraOrientation.Compute(cap.SrcMat);
-                                    double targetAngle = stopAngle - 30;
+                                    double targetAngle = stopAngle - visConfig.ChascaRollbackAngle;
                                     int stepX = Volatile.Read(ref smoothStepX);
                                     var rollbackStart = DateTime.UtcNow;
                                     while (!avatar.Ct.IsCancellationRequested && (DateTime.UtcNow - rollbackStart).TotalSeconds < 3)
@@ -1673,6 +1681,13 @@ public static class AvatarSpecialAction
                                         lastEventTime = DateTime.UtcNow;
                                         cumulativeRotation = 0; // 识别到子弹喷射，累计旋转重新计数
                                         stableTimeMultiplier = 2; // 喷射后下一次稳定时间判定阈值翻倍
+                                        // 识别到子弹喷射：快速下压一次（力度可配置），内置 1 秒冷却（硬编码）；
+                                        // 先下压再停止平滑旋转，避免与回转循环并发移动鼠标
+                                        if ((DateTime.UtcNow - lastSprayPressTime).TotalSeconds >= 1)
+                                        {
+                                            lastSprayPressTime = DateTime.UtcNow;
+                                            Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(visConfig.ChascaSprayPressForce * dpi));
+                                        }
                                         StopSmoothRotate(); // 子弹喷射中，停止平滑旋转并往回转补偿
                                     }
                                     else
