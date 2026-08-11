@@ -1334,14 +1334,13 @@ public static class AvatarSpecialAction
                     bool smoothRotateEnabled = visConfig.ChascaSmoothRotateEnabled;
                     // 旋转请求标志（主循环写、旋转器线程读，经 Volatile 访问保证可见性）
                     bool smoothRotateRequested = false;
+                    // 往回转补偿进行中标志（回转循环写、主循环读，经 Volatile 访问）：回转期间主循环协作空转，避免鼠标操作冲突
+                    bool rollbackActive = false;
                     // 平滑旋转步进水平力度（px/步，主循环初始化、旋转器线程读取并调节，经 Volatile 访问）。
                     // 仅在首次进入平滑旋转时初始化，暂停后恢复时沿用上次保存的力度断点（由 EMA 持续调节）
                     int smoothStepX = 0;
                     // 平滑旋转力度是否已初始化（仅主循环线程访问）：保证断点只初始化一次，暂停恢复不重置
                     bool smoothStepInitialized = false;
-                    // 当前是否存在传奇血条（主循环每帧更新、旋转器线程读取，经 Volatile 访问）：
-                    // 传奇血条存在（瞄准目标）时按配置转速旋转，无目标（无传奇血条）时转速翻倍
-                    bool smoothRotateLegendary = false;
                     // 独立异步旋转循环：节奏不依赖主循环帧间隔，仅在旋转请求标志为 true 时旋转，
                     // 否则等待一个帧间隔后 continue 跳过（避免忙等）
                     smoothRotateTask = Task.Run(() =>
@@ -1361,10 +1360,8 @@ public static class AvatarSpecialAction
                                 Sleep(frameIntervalMs, smoothRotateCts.Token);
                                 continue;
                             }
-                            // 预期转速（度/秒，可配置）：传奇血条存在时用配置值，无目标（无传奇血条）时翻倍
-                            double expectedSmoothRotateSpeed = Volatile.Read(ref smoothRotateLegendary)
-                                ? visConfig.ChascaSmoothRotateSpeed
-                                : visConfig.ChascaSmoothRotateSpeed * 2;
+                            // 预期转速（度/秒，可配置）：有目标（传奇血条）与无目标场景统一使用配置值
+                            double expectedSmoothRotateSpeed = visConfig.ChascaSmoothRotateSpeed;
                             // 增量消费主循环新增的活跃段样本：样本由主循环仅在平滑旋转活跃段写入，
                             // 暂停段的静止样本不入列。每个新样本与上一个已消费样本时间连续（间隔约一个主循环帧，
                             // 说明两次采样均在平滑旋转期间）时，用两点计算一次瞬时转速并做一次小幅度 EMA 修正；
@@ -1457,6 +1454,57 @@ public static class AvatarSpecialAction
                         Sleep(frameIntervalMs * 2, avatar.Ct);
                     }
 
+                    // 局部函数：停止平滑旋转，并对子弹识别延迟导致的过冲做往回转补偿。
+                    // 子弹识别存在延迟，识别到"应停止旋转"（子弹喷射/序列变化）时视角实际已多转，
+                    // 故以与正转相同的步进节奏（16ms）与断点力度（smoothStepX，方向取反）持续往回转，
+                    // 每步用视角识别判断是否到达目标点（停止角度-30°）±5°，到达后退出（不再一次性转固定角度）。
+                    // 回转在独立异步循环中执行，不阻塞主循环：主循环检测 rollbackActive 后协作空转避免鼠标操作冲突
+                    void StopSmoothRotate()
+                    {
+                        if (!Volatile.Read(ref smoothRotateRequested))
+                        {
+                            return; // 未在旋转中，无需停止与回转
+                        }
+                        Volatile.Write(ref smoothRotateRequested, false);
+                        Volatile.Write(ref rollbackActive, true);
+                        Task.Run(() =>
+                        {
+                            try
+                            {
+                                using (var cap = CaptureToRectArea())
+                                {
+                                    double stopAngle = CameraOrientation.Compute(cap.SrcMat);
+                                    double targetAngle = stopAngle - 30;
+                                    int stepX = Volatile.Read(ref smoothStepX);
+                                    var rollbackStart = DateTime.UtcNow;
+                                    while (!avatar.Ct.IsCancellationRequested && (DateTime.UtcNow - rollbackStart).TotalSeconds < 3)
+                                    {
+                                        using (var curCap = CaptureToRectArea())
+                                        {
+                                            double cur = CameraOrientation.Compute(curCap.SrcMat);
+                                            double diff = cur - targetAngle;
+                                            if (diff > 180) diff -= 360;
+                                            else if (diff < -180) diff += 360;
+                                            if (Math.Abs(diff) <= 5)
+                                            {
+                                                break; // 到达目标点 ±5° 内，退出回转
+                                            }
+                                            // diff>0 需要左转（负力度），diff<0 过头需右转（正力度）
+                                            int dir = diff > 0 ? -1 : 1;
+                                            Simulation.SendInput.Mouse.MoveMouseBy(dir * stepX, (int)(visConfig.ChascaPressStrength * dir * stepX * 0.194));
+                                        }
+                                        Sleep(16, avatar.Ct);
+                                    }
+                                    Logger.LogInformation("恰斯卡特化：平滑转动停止，往回转补偿（目标 {Target:F0}°±5°）", targetAngle);
+                                }
+                            }
+                            finally
+                            {
+                                Volatile.Write(ref rollbackActive, false);
+                            }
+                        });
+                    }
+
                     while (!avatar.Ct.IsCancellationRequested)
                     {
                         // 退出条件1：20秒超时
@@ -1490,6 +1538,13 @@ public static class AvatarSpecialAction
                                     orientationHistory.Add((angle, DateTime.UtcNow));
                                 }
                             }
+
+                            // 往回转补偿进行中：本帧协作空转（不识别不旋转），避免主循环的鼠标操作与回转循环冲突
+                            if (Volatile.Read(ref rollbackActive))
+                            {
+                                Sleep(frameIntervalMs, avatar.Ct);
+                                continue;
+                            }
                             // 累计旋转（距上次识别到目标后重新计数）：相邻帧角度差归一化到 (-180,180] 后累加
                             float delta = 0;
                             if (prevAngle.HasValue)
@@ -1506,8 +1561,6 @@ public static class AvatarSpecialAction
                             var bars = AvatarRecognition.FindBloodBars(capture);
                             var valid = bars.Where(b => b.x > (int)(200 * AssetScale)).ToList();
                             var hasLegendaryBar = valid.Any(b => AvatarRecognition.IsLegendaryBar(b.x, b.y));
-                            // 同步传奇血条状态给平滑旋转器：传奇血条存在时按配置转速，无目标时转速翻倍
-                            Volatile.Write(ref smoothRotateLegendary, hasLegendaryBar);
 
                             // 退出条件4状态维护：记录传奇血条最后出现时间
                             if (hasLegendaryBar)
@@ -1581,15 +1634,15 @@ public static class AvatarSpecialAction
                                     Math.Abs((b.y + b.height / 2) - preAimY)).First();
                                 var offsetX = (nearest.x + nearest.width / 2) - preAimX;
                                 var offsetY = (nearest.y + nearest.height / 2) - preAimY;
-                                // 单次旋转力度为桑多涅逻辑的四分之一（0.35/4、0.25/4）
+                                // 单次旋转力度为桑多涅逻辑的四分之三（0.35×0.75、0.25×0.75，原四分之一翻3倍）
                                 Simulation.SendInput.Mouse.MoveMouseBy(
-                                    (int)(offsetX * 0.0875 * dpi), (int)(offsetY * 0.0625 * dpi));
+                                    (int)(offsetX * 0.2625 * dpi), (int)(offsetY * 0.1875 * dpi));
                                 cumulativeRotation = 0; // 识别到普通血条，累计旋转重新计数
                             }
                             else
                             {
                                 // 存在传奇血条 或 无任何血条：做伤害数字识别，瞄准有效伤害数字
-                                // 中心点使用 1080p 的 (960,360)，力度为桑多涅逻辑的四分之一（0.35/4、0.25/4）
+                                // 中心点使用 1080p 的 (960,360)，力度系数可配置（见 ChascaAimForceX/Y）
                                 var damageResult = AvatarRecognition.FindDamageNumber(capture);
                                 if (damageResult.HasValue)
                                 {
@@ -1597,8 +1650,8 @@ public static class AvatarSpecialAction
                                     Volatile.Write(ref smoothRotateRequested, false); // 再次看到伤害数字，停止平滑旋转
                                     var (dcx, dcy, _, _, _, _, _) = damageResult.Value;
                                     Simulation.SendInput.Mouse.MoveMouseBy(
-                                        (int)((dcx - (int)(960 * AssetScale)) * 0.0875 * dpi),
-                                        (int)((dcy - (int)(360 * AssetScale)) * 0.0625 * dpi));
+                                        (int)((dcx - (int)(960 * AssetScale)) * visConfig.ChascaAimForceX * dpi),
+                                        (int)((dcy - (int)(360 * AssetScale)) * visConfig.ChascaAimForceY * dpi));
                                     lastEventTime = DateTime.UtcNow; // 识别到伤害数字，视为活动事件
                                     cumulativeRotation = 0; // 识别到伤害数字，累计旋转重新计数
                                 }
@@ -1620,7 +1673,7 @@ public static class AvatarSpecialAction
                                         lastEventTime = DateTime.UtcNow;
                                         cumulativeRotation = 0; // 识别到子弹喷射，累计旋转重新计数
                                         stableTimeMultiplier = 2; // 喷射后下一次稳定时间判定阈值翻倍
-                                        Volatile.Write(ref smoothRotateRequested, false); // 子弹喷射中，停止平滑旋转
+                                        StopSmoothRotate(); // 子弹喷射中，停止平滑旋转并往回转补偿
                                     }
                                     else
                                     {
@@ -1635,7 +1688,7 @@ public static class AvatarSpecialAction
                                         {
                                             lastEventTime = DateTime.UtcNow;
                                             cumulativeRotation = 0; // 子弹序列变化，累计旋转重新计数
-                                            Volatile.Write(ref smoothRotateRequested, false); // 子弹序列变化，停止平滑旋转
+                                            StopSmoothRotate(); // 子弹序列变化，停止平滑旋转并往回转补偿
                                             if (bulletSeqs.Count < seqSlotCount)
                                             {
                                                 bulletSeqs.Add(bullets);

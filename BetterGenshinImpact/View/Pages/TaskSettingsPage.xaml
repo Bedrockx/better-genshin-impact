@@ -1114,6 +1114,29 @@
                                             Margin="0,0,36,0"
                                             Text="{Binding Config.AutoFightConfig.ChascaRotateStepAngle}" />
                             </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="恰斯卡朝向目标转动力度（水平/垂直）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="血条/伤害数字可见时朝目标偏移的力度系数，默认0.2625/0.1875（桑多涅逻辑四分之三）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="90"
+                                            Margin="0,0,8,0"
+                                            Text="{Binding Config.AutoFightConfig.ChascaAimForceX}" />
+                                <ui:TextBox Grid.Column="2"
+                                            Width="90"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding Config.AutoFightConfig.ChascaAimForceY}" />
+                            </Grid>
                             <Grid Margin="16,4,16,16"
                                   Visibility="{Binding Config.AutoFightConfig.ChascaSmoothRotateEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid.ColumnDefinitions>

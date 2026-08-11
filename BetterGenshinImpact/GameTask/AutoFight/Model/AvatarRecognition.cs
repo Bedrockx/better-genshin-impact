@@ -30,8 +30,10 @@ public sealed record VisualRecognitionConfig(
     double ChascaBulletThreshold = 0.8,
     int ChascaSequenceSlotCount = 2,
     bool ChascaSmoothRotateEnabled = false,
-    double ChascaSmoothRotateSpeed = 120,
+    double ChascaSmoothRotateSpeed = 80,
     double ChascaRotateStepAngle = 50,
+    double ChascaAimForceX = 0.2625,
+    double ChascaAimForceY = 0.1875,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
@@ -247,6 +249,8 @@ public static class AvatarRecognition
                 param.ChascaSmoothRotateEnabled,
                 param.ChascaSmoothRotateSpeed,
                 param.ChascaRotateStepAngle,
+                param.ChascaAimForceX,
+                param.ChascaAimForceY,
                 param.DamageNumberRecognitionMode);
         }
 
@@ -264,6 +268,8 @@ public static class AvatarRecognition
             config.ChascaSmoothRotateEnabled,
             config.ChascaSmoothRotateSpeed,
             config.ChascaRotateStepAngle,
+            config.ChascaAimForceX,
+            config.ChascaAimForceY,
             config.DamageNumberRecognitionMode);
     }
 

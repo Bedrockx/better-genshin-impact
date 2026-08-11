@@ -78,6 +78,8 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         ChascaSmoothRotateEnabled = autoFightConfig.ChascaSmoothRotateEnabled;
         ChascaSmoothRotateSpeed = autoFightConfig.ChascaSmoothRotateSpeed;
         ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
+        ChascaAimForceX = autoFightConfig.ChascaAimForceX;
+        ChascaAimForceY = autoFightConfig.ChascaAimForceY;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
@@ -120,8 +122,10 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public double ChascaBulletThreshold { get; set; } = 0.8;
     public int ChascaSequenceSlotCount { get; set; } = 2;
     public bool ChascaSmoothRotateEnabled { get; set; } = false;
-    public double ChascaSmoothRotateSpeed { get; set; } = 120;
+    public double ChascaSmoothRotateSpeed { get; set; } = 80;
     public double ChascaRotateStepAngle { get; set; } = 50;
+    public double ChascaAimForceX { get; set; } = 0.2625;
+    public double ChascaAimForceY { get; set; } = 0.1875;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -230,6 +234,8 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         ChascaSmoothRotateEnabled = autoFightConfig.ChascaSmoothRotateEnabled;
         ChascaSmoothRotateSpeed = autoFightConfig.ChascaSmoothRotateSpeed;
         ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
+        ChascaAimForceX = autoFightConfig.ChascaAimForceX;
+        ChascaAimForceY = autoFightConfig.ChascaAimForceY;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
     }
