@@ -238,6 +238,24 @@ public partial class AutoFightConfig : ObservableObject
     private double _chascaStableTime = 0.5;
 
     /// <summary>
+    /// 恰斯卡下压力度：水平旋转索敌时叠加的垂直下压系数（1=参考恰斯卡 charge 平均 x/y 比例）
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaPressStrength = 1;
+
+    /// <summary>
+    /// 恰斯卡初始旋转力度（像素/次）：飞行索敌首次水平旋转的水平位移量，之后根据实测旋转角度自适应校准
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaInitialRotateX = 1000;
+
+    /// <summary>
+    /// 恰斯卡子弹识别阈值（0-1）：子弹槽位元素特征评分需超过该值才判定为对应元素，否则视为空
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaBulletThreshold = 0.5;
+
+    /// <summary>
     /// 索敌识别间隔（毫秒）
     /// </summary>
     [ObservableProperty]

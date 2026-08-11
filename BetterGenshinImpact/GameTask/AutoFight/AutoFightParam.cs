@@ -70,6 +70,9 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
         ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaPressStrength = autoFightConfig.ChascaPressStrength;
+        ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
+        ChascaBulletThreshold = autoFightConfig.ChascaBulletThreshold;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
@@ -106,6 +109,9 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public bool DrawRecognitionResults { get; set; } = true;
     public double LockLostWaitTime { get; set; } = 0.5;
     public double ChascaStableTime { get; set; } = 0.5;
+    public double ChascaPressStrength { get; set; } = 1;
+    public double ChascaInitialRotateX { get; set; } = 1000;
+    public double ChascaBulletThreshold { get; set; } = 0.5;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -206,6 +212,9 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
         ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaPressStrength = autoFightConfig.ChascaPressStrength;
+        ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
+        ChascaBulletThreshold = autoFightConfig.ChascaBulletThreshold;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
     }
