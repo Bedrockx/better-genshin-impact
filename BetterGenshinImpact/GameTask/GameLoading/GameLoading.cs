@@ -264,8 +264,24 @@ public class GameLoadingTrigger : ITaskTrigger
         {
             // 非联动启动原神：第一次循环尝试返回主界面（跳过自动进入游戏过程：自动开门、点击进入游戏、领月卡等）
             _logger.LogInformation("非联动启动原神，尝试返回主界面");
-            new ReturnMainUiTask().Start(CancellationContext.Instance.Cts.Token).GetAwaiter().GetResult();
-            _linkedStartReturnMainUiTried = true;
+            try
+            {
+                new ReturnMainUiTask().Start(CancellationContext.Instance.Cts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                // 任务已终止等场景下 Cts 处于取消状态，Delay 会立即抛异常，视为本次尝试未生效
+                _logger.LogInformation("非联动启动返回主界面被取消");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "非联动启动返回主界面失败");
+            }
+            finally
+            {
+                // 无论成功失败都标记为已尝试，避免任务结束后触发器每 2 秒重复执行并持续输出日志
+                _linkedStartReturnMainUiTried = true;
+            }
             return;
         }
         // 非联动启动且已尝试过返回主界面（失败）：后续循环走原有逻辑（主界面判断、适龄提示、进入游戏等）
