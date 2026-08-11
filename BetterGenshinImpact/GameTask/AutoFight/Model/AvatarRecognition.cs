@@ -24,6 +24,9 @@ public sealed record VisualRecognitionConfig(
     bool DrawRecognitionResults = true,
     double LockLostWaitTime = 0.5,
     double ChascaStableTime = 0.5,
+    double ChascaPressStrength = 1,
+    double ChascaInitialRotateX = 1000,
+    double ChascaBulletThreshold = 0.5,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
@@ -231,6 +234,9 @@ public static class AvatarRecognition
                 param.DrawRecognitionResults,
                 param.LockLostWaitTime,
                 param.ChascaStableTime,
+                param.ChascaPressStrength,
+                param.ChascaInitialRotateX,
+                param.ChascaBulletThreshold,
                 param.DamageNumberRecognitionMode);
         }
 
@@ -240,6 +246,9 @@ public static class AvatarRecognition
             config.DrawRecognitionResults,
             config.LockLostWaitTime,
             config.ChascaStableTime,
+            config.ChascaPressStrength,
+            config.ChascaInitialRotateX,
+            config.ChascaBulletThreshold,
             config.DamageNumberRecognitionMode);
     }
 

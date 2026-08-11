@@ -1681,6 +1681,60 @@
                                             Margin="0,0,36,0"
                                             Text="{Binding PathingConfig.AutoFightConfig.ChascaStableTime}" />
                             </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="恰斯卡下压力度"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="恰斯卡飞行旋转索敌时叠加的垂直下压系数（1=参考恰斯卡蓄力平均视角下压幅度）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ChascaPressStrength}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="恰斯卡初始旋转力度"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="恰斯卡飞行索敌首次水平旋转的水平位移量（默认1000，之后根据实测旋转角度自适应校准）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ChascaInitialRotateX}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="恰斯卡子弹识别阈值（0-1）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="恰斯卡子弹槽位元素特征评分需超过该值才判定为对应元素，否则视为空（默认0.5）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ChascaBulletThreshold}" />
+                            </Grid>
                             <Grid Margin="16,8,16,16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
