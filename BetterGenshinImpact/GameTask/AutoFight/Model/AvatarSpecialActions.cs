@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Vanara.PInvoke;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
 
@@ -1257,6 +1258,9 @@ public static class AvatarSpecialAction
             {
                 using (AvatarRecognition.BeginExclusiveOperation())
                 {
+                    // 平滑旋转控制（声明于 try 外，保证 finally 中可取消独立异步旋转循环）
+                    var smoothRotateCts = CancellationTokenSource.CreateLinkedTokenSource(avatar.Ct);
+                    Task smoothRotateTask = null!;
                     try
                     {
                     // 第一步：确认恰斯卡状态为飞行
@@ -1299,8 +1303,11 @@ public static class AvatarSpecialAction
                     float? prevAngle = null;
                     double cumulativeRotation = 0;
                     // 水平旋转力度（像素/次）：初始取配置值（恰斯卡初始旋转力度，默认 1000≈单次 30°），
-                    // 之后根据实测旋转角度自适应校准（目标单次旋转 50°）
+                    // 之后根据实测旋转角度自适应校准（目标单次旋转角度由配置"恰斯卡单次旋转角度"决定，默认 50°）
                     double rotateX = visConfig.ChascaInitialRotateX * dpi;
+                    // 单次旋转角度（度）：由配置决定（默认 50）。传奇血条存在（有目标）时单次旋转该角度，
+                    // 无目标（无血条连续旋转）时使用该值的一半
+                    double rotateStepAngle = visConfig.ChascaRotateStepAngle;
                     // 上一帧是否执行过水平旋转（用于下一帧实测角度自适应校准）
                     bool rotatedLastFrame = false;
                     // 旋转时实际使用的水平力度（px），供下一帧计算 实测角度÷力度 比例
@@ -1309,16 +1316,83 @@ public static class AvatarSpecialAction
                     List<double> angleRatios = new();
                     // 最近一次校准得到的中位数 角度÷力度 比例（供无血条连续旋转换算固定角度力度）
                     double lastMedianRatio = 0;
-                    // 无血条连续旋转模式：第一次由稳定时间触发后，不再等待稳定间隔，每帧旋转 25°，
+                    // 无血条连续旋转模式：第一次由稳定时间触发后，不再等待稳定间隔，每帧旋转"单次旋转角度的一半"（默认25°），
                     // 直到再次看到血条或伤害数字后重置（恢复稳定时间判定）
                     bool continuousRotating = false;
-                    // 子弹序列变化跟踪：至多保存两个历史子弹序列（每帧识别结果），用于检测子弹列表变化
-                    ChascaBulletType[]? bulletSeq1 = null;
-                    ChascaBulletType[]? bulletSeq2 = null;
-                    DateTime bulletSeq1Time = DateTime.UtcNow;
-                    DateTime bulletSeq2Time = DateTime.UtcNow;
+                    // 子弹序列变化跟踪：保存至多 N 个历史子弹序列（每帧识别结果），用于检测子弹列表变化。
+                    // N 由配置"恰斯卡序列槽数量"决定（默认 2，范围 1-5），识别结果与全部历史序列比较，
+                    // 序列变化时替换最旧的历史序列
+                    int seqSlotCount = Math.Clamp(visConfig.ChascaSequenceSlotCount, 1, 5);
+                    List<ChascaBulletType[]> bulletSeqs = new();
+                    List<DateTime> bulletSeqTimes = new();
                     // 退出条件4状态：传奇血条最后出现时间（本次第二步期间出现后，连续1.5秒未出现时触发下车）
                     DateTime? legendaryBarLastSeen = null;
+
+                    // 平滑转动模式：勾选"恰斯卡平滑转动"后启用，取代原有"无血条连续25°/帧"与"传奇血条间歇50°大旋转"两种旋转。
+                    // 无目标分支超过稳定时间后置旋转请求标志，由下方独立异步循环持续小步旋转（间隔较小、角度较小），
+                    // 转速根据主循环维护的视角-时间序列（orientationHistory）实测值与预期值自适应调节
+                    bool smoothRotateEnabled = visConfig.ChascaSmoothRotateEnabled;
+                    // 旋转请求标志（主循环写、旋转器线程读，经 Volatile 访问保证可见性）
+                    bool smoothRotateRequested = false;
+                    // 平滑旋转步进水平力度（px/步，主循环初始化、旋转器线程读取并调节，经 Volatile 访问）
+                    int smoothStepX = 0;
+                    // 当前是否存在传奇血条（主循环每帧更新、旋转器线程读取，经 Volatile 访问）：
+                    // 传奇血条存在（瞄准目标）时按配置转速旋转，无目标（无传奇血条）时转速翻倍
+                    bool smoothRotateLegendary = false;
+                    // 独立异步旋转循环：节奏不依赖主循环帧间隔，仅在旋转请求标志为 true 时旋转，
+                    // 否则等待一个帧间隔后 continue 跳过（避免忙等）
+                    smoothRotateTask = Task.Run(() =>
+                    {
+                        while (!smoothRotateCts.Token.IsCancellationRequested)
+                        {
+                            // 不满足旋转条件：等待一个帧间隔后跳过
+                            if (!Volatile.Read(ref smoothRotateRequested))
+                            {
+                                Sleep(frameIntervalMs, smoothRotateCts.Token);
+                                continue;
+                            }
+                            // 预期转速（度/秒，可配置）：传奇血条存在时用配置值，无目标（无传奇血条）时翻倍
+                            double expectedSmoothRotateSpeed = Volatile.Read(ref smoothRotateLegendary)
+                                ? visConfig.ChascaSmoothRotateSpeed
+                                : visConfig.ChascaSmoothRotateSpeed * 2;
+                            // 先从主循环维护的视角-时间序列评估实际转速，与预期转速比对后按比例调节步进力度（限幅防振荡）
+                            double actualSpeed = 0;
+                            lock (orientationHistory)
+                            {
+                                if (orientationHistory.Count >= 5)
+                                {
+                                    var oldest = orientationHistory[orientationHistory.Count - 5];
+                                    var newest = orientationHistory[orientationHistory.Count - 1];
+                                    double span = (newest.Time - oldest.Time).TotalSeconds;
+                                    if (span > 0.05)
+                                    {
+                                        double dAngle = newest.Angle - oldest.Angle;
+                                        if (dAngle > 180) dAngle -= 360;
+                                        else if (dAngle < -180) dAngle += 360;
+                                        actualSpeed = Math.Abs(dAngle) / span;
+                                    }
+                                }
+                            }
+                            if (actualSpeed > 1)
+                            {
+                                double factor = Math.Clamp(expectedSmoothRotateSpeed / actualSpeed, 0.2, 5.0);
+                                if (Math.Abs(factor - 1) > 0.1)
+                                {
+                                    Volatile.Write(ref smoothStepX,
+                                        (int)Math.Clamp(Volatile.Read(ref smoothStepX) * factor, 1, 2000));
+                                }
+                            }
+                            // 按调节后的步进力度小角度旋转一次
+                            int stepX = Volatile.Read(ref smoothStepX);
+                            if (stepX > 0)
+                            {
+                                Simulation.SendInput.Mouse.MoveMouseBy(stepX,
+                                    (int)(visConfig.ChascaPressStrength * stepX * 0.194));
+                            }
+                            // 独立于主循环帧的步进间隔（约62步/秒，10°级小步连续旋转）
+                            Sleep(16, smoothRotateCts.Token);
+                        }
+                    }, avatar.Ct);
 
                     // 局部函数：下车动作（松开左键 → 长按 E 落地 → 检测 E 进入 CD → 松开 E），2 秒超时兜底防止卡死
                     void LandChasca()
@@ -1375,9 +1449,12 @@ public static class AvatarSpecialAction
                                 break;
                             }
 
-                            // 获取当前视角朝向并记录
+                            // 获取当前视角朝向并记录（加锁：平滑旋转器线程会并发读取该序列评估转速）
                             var angle = CameraOrientation.Compute(capture.SrcMat);
-                            orientationHistory.Add((angle, DateTime.UtcNow));
+                            lock (orientationHistory)
+                            {
+                                orientationHistory.Add((angle, DateTime.UtcNow));
+                            }
                             // 累计旋转（距上次识别到目标后重新计数）：相邻帧角度差归一化到 (-180,180] 后累加
                             float delta = 0;
                             if (prevAngle.HasValue)
@@ -1394,6 +1471,8 @@ public static class AvatarSpecialAction
                             var bars = AvatarRecognition.FindBloodBars(capture);
                             var valid = bars.Where(b => b.x > (int)(200 * AssetScale)).ToList();
                             var hasLegendaryBar = valid.Any(b => AvatarRecognition.IsLegendaryBar(b.x, b.y));
+                            // 同步传奇血条状态给平滑旋转器：传奇血条存在时按配置转速，无目标时转速翻倍
+                            Volatile.Write(ref smoothRotateLegendary, hasLegendaryBar);
 
                             // 退出条件4状态维护：记录传奇血条最后出现时间
                             if (hasLegendaryBar)
@@ -1403,8 +1482,8 @@ public static class AvatarSpecialAction
 
                             // 自适应旋转力度：对 实测角度÷使用力度 的比例滑动取中位数，据此预测当前力度的单次旋转角并校准
                             // 中位数对异常值（角度识别误差、画面抖动导致的离群测量）稳健，窗口避免无限累积导致调节迟钝
-                            // 预期单次旋转角度：统一 50°（传奇血条与无血条场景一致）
-                            // 调节与补转分离：每次旋转后先按中位数预测调节力度（向 50° 收敛），
+                            // 预期单次旋转角度：由配置"恰斯卡单次旋转角度"决定（默认 50°），传奇血条与无血条场景校准目标一致
+                            // 调节与补转分离：每次旋转后先按中位数预测调节力度（向目标角度收敛），
                             // 再判断实测角度是否超容差（<60% 或 >130%），超差则用角度差值补转并跳过后续步骤
                             if (rotatedLastFrame)
                             {
@@ -1420,8 +1499,8 @@ public static class AvatarSpecialAction
                                     var sorted = angleRatios.OrderBy(r => r).ToArray();
                                     var medianRatio = sorted[sorted.Length / 2];
                                     lastMedianRatio = medianRatio; // 供无血条连续旋转换算固定角度力度
-                                    // 预期单次旋转角度：统一 50°
-                                    double expected = 50;
+                                    // 预期单次旋转角度：由配置决定（默认 50°）
+                                    double expected = rotateStepAngle;
                                     // 按中位数比例预测当前力度的单次旋转角度，并向预期收敛（始终执行，避免力度停在旧值反复补转）
                                     var predicted = medianRatio * rotateX;
                                     if (predicted < expected)
@@ -1459,6 +1538,7 @@ public static class AvatarSpecialAction
                                 // 存在普通血条且不存在传奇血条：参考桑多涅逻辑，瞄准最近血条中心
                                 // 中心点使用 1080p 的 (960,300)，将敌人置于屏幕偏上位置（恰斯卡相对俯视）
                                 continuousRotating = false; // 再次看到血条，重置连续旋转状态
+                                Volatile.Write(ref smoothRotateRequested, false); // 再次看到血条，停止平滑旋转
                                 var preAimX = (int)(960 * AssetScale);
                                 var preAimY = (int)(300 * AssetScale);
                                 var nearest = valid.OrderBy(b =>
@@ -1479,6 +1559,7 @@ public static class AvatarSpecialAction
                                 if (damageResult.HasValue)
                                 {
                                     continuousRotating = false; // 再次看到伤害数字，重置连续旋转状态
+                                    Volatile.Write(ref smoothRotateRequested, false); // 再次看到伤害数字，停止平滑旋转
                                     var (dcx, dcy, _, _, _, _, _) = damageResult.Value;
                                     Simulation.SendInput.Mouse.MoveMouseBy(
                                         (int)((dcx - (int)(960 * AssetScale)) * 0.0875 * dpi),
@@ -1504,56 +1585,90 @@ public static class AvatarSpecialAction
                                         lastEventTime = DateTime.UtcNow;
                                         cumulativeRotation = 0; // 识别到子弹喷射，累计旋转重新计数
                                         stableTimeMultiplier = 2; // 喷射后下一次稳定时间判定阈值翻倍
+                                        Volatile.Write(ref smoothRotateRequested, false); // 子弹喷射中，停止平滑旋转
                                     }
                                     else
                                     {
-                                        // 子弹变化跟踪：当前帧序列与已存序列比较，无相同序列则更新时间，并替换两个历史序列中较旧的
-                                        var seqSame = (bulletSeq1 != null && ChascaSeqEquals(bullets, bulletSeq1))
-                                                   || (bulletSeq2 != null && ChascaSeqEquals(bullets, bulletSeq2));
+                                        // 子弹变化跟踪：当前帧序列与全部历史序列比较，无相同序列则更新时间，
+                                        // 历史序列不足数量时追加，否则替换最旧的历史序列
+                                        bool seqSame = false;
+                                        foreach (var seq in bulletSeqs)
+                                        {
+                                            if (ChascaSeqEquals(bullets, seq)) { seqSame = true; break; }
+                                        }
                                         if (!seqSame)
                                         {
                                             lastEventTime = DateTime.UtcNow;
                                             cumulativeRotation = 0; // 子弹序列变化，累计旋转重新计数
-                                            if (bulletSeq1 == null || (bulletSeq2 != null && bulletSeq2Time < bulletSeq1Time))
+                                            Volatile.Write(ref smoothRotateRequested, false); // 子弹序列变化，停止平滑旋转
+                                            if (bulletSeqs.Count < seqSlotCount)
                                             {
-                                                bulletSeq1 = bullets;
-                                                bulletSeq1Time = DateTime.UtcNow;
+                                                bulletSeqs.Add(bullets);
+                                                bulletSeqTimes.Add(DateTime.UtcNow);
                                             }
                                             else
                                             {
-                                                bulletSeq2 = bullets;
-                                                bulletSeq2Time = DateTime.UtcNow;
+                                                // 替换最旧的历史序列（记录时间最早者）
+                                                int oldestIdx = 0;
+                                                for (int k = 1; k < bulletSeqs.Count; k++)
+                                                {
+                                                    if (bulletSeqTimes[k] < bulletSeqTimes[oldestIdx]) oldestIdx = k;
+                                                }
+                                                bulletSeqs[oldestIdx] = bullets;
+                                                bulletSeqTimes[oldestIdx] = DateTime.UtcNow;
                                             }
                                         }
                                     }
 
                                     // 旋转索敌：无血条时进入连续旋转模式——第一次由稳定时间触发后不再等待稳定间隔，
-                                    // 每帧旋转 25° 直到再次看到血条或伤害数字（识别处重置 continuousRotating）
-                                    // 传奇血条存在（有目标）：保持稳定时间判定，单次旋转 50°（自适应力度）
-                                    if (!hasLegendaryBar)
+                                    // 每帧旋转"单次旋转角度的一半"直到再次看到血条或伤害数字（识别处重置 continuousRotating）
+                                    // 传奇血条存在（有目标）：保持稳定时间判定，单次旋转"单次旋转角度"（自适应力度）
+                                    // 勾选"恰斯卡平滑转动"时以上两种旋转均被平滑转动取代
+                                    if (smoothRotateEnabled)
+                                    {
+                                        // 平滑转动：超过稳定时间（传奇血条存在时还须过起飞后不旋转观察期）后置旋转请求标志，
+                                        // 由独立异步旋转循环持续小步旋转（间隔较小、角度较小，转速自适应调节），无需间隔等待
+                                        if ((!hasLegendaryBar || (DateTime.UtcNow - startTime).TotalSeconds >= visConfig.ChascaNoRotateBeforeSeconds) &&
+                                            (DateTime.UtcNow - lastEventTime).TotalSeconds > chascaStableTime * stableTimeMultiplier)
+                                        {
+                                            if (!Volatile.Read(ref smoothRotateRequested))
+                                            {
+                                                // 首次进入平滑旋转：按当前校准力度换算约 10° 步进（无校准样本时取初始力度 10%）
+                                                double stepDeg = 10;
+                                                Volatile.Write(ref smoothStepX,
+                                                    (int)Math.Max(1, lastMedianRatio > 0 ? stepDeg / lastMedianRatio : rotateX * 0.1));
+                                                Logger.LogInformation("恰斯卡特化：平滑转动开始（每步约{F0}°，转速自适应调节）", stepDeg);
+                                            }
+                                            Volatile.Write(ref smoothRotateRequested, true);
+                                        }
+                                    }
+                                    else if (!hasLegendaryBar)
                                     {
                                         if (!continuousRotating)
                                         {
-                                            // 未开始连续旋转：等待稳定时间后触发第一次旋转（25°）
+                                            // 未开始连续旋转：等待稳定时间后触发第一次旋转（单次旋转角度的一半）
                                             if ((DateTime.UtcNow - lastEventTime).TotalSeconds > chascaStableTime * stableTimeMultiplier)
                                             {
-                                                Logger.LogInformation("恰斯卡特化：无血条且无伤害数字，开始连续旋转索敌（每帧25°）");
-                                                RotateStep(25);
+                                                Logger.LogInformation("恰斯卡特化：无血条且无伤害数字，开始连续旋转索敌（每帧{F0}°）", rotateStepAngle / 2);
+                                                RotateStep(rotateStepAngle / 2);
                                                 continuousRotating = true;
                                                 stableTimeMultiplier = 1;
                                             }
                                         }
                                         else
                                         {
-                                            // 连续旋转：每帧转 25°，不等待稳定间隔
-                                            RotateStep(25);
+                                            // 连续旋转：每帧转"单次旋转角度的一半"，不等待稳定间隔
+                                            RotateStep(rotateStepAngle / 2);
                                         }
                                     }
                                     else
                                     {
-                                        // 传奇血条存在：重置连续旋转状态，按稳定时间单次旋转 50°
+                                        // 传奇血条存在：重置连续旋转状态，按稳定时间单次旋转"单次旋转角度"
                                         continuousRotating = false;
-                                        if ((DateTime.UtcNow - lastEventTime).TotalSeconds > chascaStableTime * stableTimeMultiplier)
+                                        // 传奇血条存在时，起飞后前 chascaNoRotateBeforeSeconds 秒不执行旋转
+                                        //（开局观察期，默认 1 秒，配置为 0 时立即按稳定时间旋转）
+                                        if ((DateTime.UtcNow - startTime).TotalSeconds >= visConfig.ChascaNoRotateBeforeSeconds &&
+                                            (DateTime.UtcNow - lastEventTime).TotalSeconds > chascaStableTime * stableTimeMultiplier)
                                         {
                                             rotatedLastFrame = true; // 下一帧用实测旋转角度自适应校准力度
                                             rotateXUsed = rotateX; // 记录本次旋转实际使用的力度，供下一帧计算 角度÷力度 比例
@@ -1594,6 +1709,9 @@ public static class AvatarSpecialAction
                     }
                     finally
                     {
+                        // 取消平滑旋转独立异步循环，避免旋转器在第二步结束后继续旋转/泄漏
+                        smoothRotateCts.Cancel();
+                        try { smoothRotateTask.Wait(1000); } catch (Exception) { }
                         // 保证异常路径下左键与 E 键均释放，避免按键卡住
                         Simulation.SendInput.Mouse.LeftButtonUp();
                         Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyUp);

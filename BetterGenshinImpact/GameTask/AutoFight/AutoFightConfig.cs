@@ -236,6 +236,13 @@ public partial class AutoFightConfig : ObservableObject
     private double _chascaStableTime = 0.5;
 
     /// <summary>
+    /// 恰斯卡起飞后不旋转（秒）：传奇血条存在时，起飞后前该秒数不执行旋转索敌（开局观察期）。
+    /// 默认 1 秒；设置为 0 时起飞后立即按稳定时间旋转
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaNoRotateBeforeSeconds = 1;
+
+    /// <summary>
     /// 恰斯卡下压力度：水平旋转索敌时叠加的垂直下压系数（1=参考恰斯卡 charge 平均 x/y 比例）
     /// </summary>
     [ObservableProperty]
@@ -252,6 +259,33 @@ public partial class AutoFightConfig : ObservableObject
     /// </summary>
     [ObservableProperty]
     private double _chascaBulletThreshold = 0.8;
+
+    /// <summary>
+    /// 恰斯卡序列槽数量（1-5）：保存的历史子弹序列数量，每帧识别结果与全部历史序列比较判定子弹是否变化，
+    /// 序列变化时替换最旧的历史序列。默认 2（与旧版本一致）
+    /// </summary>
+    [ObservableProperty]
+    private int _chascaSequenceSlotCount = 2;
+
+    /// <summary>
+    /// 恰斯卡平滑转动：勾选后取代原有"无血条连续25°/帧"与"传奇血条间歇50°大旋转"两种旋转，
+    /// 无目标分支超过稳定时间后由独立异步循环持续小步旋转（间隔较小、角度较小，转速随视角-时间序列自适应调节）
+    /// </summary>
+    [ObservableProperty]
+    private bool _chascaSmoothRotateEnabled = false;
+
+    /// <summary>
+    /// 恰斯卡平滑转动预期转速（度/秒）：平滑旋转时以视角-时间序列实测转速与该值比对，按比例自适应调节步进力度
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaSmoothRotateSpeed = 120;
+
+    /// <summary>
+    /// 恰斯卡单次旋转角度（度）：未勾选平滑转动时，传奇血条存在（有目标）时单次旋转该角度；
+    /// 无目标（无血条连续旋转）时使用该值的一半。默认 50 度（无目标时 25 度，与旧版本一致）
+    /// </summary>
+    [ObservableProperty]
+    private double _chascaRotateStepAngle = 50;
 
     /// <summary>
     /// 索敌识别间隔（毫秒）

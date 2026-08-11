@@ -70,9 +70,14 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
         ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaNoRotateBeforeSeconds = autoFightConfig.ChascaNoRotateBeforeSeconds;
         ChascaPressStrength = autoFightConfig.ChascaPressStrength;
         ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
         ChascaBulletThreshold = autoFightConfig.ChascaBulletThreshold;
+        ChascaSequenceSlotCount = autoFightConfig.ChascaSequenceSlotCount;
+        ChascaSmoothRotateEnabled = autoFightConfig.ChascaSmoothRotateEnabled;
+        ChascaSmoothRotateSpeed = autoFightConfig.ChascaSmoothRotateSpeed;
+        ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
@@ -109,9 +114,14 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public bool DrawRecognitionResults { get; set; } = true;
     public double LockLostWaitTime { get; set; } = 0.5;
     public double ChascaStableTime { get; set; } = 0.5;
+    public double ChascaNoRotateBeforeSeconds { get; set; } = 1;
     public double ChascaPressStrength { get; set; } = 1;
     public double ChascaInitialRotateX { get; set; } = 1000;
     public double ChascaBulletThreshold { get; set; } = 0.8;
+    public int ChascaSequenceSlotCount { get; set; } = 2;
+    public bool ChascaSmoothRotateEnabled { get; set; } = false;
+    public double ChascaSmoothRotateSpeed { get; set; } = 120;
+    public double ChascaRotateStepAngle { get; set; } = 50;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -212,9 +222,14 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
         ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaNoRotateBeforeSeconds = autoFightConfig.ChascaNoRotateBeforeSeconds;
         ChascaPressStrength = autoFightConfig.ChascaPressStrength;
         ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
         ChascaBulletThreshold = autoFightConfig.ChascaBulletThreshold;
+        ChascaSequenceSlotCount = autoFightConfig.ChascaSequenceSlotCount;
+        ChascaSmoothRotateEnabled = autoFightConfig.ChascaSmoothRotateEnabled;
+        ChascaSmoothRotateSpeed = autoFightConfig.ChascaSmoothRotateSpeed;
+        ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
     }
