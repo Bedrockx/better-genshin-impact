@@ -103,6 +103,20 @@ public static class AvatarSpecialAction
     private static readonly FeatureScorerExportData?[,] _chascaBulletModels = new FeatureScorerExportData?[6, 5];
 
     /// <summary>
+    /// 恰斯卡 6 个子弹槽位区域（1080p 基准绝对坐标，由各槽位特征模型坐标 + 余量圈定，斜排于屏幕右上至右下）。
+    /// 伤害数字识别需排除这些区域，避免彩色元素图标被误判为伤害数字。
+    /// </summary>
+    private static readonly OpenCvSharp.Rect[] ChascaBulletRects =
+    [
+        new(935, 112, 60, 60),   // 槽位0（特征 957,131）
+        new(995, 140, 72, 45),   // 槽位1（特征 1004-1054, 152-166）
+        new(1090, 140, 76, 75),  // 槽位2（特征 1102-1154, 155-204）
+        new(1160, 232, 45, 48),  // 槽位3（特征 1170-1191, 241-264）
+        new(1228, 312, 72, 58),  // 槽位4（特征 1240-1286, 324-356）
+        new(1270, 400, 52, 58),  // 槽位5（特征 1284-1308, 416-444）
+    ];
+
+    /// <summary>
     /// 恰斯卡六槽位 × 五元素子弹特征模型填充（硬编码自自训练工具导出的 JSON）
     /// 受子弹填充规则限制，部分位置仅存在部分元素模型，缺失项保持 null（识别时跳过）
     /// </summary>
@@ -1535,6 +1549,10 @@ public static class AvatarSpecialAction
 
                         using (var capture = CaptureToRectArea())
                         {
+                            // 本帧识别结果绘制列表（受"绘制识别结果"配置控制，参考桑多涅特化逻辑）
+                            var drawResults = visConfig.DrawRecognitionResults;
+                            var drawList = new System.Collections.Generic.List<View.Drawable.RectDrawable>();
+
                             // 退出条件2：不处于飞行状态（已下车）
                             if (!ChascaIsFlyingByPixel(capture.SrcMat))
                             {
@@ -1560,6 +1578,8 @@ public static class AvatarSpecialAction
                             // 往回转补偿进行中：本帧协作空转（不识别不旋转），避免主循环的鼠标操作与回转循环冲突
                             if (Volatile.Read(ref rollbackActive))
                             {
+                                // 空转帧无识别结果：提交空列表清空上帧绘制，避免画面移动后框错位
+                                View.Drawable.VisionContext.Instance().DrawContent.PutOrRemoveRectList("ChascaSpecialized", drawList);
                                 Sleep(frameIntervalMs, avatar.Ct);
                                 continue;
                             }
@@ -1576,7 +1596,15 @@ public static class AvatarSpecialAction
                             // 红色箭头检测：仅平滑水平旋转活跃（旋转器线程正在旋转）或向上旋转中执行，避免无谓的每帧识别开销
                             if (Volatile.Read(ref smoothRotateRequested) || verticalRotateActive)
                             {
-                                var redArrows = AvatarRecognition.FindRedArrowAngles(capture);
+                                var arrowRects = new List<OpenCvSharp.Rect>();
+                                var redArrows = AvatarRecognition.FindRedArrowAngles(capture, arrowRects);
+                                if (drawResults)
+                                {
+                                    foreach (var rect in arrowRects)
+                                    {
+                                        drawList.Add(capture.ToRectDrawable(rect, "chasca_arrow", _targetPen));
+                                    }
+                                }
 
                                 if (verticalRotateActive)
                                 {
@@ -1689,6 +1717,7 @@ public static class AvatarSpecialAction
                                         Simulation.SendInput.Mouse.MoveMouseBy((int)compensateX, (int)(visConfig.ChascaPressStrength * compensateX * 0.194));
                                         Sleep(frameIntervalMs, avatar.Ct); // 补转后额外等待一个帧间隔
                                         prevAngle = angle; // 补转后更新基准角度，保证下一帧累计旋转正确
+                                        View.Drawable.VisionContext.Instance().DrawContent.PutOrRemoveRectList("ChascaSpecialized", drawList);
                                         continue; // 跳过后续步骤（血条/伤害/子弹识别与稳定旋转），重新截图
                                     }
                                 }
@@ -1713,22 +1742,44 @@ public static class AvatarSpecialAction
                                 // 单次旋转力度为桑多涅逻辑的四分之三（0.35×0.75、0.25×0.75，原四分之一翻3倍）
                                 Simulation.SendInput.Mouse.MoveMouseBy(
                                     (int)(offsetX * 0.2625 * dpi), (int)(offsetY * 0.1875 * dpi));
+                                // 叠加层：最近血条绿色粗框（target），其余血条红色细框（blood），与桑多涅特化一致
+                                if (drawResults)
+                                {
+                                    foreach (var b in valid)
+                                    {
+                                        var rect = new OpenCvSharp.Rect(b.x, b.y, b.width, b.height);
+                                        bool isTarget = b.x == nearest.x && b.y == nearest.y &&
+                                                        b.width == nearest.width && b.height == nearest.height;
+                                        drawList.Add(capture.ToRectDrawable(rect,
+                                            isTarget ? "target" : "blood",
+                                            isTarget ? _targetPen : null));
+                                    }
+                                }
                                 cumulativeRotation = 0; // 识别到普通血条，累计旋转重新计数
                             }
                             else
                             {
                                 // 存在传奇血条 或 无任何血条：做伤害数字识别，瞄准有效伤害数字
                                 // 中心点使用 1080p 的 (960,360)，力度系数可配置（见 ChascaAimForceX/Y）
-                                var damageResult = AvatarRecognition.FindDamageNumber(capture);
+                                // 排除恰斯卡 6 个子弹槽位区域，避免彩色元素图标被误判为伤害数字
+                                var damageResult = AvatarRecognition.FindDamageNumber(capture, ChascaBulletRects);
                                 if (damageResult.HasValue)
                                 {
                                     continuousRotating = false; // 再次看到伤害数字，重置连续旋转状态
                                     Volatile.Write(ref smoothRotateRequested, false); // 再次看到伤害数字，停止平滑旋转
                                     verticalRotateActive = false; // 打断向上旋转（路径1：索敌已成功，不再恢复旋转）
-                                    var (dcx, dcy, _, _, _, _, _) = damageResult.Value;
+                                    var (dcx, dcy, _, dx, dy, dw, dh) = damageResult.Value;
                                     Simulation.SendInput.Mouse.MoveMouseBy(
                                         (int)((dcx - (int)(960 * AssetScale)) * visConfig.ChascaAimForceX * dpi),
                                         (int)((dcy - (int)(360 * AssetScale)) * visConfig.ChascaAimForceY * dpi));
+                                    if (drawResults)
+                                    {
+                                        // 叠加层：伤害数字区域绿色粗框
+                                        drawList.Add(capture.ToRectDrawable(
+                                            new OpenCvSharp.Rect(dx, dy, dw, dh),
+                                            "damage_target",
+                                            _targetPen));
+                                    }
                                     lastEventTime = DateTime.UtcNow; // 识别到伤害数字，视为活动事件
                                     cumulativeRotation = 0; // 识别到伤害数字，累计旋转重新计数
                                 }
@@ -1882,6 +1933,9 @@ public static class AvatarSpecialAction
                                 LandChasca();
                                 break;
                             }
+
+                            // 提交本帧识别结果叠加层（血条/伤害数字/红色箭头框，受"绘制识别结果"配置控制）
+                            View.Drawable.VisionContext.Instance().DrawContent.PutOrRemoveRectList("ChascaSpecialized", drawList);
                         }
 
                         // 每帧末尾等待帧间间隔
@@ -1895,6 +1949,8 @@ public static class AvatarSpecialAction
                         // 取消平滑旋转独立异步循环，避免旋转器在第二步结束后继续旋转/泄漏
                         smoothRotateCts.Cancel();
                         try { smoothRotateTask.Wait(1000); } catch (Exception) { }
+                        // 清除识别结果叠加层（与桑多涅特化一致，防止退出后残留绘制）
+                        View.Drawable.VisionContext.Instance().DrawContent.RemoveRect("ChascaSpecialized");
                         // 保证异常路径下左键与 E 键均释放，避免按键卡住
                         Simulation.SendInput.Mouse.LeftButtonUp();
                         Simulation.SendInput.SimulateAction(GIActions.ElementalSkill, KeyType.KeyUp);
