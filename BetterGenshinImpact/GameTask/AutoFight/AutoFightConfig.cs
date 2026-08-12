@@ -243,6 +243,12 @@ public partial class AutoFightConfig : ObservableObject
     private double _chascaStableTime = 0.5;
 
     /// <summary>
+    /// 自动保存截图（测试用）：恰斯卡特化逻辑期间每帧将截图保存
+    /// </summary>
+    [ObservableProperty]
+    private bool _chascaAutoSaveScreenshot = false;
+
+    /// <summary>
     /// 恰斯卡起飞后不旋转（秒）：传奇血条存在时，起飞后前该秒数不执行旋转索敌（开局观察期）。
     /// 默认 1 秒；设置为 0 时起飞后立即按稳定时间旋转
     /// </summary>
