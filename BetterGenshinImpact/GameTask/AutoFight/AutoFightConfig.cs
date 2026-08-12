@@ -324,6 +324,14 @@ public partial class AutoFightConfig : ObservableObject
     private double _chascaRollbackAngle = 15;
 
     /// <summary>
+    /// 恰斯卡敌人下方检测触发帧数：平滑旋转期间，所有红色箭头持续处于屏幕正下方45度
+    /// （正下±22.5度）范围内时计数加一，否则减一（下限0）；超过该值时清零并执行一次强力下压。
+    /// 默认 20（默认配置 80°/s、50ms/帧 下约旋转 90 度）
+    /// </summary>
+    [ObservableProperty]
+    private int _chascaDownArrowPressThreshold = 20;
+
+    /// <summary>
     /// 索敌识别间隔（毫秒）
     /// </summary>
     [ObservableProperty]

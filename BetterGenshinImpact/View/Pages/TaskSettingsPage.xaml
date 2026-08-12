@@ -1313,6 +1313,37 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <ui:TextBlock FontTypography="Body"
+                                                  Text="恰斯卡敌人下方检测触发帧数"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="平滑旋转期间红色箭头持续处于正下方45度（正下±22.5度）时计数，超过该值清零并强力下压（默认20，约90度）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding Config.AutoFightConfig.ChascaDownArrowPressThreshold}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.ChascaSmoothRotateEnabled}" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
                                                   Text="恰斯卡平滑转动预期转速（度/秒）"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
