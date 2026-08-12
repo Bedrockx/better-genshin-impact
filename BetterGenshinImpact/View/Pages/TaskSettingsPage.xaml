@@ -1006,6 +1006,33 @@
                                             Margin="0,0,36,0"
                                             Text="{Binding Config.AutoFightConfig.ChascaStableTime}" />
                             </Grid>
+                            <Grid Margin="16,8,16,8">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="自动保存截图"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="测试用，恰斯卡特化逻辑期间每帧将截图保存"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch Grid.Column="1"
+                                                 Margin="0,0,24,0"
+                                                 IsChecked="{Binding Config.AutoFightConfig.ChascaAutoSaveScreenshot, Mode=TwoWay}" />
+                            </Grid>
                             <Grid Margin="16,4,16,16">
                                 <Grid.Style>
                                     <Style TargetType="Grid">

@@ -70,6 +70,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
         ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaAutoSaveScreenshot = autoFightConfig.ChascaAutoSaveScreenshot;
         ChascaNoRotateBeforeSeconds = autoFightConfig.ChascaNoRotateBeforeSeconds;
         ChascaPressStrength = autoFightConfig.ChascaPressStrength;
         ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
@@ -119,6 +120,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public bool DrawRecognitionResults { get; set; } = true;
     public double LockLostWaitTime { get; set; } = 0.5;
     public double ChascaStableTime { get; set; } = 0.5;
+    public bool ChascaAutoSaveScreenshot { get; set; } = false;
     public double ChascaNoRotateBeforeSeconds { get; set; } = 1;
     public double ChascaPressStrength { get; set; } = 1;
     public double ChascaInitialRotateX { get; set; } = 1000;
@@ -232,6 +234,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
         ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaAutoSaveScreenshot = autoFightConfig.ChascaAutoSaveScreenshot;
         ChascaNoRotateBeforeSeconds = autoFightConfig.ChascaNoRotateBeforeSeconds;
         ChascaPressStrength = autoFightConfig.ChascaPressStrength;
         ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;

@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1552,6 +1553,21 @@ public static class AvatarSpecialAction
                             // 本帧识别结果绘制列表（受"绘制识别结果"配置控制，参考桑多涅特化逻辑）
                             var drawResults = visConfig.DrawRecognitionResults;
                             var drawList = new System.Collections.Generic.List<View.Drawable.RectDrawable>();
+
+                            // 测试用：开启"自动保存截图"后，本帧截图保存到 log\screenshot\（与截图快捷键保存路径一致）
+                            if (visConfig.ChascaAutoSaveScreenshot)
+                            {
+                                try
+                                {
+                                    var shotDir = Global.Absolute(@"log\screenshot\");
+                                    Directory.CreateDirectory(shotDir);
+                                    Cv2.ImWrite(Path.Combine(shotDir, $@"{DateTime.Now:yyyyMMddHHmmssffff}.png"), capture.SrcMat);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Logger.LogDebug("恰斯卡自动保存截图失败: {Message}", ex.Message);
+                                }
+                            }
 
                             // 退出条件2：不处于飞行状态（已下车）
                             if (!ChascaIsFlyingByPixel(capture.SrcMat))
