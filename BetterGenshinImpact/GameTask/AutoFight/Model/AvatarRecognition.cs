@@ -36,6 +36,7 @@ public sealed record VisualRecognitionConfig(
     double ChascaAimForceY = 0.1875,
     double ChascaSprayPressForce = 100,
     double ChascaRollbackAngle = 15,
+    int ChascaDownArrowPressThreshold = 20,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
@@ -255,6 +256,7 @@ public static class AvatarRecognition
                 param.ChascaAimForceY,
                 param.ChascaSprayPressForce,
                 param.ChascaRollbackAngle,
+                param.ChascaDownArrowPressThreshold,
                 param.DamageNumberRecognitionMode);
         }
 
@@ -276,6 +278,7 @@ public static class AvatarRecognition
             config.ChascaAimForceY,
             config.ChascaSprayPressForce,
             config.ChascaRollbackAngle,
+            config.ChascaDownArrowPressThreshold,
             config.DamageNumberRecognitionMode);
     }
 
@@ -575,6 +578,24 @@ public static class AvatarRecognition
             await Task.Delay(50, CancellationToken.None);
             Simulation.SendInput.Mouse.MiddleButtonClick();
             VisionContext.Instance().DrawContent.RemoveRect("ContinuousTargeting");
+        }
+    }
+
+    /// <summary>
+    /// 识别屏幕中所有红色箭头，返回每个箭头到屏幕中心连线的角度（度）。
+    /// 识别到几个箭头返回几个角度，未识别到返回空列表。
+    /// 角度约定：右方为 0°，逆时针为正，范围 (-180, 180]。
+    /// </summary>
+    public static List<double> FindRedArrowAngles(ImageRegion? existingCapture = null)
+    {
+        var selfCapture = existingCapture == null ? CaptureToRectArea() : null;
+        using (selfCapture)
+        {
+            // TODO: 红色箭头识别（颜色阈值 + 形状/连通域分析），当前固定返回空列表
+            // 取图方式：var image = existingCapture ?? selfCapture!;
+            // 识别产出每个箭头中心 (ax, ay) 后，
+            // 角度 = Math.Atan2(ay - image.Height / 2, ax - image.Width / 2) 换算为度（逆时针为正，范围 (-180, 180]）
+            return new List<double>();
         }
     }
 }

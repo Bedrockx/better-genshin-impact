@@ -1344,6 +1344,16 @@ public static class AvatarSpecialAction
                     bool rollbackActive = false;
                     // 子弹喷射快速下压的上次触发时间（1 秒内置冷却，硬编码）
                     DateTime lastSprayPressTime = DateTime.MinValue;
+                    // 红色箭头下方检测计数：平滑水平旋转期间，所有红色箭头持续处于正下方45度
+                    // （正下±22.5度）区间时计数加一，否则减一（下限0）；超过配置阈值（默认20，约90度）
+                    // 时清零并执行一次强力下压（约5倍"伤害数字位于屏幕最下方"的瞄准力度）
+                    int downArrowCounter = 0;
+                    // 向上旋转状态：平滑水平旋转期间检测到红色箭头在正上方45度（正上±22.5度）区间时置 true
+                    // （暂停水平旋转），由主循环每帧向上旋转一步；被血条/伤害数字/子弹事件打断（路径1，
+                    // 索敌已成功不再旋转）或箭头连续3帧消失（路径2，恢复水平旋转）时复位
+                    bool verticalRotateActive = false;
+                    // 向上旋转期间箭头消失的连续帧数（连续3帧后退出向上旋转）
+                    int arrowLostFrames = 0;
                     // 平滑旋转步进水平力度（px/步，主循环初始化、旋转器线程读取并调节，经 Volatile 访问）。
                     // 仅在首次进入平滑旋转时初始化，暂停后恢复时沿用上次保存的力度断点（由 EMA 持续调节）
                     int smoothStepX = 0;
@@ -1562,6 +1572,63 @@ public static class AvatarSpecialAction
                                 else if (delta < -180) delta += 360;
                                 cumulativeRotation += delta;
                             }
+
+                            // 红色箭头检测：仅平滑水平旋转活跃（旋转器线程正在旋转）或向上旋转中执行，避免无谓的每帧识别开销
+                            if (Volatile.Read(ref smoothRotateRequested) || verticalRotateActive)
+                            {
+                                var redArrows = AvatarRecognition.FindRedArrowAngles(capture);
+
+                                if (verticalRotateActive)
+                                {
+                                    // 向上旋转中：任一箭头仍在上方区间 → 继续向上一步（步进力度沿用水平断点，主循环50ms帧间隔
+                                    // 相对旋转器16ms步进约慢3倍）；否则视为箭头消失，连续3帧后退出（路径2：恢复平滑水平旋转）
+                                    if (redArrows.Count > 0 && redArrows.Any(a => a >= -112.5 && a <= -67.5))
+                                    {
+                                        arrowLostFrames = 0;
+                                        Simulation.SendInput.Mouse.MoveMouseBy(0, -Volatile.Read(ref smoothStepX));
+                                    }
+                                    else
+                                    {
+                                        arrowLostFrames++;
+                                        if (arrowLostFrames >= 3)
+                                        {
+                                            verticalRotateActive = false;
+                                            arrowLostFrames = 0;
+                                            Volatile.Write(ref smoothRotateRequested, true); // 箭头消失，恢复平滑水平旋转
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    // 平滑水平旋转活跃：
+                                    // 1) 下方检测：所有红色箭头处于正下方45度（正下±22.5度）区间 → 计数+1，否则-1（下限0），
+                                    //    超过阈值（默认20，约90度）时清零并执行一次强力下压（约5倍"伤害数字位于屏幕最下方"的瞄准力度）
+                                    if (redArrows.Count > 0 && redArrows.All(a => a >= 67.5 && a <= 112.5))
+                                    {
+                                        downArrowCounter++;
+                                    }
+                                    else
+                                    {
+                                        downArrowCounter = Math.Max(0, downArrowCounter - 1);
+                                    }
+                                    if (downArrowCounter > visConfig.ChascaDownArrowPressThreshold)
+                                    {
+                                        downArrowCounter = 0;
+                                        Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(675 * AssetScale * dpi));
+                                    }
+                                    // 2) 上方检测：任一箭头处于正上方45度（正上±22.5度）区间 → 敌人很可能在上方，
+                                    //    暂停平滑水平旋转，开始向上旋转；被血条/伤害数字/子弹事件打断（路径1，不再恢复旋转）
+                                    //    或箭头连续3帧消失（路径2，恢复水平旋转）时退出
+                                    if (redArrows.Count > 0 && redArrows.Any(a => a >= -112.5 && a <= -67.5))
+                                    {
+                                        Volatile.Write(ref smoothRotateRequested, false);
+                                        verticalRotateActive = true;
+                                        arrowLostFrames = 0;
+                                        Simulation.SendInput.Mouse.MoveMouseBy(0, -Volatile.Read(ref smoothStepX));
+                                    }
+                                }
+                            }
+
                             // 血条识别：区分传奇血条与普通血条
                             // FindBloodBars 内部自动更新传奇血条跨帧追踪（与持续索敌共用静态追踪器，
                             // 开启持续索敌时跨帧识别信息可保留，此处不清空追踪器）
@@ -1635,6 +1702,7 @@ public static class AvatarSpecialAction
                                 // 中心点使用 1080p 的 (960,300)，将敌人置于屏幕偏上位置（恰斯卡相对俯视）
                                 continuousRotating = false; // 再次看到血条，重置连续旋转状态
                                 Volatile.Write(ref smoothRotateRequested, false); // 再次看到血条，停止平滑旋转
+                                verticalRotateActive = false; // 打断向上旋转（路径1：索敌已成功，不再恢复旋转）
                                 var preAimX = (int)(960 * AssetScale);
                                 var preAimY = (int)(300 * AssetScale);
                                 var nearest = valid.OrderBy(b =>
@@ -1656,6 +1724,7 @@ public static class AvatarSpecialAction
                                 {
                                     continuousRotating = false; // 再次看到伤害数字，重置连续旋转状态
                                     Volatile.Write(ref smoothRotateRequested, false); // 再次看到伤害数字，停止平滑旋转
+                                    verticalRotateActive = false; // 打断向上旋转（路径1：索敌已成功，不再恢复旋转）
                                     var (dcx, dcy, _, _, _, _, _) = damageResult.Value;
                                     Simulation.SendInput.Mouse.MoveMouseBy(
                                         (int)((dcx - (int)(960 * AssetScale)) * visConfig.ChascaAimForceX * dpi),
@@ -1691,6 +1760,7 @@ public static class AvatarSpecialAction
                                             Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(visConfig.ChascaSprayPressForce * dpi));
                                         }
                                         StopSmoothRotate(); // 子弹喷射中，停止平滑旋转并往回转补偿
+                                        verticalRotateActive = false; // 打断向上旋转（路径1：索敌已成功，不再恢复旋转）
                                     }
                                     else
                                     {
@@ -1706,6 +1776,7 @@ public static class AvatarSpecialAction
                                             lastEventTime = DateTime.UtcNow;
                                             cumulativeRotation = 0; // 子弹序列变化，累计旋转重新计数
                                             StopSmoothRotate(); // 子弹序列变化，停止平滑旋转并往回转补偿
+                                            verticalRotateActive = false; // 打断向上旋转（路径1：索敌已成功，不再恢复旋转）
                                             if (bulletSeqs.Count < seqSlotCount)
                                             {
                                                 bulletSeqs.Add(bullets);
@@ -1728,8 +1799,9 @@ public static class AvatarSpecialAction
                                     // 旋转索敌：无血条时进入连续旋转模式——第一次由稳定时间触发后不再等待稳定间隔，
                                     // 每帧旋转"单次旋转角度的一半"直到再次看到血条或伤害数字（识别处重置 continuousRotating）
                                     // 传奇血条存在（有目标）：保持稳定时间判定，单次旋转"单次旋转角度"（自适应力度）
-                                    // 勾选"恰斯卡平滑转动"时以上两种旋转均被平滑转动取代
-                                    if (smoothRotateEnabled)
+                                    // 勾选"恰斯卡平滑转动"时以上两种旋转均被平滑转动取代；
+                                    // 向上旋转中（verticalRotateActive）跳过本节，避免与主循环的向上旋转并发抢鼠标
+                                    if (smoothRotateEnabled && !verticalRotateActive)
                                     {
                                         // 平滑转动：超过稳定时间（传奇血条存在时还须过起飞后不旋转观察期）后置旋转请求标志，
                                         // 由独立异步旋转循环持续小步旋转（间隔较小、角度较小，转速自适应调节），无需间隔等待
