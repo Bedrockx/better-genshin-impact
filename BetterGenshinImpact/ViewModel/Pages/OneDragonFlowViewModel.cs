@@ -14,6 +14,8 @@ using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.Core.Script.Group;
 using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
+// 合并冲突提示：本 PR 移除了 using BetterGenshinImpact.GameTask.Common.Job;（开书检查每日奖励逻辑）。
+// 若与 PR #3（断点续跑+链式执行一条龙）冲突，合并策略：保留 #3 的其余改动，仅确认不保留 Job 命名空间引用。
 using BetterGenshinImpact.Helpers;
 using BetterGenshinImpact.Helpers.Ui;
 using BetterGenshinImpact.Service;
@@ -666,6 +668,9 @@ public partial class OneDragonFlowViewModel : ViewModel
         }
 
         // 检查和最终结束的任务
+        // 合并冲突提示：本 PR 移除了 CheckRewardsTask 调用（开书检查每日奖励）。
+        // 若与 PR #3（断点续跑+链式执行一条龙）冲突：#3 会把本块重构为"完成任务检查"并移动位置。
+        // 合并策略：保留 #3 的重构结构，仅确保不再调用 CheckRewardsTask（且顶部不引用 Job 命名空间）。
         await new TaskRunner().RunThreadAsync(async () =>
         {
             await Task.Delay(500);
