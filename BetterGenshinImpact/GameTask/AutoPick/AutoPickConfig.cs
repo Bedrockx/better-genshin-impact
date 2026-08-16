@@ -57,6 +57,58 @@ namespace BetterGenshinImpact.GameTask.AutoPick
         [ObservableProperty] private string _pickKey = "F";
 
         /// <summary>
+        /// 使用莫版匹配代替OCR进行识别
+        /// </summary>
+        [ObservableProperty] private bool _mojangMatchEnabled = true;
+
+        /// <summary>
+        /// 测试自动拾取：勾选后不执行按F，仅输出本次识别各环节耗时
+        /// </summary>
+        [ObservableProperty] private bool _testModeEnabled = false;
+
+        /// <summary>
+        /// 莫版匹配阈值（匹配度低于该值视为未识别到）
+        /// </summary>
+        [ObservableProperty] private double _matchThreshold = 0.9;
+
+        /// <summary>
+        /// 莫版拾取日志级别：0=精简（仅交互时输出） 1=常规（黑名单/无结果节流输出） 2=调试（完整耗时位置匹配度，不节流）
+        /// </summary>
+        [ObservableProperty] private int _pickLogLevel = 1;
+
+        /// <summary>
+        /// 交互后延迟（毫秒）
+        /// </summary>
+        [ObservableProperty] private int _interactionDelay = 64;
+
+        /// <summary>
+        /// 连点F间隔（毫秒，0 表示不应用连点）
+        /// 非0时，当前物品需要交互时向下扫描，从当前行开始连续 n 个都未需要交互则间隔该值连点 n 次 F
+        /// </summary>
+        [ObservableProperty] private int _repeatFInterval = 0;
+
+        /// <summary>
+        /// 二次识别间隔（毫秒，0 表示不启用二次识别）
+        /// 非0时按 F 前重新截图确认，两次识别结果一致才交互
+        /// </summary>
+        [ObservableProperty] private int _confirmInterval = 0;
+
+        /// <summary>
+        /// 单次滚动距离（滚轮 delta 单位）
+        /// </summary>
+        [ObservableProperty] private int _scrollDistance = 360;
+
+        /// <summary>
+        /// 滚动间隔（毫秒，0 表示每轮最多滚动一次）
+        /// </summary>
+        [ObservableProperty] private int _scrollInterval = 0;
+
+        /// <summary>
+        /// 滚轮后间隔（滚轮后额外等待毫秒）
+        /// </summary>
+        [ObservableProperty] private int _scrollAfterInterval = 16;
+
+        /// <summary>
         /// 自动拾取名单模式
         /// </summary>
         [ObservableProperty]

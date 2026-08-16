@@ -1,0 +1,154 @@
+# -*- coding: utf-8 -*-
+"""由原图生成莫版模板文件夹与 templates.json（含 len 字段）。
+
+用法：直接运行本脚本（需 Python + numpy + Pillow）。
+输入：Assets/原图 下的 140x26 PNG；尺寸不符合规格的图片会被拒绝。
+输出：Assets/莫版模板/{灰,白,绿,蓝,紫}/*.png 与 templates.json。
+"""
+import os
+import re
+import json
+from collections import Counter
+
+import numpy as np
+from PIL import Image
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # Assets/莫版模板
+BASE = os.path.dirname(SCRIPT_DIR)                       # Assets
+SRC = os.path.join(BASE, "原图")
+OUT = SCRIPT_DIR                                          # Assets/莫版模板
+
+SPEC_W, SPEC_H = 140, 26
+
+# 5 种参考文字颜色（顺序即颜色文件夹顺序）
+REFS = [
+    ("灰", np.array([204, 204, 204])),
+    ("绿", np.array([172, 255, 69])),
+    ("蓝", np.array([79, 244, 255])),
+    ("紫", np.array([249, 152, 255])),
+    ("白", np.array([255, 255, 255])),
+]
+COLOR_NAMES = [n for n, _ in REFS]
+T = 80.0
+VOTE_MIN_V = 180
+
+
+def rgb_to_lab(rgb):
+    """rgb: (...,3) uint8 -> lab (...,3) float"""
+    c = rgb.astype(np.float64) / 255.0
+    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    r, g, b = lin[..., 0], lin[..., 1], lin[..., 2]
+    x = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b
+    y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b
+    z = 0.0193339 * r + 0.1191920 * g + 0.9503041 * b
+    xn, yn, zn = 0.95047, 1.0, 1.08883
+
+    def f(t):
+        d = 6.0 / 29.0
+        return np.where(t > d ** 3, np.cbrt(t), t / (3 * d * d) + 4.0 / 29.0)
+
+    fx, fy, fz = f(x / xn), f(y / yn), f(z / zn)
+    ll = 116.0 * fy - 16.0
+    aa = 500.0 * (fx - fy)
+    bb = 200.0 * (fy - fz)
+    return np.stack([ll, aa, bb], axis=-1)
+
+
+ref_labs = {name: rgb_to_lab(rgb.reshape(1, 1, 3))[0, 0] for name, rgb in REFS}
+ref_lab_matrix = np.stack([ref_labs[n] for n in COLOR_NAMES], axis=0)
+
+
+def main():
+    seen = set()
+    entries = []
+    rejected = []     # 尺寸不符
+    dropped = []      # 无亮像素
+    dup_skipped = []  # 交互名重复
+    total = 0
+
+    for root, dirs, files in os.walk(SRC):
+        dirs.sort()
+        for fn in sorted(files):
+            if not fn.lower().endswith(".png"):
+                continue
+            total += 1
+            fp = os.path.join(root, fn)
+
+            with Image.open(fp) as im:
+                w, h = im.size
+                if (w, h) != (SPEC_W, SPEC_H):
+                    rejected.append((fp, f"{w}x{h}"))
+                    continue
+                rgb = np.array(im.convert("RGB"))
+
+            v = rgb.max(axis=-1)
+            if int((v >= VOTE_MIN_V).sum()) == 0:
+                dropped.append((fp, f"{w}x{h}", "no-v"))
+                continue
+
+            stem = os.path.splitext(fn)[0]
+            stem = re.sub(r"\(\d+\)$", "", stem)
+            name = stem
+
+            grand = os.path.basename(os.path.dirname(root))
+            parent = os.path.basename(root)
+            is_z = grand == "Z获得物品与交互名称不一致"
+            item_name = parent.strip("[]") if is_z else name
+
+            if name in seen:
+                dup_skipped.append(fp)
+                continue
+            seen.add(name)
+
+            # 颜色判定：V>=180 中亮度前 30% 像素的平均色 -> 最近参考色
+            lab = rgb_to_lab(rgb)
+            vals = v[v >= VOTE_MIN_V]
+            thr = np.percentile(vals, 70)  # 前 30% 最高亮
+            core = v >= thr
+            core_rgb = rgb[core].mean(axis=0)
+            core_lab = rgb_to_lab(core_rgb.reshape(1, 1, 3))[0, 0]
+            dists = np.linalg.norm(ref_lab_matrix - core_lab, axis=1)
+            main_name = COLOR_NAMES[int(np.argmin(dists))]
+
+            # 灰度化：向主颜色的匹配度
+            dE = np.linalg.norm(lab - ref_labs[main_name], axis=2)
+            match = np.clip(1.0 - dE / T, 0.0, 1.0) * 255.0
+            match[v < VOTE_MIN_V] = 0.0  # 背景归零
+            gray = match.astype(np.uint8)
+
+            color_dir = os.path.join(OUT, main_name)
+            os.makedirs(color_dir, exist_ok=True)
+            out_fn = name + ".png"
+            Image.fromarray(gray, "L").save(os.path.join(color_dir, out_fn))
+
+            entries.append({
+                "name": name,
+                "color": main_name,
+                "file": f"{main_name}/{out_fn}",
+                "itemName": item_name,
+                "len": min(len(name), 5),
+            })
+
+    entries.sort(key=lambda e: (e["color"], e["name"]))
+    json_path = os.path.join(OUT, "templates.json")
+    with open(json_path, "w", encoding="utf-8") as jf:
+        json.dump(entries, jf, ensure_ascii=False, indent=2)
+
+    color_count = Counter(e["color"] for e in entries)
+    print(f"总输入 PNG: {total}")
+    print(f"输出模板数: {len(entries)}")
+    print(f"颜色分布: {dict(color_count)}")
+    print(f"尺寸不符拒绝: {len(rejected)}")
+    for r in rejected:
+        print("  REJECT", r)
+    print(f"无亮像素丢弃: {len(dropped)}")
+    for d in dropped:
+        print("  DROP", d)
+    print(f"交互名重复跳过: {len(dup_skipped)}")
+    for d in dup_skipped:
+        print("  DUP", d)
+    print(f"JSON: {json_path}")
+
+
+if __name__ == "__main__":
+    main()

@@ -85,6 +85,16 @@ public partial class TriggerSettingsPageViewModel : ViewModel
     }
 
     [RelayCommand]
+    private void OnOpenMojangBlackListConfig()
+    {
+        var window = new MojangBlackListConfigWindow
+        {
+            Owner = Application.Current.MainWindow
+        };
+        window.ShowDialog();
+    }
+
+    [RelayCommand]
     private void OnAutoPickModeChanged(AutoPickMode mode)
     {
         Config.AutoPickConfig.Mode = mode;

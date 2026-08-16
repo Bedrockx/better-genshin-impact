@@ -44,3 +44,6 @@ __pycache__/
 
 # Claude
 .claude/*
+
+# XAML 编译临时文件
+*_wpftmp.csproj
