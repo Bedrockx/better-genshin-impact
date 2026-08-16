@@ -125,6 +125,9 @@ public sealed class MojangPickLoop
 
         if (foundRectArea.IsEmpty())
         {
+            // 无 F 图标：清除二次确认失败标记，避免残留到后续轮次
+            _skipConfirm = false;
+
             if (testMode)
             {
                 RemoveTestDraw();

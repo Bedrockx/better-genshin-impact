@@ -79,6 +79,9 @@ public sealed class MojangMatch
         _ = Instance;
     }
 
+    /// <summary>模板是否已加载完成（供 UI 判断是否需要在后台等待加载）。</summary>
+    public static bool IsLoaded => LazyInstance.IsValueCreated;
+
     private readonly Dictionary<(string Color, int Len), List<MojangTemplate>> _templatesByColorAndLen = [];
 
     private readonly Dictionary<string, MojangTemplate> _templatesByName = [];
@@ -154,7 +157,7 @@ public sealed class MojangMatch
         return new string(s.Where(c => c >= '\u4e00' && c <= '\u9fff').ToArray());
     }
 
-    /// <summary>子串匹配比例：part 在 text 中滑动，返回最长公共匹配字符数 / part 长度。</summary>
+    /// <summary>子串匹配比例：part 在 text 中滑动，取任意窗口内最长连续匹配字符数 / part 长度。</summary>
     private static double MatchRatio(string part, string text)
     {
         if (string.IsNullOrEmpty(part) || string.IsNullOrEmpty(text) || part.Length > text.Length)
@@ -169,12 +172,12 @@ public sealed class MojangMatch
             var match = 0;
             for (var j = 0; j < len; j++)
             {
-                if (text[i + j] == part[j])
+                // 不连续时清零，统计的是"最长连续匹配段"，而非跨窗口累计
+                match = text[i + j] == part[j] ? match + 1 : 0;
+                if (match > maxMatch)
                 {
-                    match++;
+                    maxMatch = match;
                 }
-
-                maxMatch = Math.Max(maxMatch, match);
             }
         }
 

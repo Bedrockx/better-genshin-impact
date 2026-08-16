@@ -258,8 +258,8 @@ public partial class App : Application
             ServerTimeHelper.Initialize(_host.Services.GetRequiredService<IServerTimeProvider>());
             await UrlProtocolHelper.RegisterAsync();
 
-            // 预加载莫版匹配模板（bin 优先），加载日志随启动输出
-            MojangMatch.Preload();
+            // 后台预加载莫版匹配模板（bin 优先），避免阻塞启动 UI；加载日志随启动输出
+            await Task.Run(MojangMatch.Preload);
         }
         catch (Exception ex)
         {

@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Data;
 
 namespace BetterGenshinImpact.ViewModel.Windows;
@@ -35,6 +36,9 @@ public partial class MojangBlackListConfigViewModel : AutoPickConfigWindowViewMo
 
     public ICollectionView ItemsView { get; }
 
+    /// <summary>批量勾选/取消期间挂起视图刷新，避免逐项触发 ItemsView.Refresh。</summary>
+    private bool _suppressRefresh;
+
     [ObservableProperty]
     private string _searchText = string.Empty;
 
@@ -47,7 +51,12 @@ public partial class MojangBlackListConfigViewModel : AutoPickConfigWindowViewMo
     public MojangBlackListConfigViewModel()
     {
         var blackList = MojangPickFilter.Load();
-        foreach (var info in MojangMatch.Instance.GetTemplateInfos())
+        // 模板加载的 CPU 工作放在后台线程执行，避免在 UI 线程同步加载导致窗口卡顿
+        // （正常流程启动时已后台预加载完成；此处兜底，未加载时仅在后台等待加载完成）
+        var templateInfos = MojangMatch.IsLoaded
+            ? MojangMatch.Instance.GetTemplateInfos()
+            : Task.Run(() => MojangMatch.Instance.GetTemplateInfos()).GetAwaiter().GetResult();
+        foreach (var info in templateInfos)
         {
             var item = new MojangItemViewModel
             {
@@ -70,7 +79,7 @@ public partial class MojangBlackListConfigViewModel : AutoPickConfigWindowViewMo
 
     private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MojangItemViewModel.IsBlackListed))
+        if (!_suppressRefresh && e.PropertyName == nameof(MojangItemViewModel.IsBlackListed))
         {
             ItemsView.Refresh();
         }
@@ -125,19 +134,39 @@ public partial class MojangBlackListConfigViewModel : AutoPickConfigWindowViewMo
     [RelayCommand]
     private void SelectAll()
     {
-        foreach (var item in ItemsView.Cast<MojangItemViewModel>().ToList())
+        _suppressRefresh = true;
+        try
         {
-            item.IsBlackListed = true;
+            foreach (var item in ItemsView.Cast<MojangItemViewModel>().ToList())
+            {
+                item.IsBlackListed = true;
+            }
         }
+        finally
+        {
+            _suppressRefresh = false;
+        }
+
+        ItemsView.Refresh();
     }
 
     [RelayCommand]
     private void ClearAll()
     {
-        foreach (var item in ItemsView.Cast<MojangItemViewModel>().ToList())
+        _suppressRefresh = true;
+        try
         {
-            item.IsBlackListed = false;
+            foreach (var item in ItemsView.Cast<MojangItemViewModel>().ToList())
+            {
+                item.IsBlackListed = false;
+            }
         }
+        finally
+        {
+            _suppressRefresh = false;
+        }
+
+        ItemsView.Refresh();
     }
 
     [RelayCommand]
