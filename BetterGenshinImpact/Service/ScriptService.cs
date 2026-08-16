@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -121,6 +121,19 @@ public partial class ScriptService : IScriptService
     {
         groupName ??= "默认";
 
+        try
+        {
+            await RunMultiCore(projectList, groupName, taskProgress);
+        }
+        finally
+        {
+            // 配置组执行结束（含异常/取消），清理当前项目上下文，避免全局拾取残留上一配置组的名单
+            TaskContext.Instance().CurrentScriptProject = null;
+        }
+    }
+
+    private async Task RunMultiCore(IEnumerable<ScriptGroupProject> projectList, string? groupName, TaskProgress? taskProgress)
+    {
         // 启动等待之前先进行取消操作的初始化，便于在任务开始前终止任务.
         CancellationContext.Instance.Set();
 

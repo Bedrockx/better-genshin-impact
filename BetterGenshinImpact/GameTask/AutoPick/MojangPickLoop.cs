@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.Core.Recognition.OCR;
 using BetterGenshinImpact.Core.Simulator;
@@ -70,6 +71,35 @@ public sealed class MojangPickLoop
     }
 
     /// <summary>
+    /// 同步当前配置组的拾取名单到过滤器（每帧调用，组切换时自动切换；
+    /// 无配置组上下文时仅使用全局黑名单）。
+    /// </summary>
+    private void SyncGroupFilter()
+    {
+        var project = TaskContext.Instance().CurrentScriptProject;
+        var groupName = project?.GroupInfo?.Name;
+        var groupConfig = project?.GroupInfo?.Config.AutoPickConfig;
+
+        var previousGroupName = _filter.CurrentGroupName;
+        _filter.SetCurrentGroup(groupName, groupConfig);
+
+        // 配置组切换时（含进入配置组）输出一次生效的额外名单
+        if (groupName is not null && previousGroupName != groupName)
+        {
+            LogGroupListApplied(groupName, groupConfig);
+        }
+    }
+
+    /// <summary>配置组拾取名单生效时输出日志（仅在进入/切换配置组时输出一次）。</summary>
+    private void LogGroupListApplied(string groupName, AutoPickGroupConfig? groupConfig)
+    {
+        var white = groupConfig is { WhiteList.Count: > 0 } ? string.Join("、", groupConfig.WhiteList) : "无";
+        var black = groupConfig is { BlackList.Count: > 0 } ? string.Join("、", groupConfig.BlackList) : "无";
+        _logger.LogInformation(
+            "启动自动拾取（配置组：{Group}），额外白名单：{White}，额外黑名单：{Black}", groupName, white, black);
+    }
+
+    /// <summary>
     /// 满背包检查（节流）。检测到「背包已满」提示时，OCR 物品名并自动加入黑名单。
     /// </summary>
     public void CheckBagFull(CaptureContent content)
@@ -117,6 +147,8 @@ public sealed class MojangPickLoop
     /// </summary>
     public void Tick(CaptureContent content, Region foundRectArea, AutoPickAssets assets, double scale)
     {
+        SyncGroupFilter();
+
         var testMode = TaskContext.Instance().Config.AutoPickConfig.TestModeEnabled;
         if (!testMode)
         {

@@ -1,3 +1,4 @@
+using BetterGenshinImpact.Core.Script.Group;
 using BetterGenshinImpact.Helpers.Ui;
 using BetterGenshinImpact.ViewModel.Windows;
 using Wpf.Ui.Controls;
@@ -8,9 +9,13 @@ public partial class MojangBlackListConfigWindow : FluentWindow
 {
     private readonly MojangBlackListConfigViewModel _viewModel;
 
-    public MojangBlackListConfigWindow()
+    /// <summary>
+    /// 创建拾取名单配置窗口。
+    /// </summary>
+    /// <param name="group">配置组作用域；为 null 时仅编辑全局黑名单（从触发器设置页打开）。</param>
+    public MojangBlackListConfigWindow(ScriptGroup? group = null)
     {
-        _viewModel = new MojangBlackListConfigViewModel();
+        _viewModel = new MojangBlackListConfigViewModel(group);
         DataContext = _viewModel;
         InitializeComponent();
 
