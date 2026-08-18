@@ -2130,6 +2130,87 @@
                             </StackPanel>
                         </ui:CardExpander>
                     </Grid>
+
+                <!-- 战斗中回点配置 -->
+                <Grid Margin="16,10,52,0">
+                    <ui:CardExpander Margin="0,0,0,12"
+                                     ContentPadding="0"
+                                     IsExpanded="False">
+                    <ui:CardExpander.Header>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          FontTypography="Body"
+                                          Text="战斗中回点配置"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="战斗中与战斗点距离过远时自动回到战斗点继续战斗（仅 JSON 策略生效）"
+                                          TextWrapping="Wrap" />
+                        </Grid>
+                    </ui:CardExpander.Header>
+                    <StackPanel>
+                        <Grid Margin="16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="回点触发距离"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="战斗中与战斗点距离超过该值时回到战斗点，-1 为禁用"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBox Grid.Row="0"
+                                        Grid.RowSpan="2"
+                                        Grid.Column="1"
+                                        MinWidth="80"
+                                        Margin="10,0,36,0"
+                                        HorizontalContentAlignment="Center"
+                                        Text="{Binding PathingConfig.AutoFightConfig.BackToFightDistance, Mode=TwoWay}" />
+                        </Grid>
+                        <Grid Margin="16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBlock Grid.Row="0"
+                                          Grid.Column="0"
+                                          FontTypography="Body"
+                                          Text="单次回点超时(毫秒)"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBlock Grid.Row="1"
+                                          Grid.Column="0"
+                                          Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                          Text="整段回点动作（转向+移动）的总超时，超时后放弃回点继续战斗"
+                                          TextWrapping="Wrap" />
+                            <ui:TextBox Grid.Row="0"
+                                        Grid.RowSpan="2"
+                                        Grid.Column="1"
+                                        MinWidth="80"
+                                        Margin="10,0,36,0"
+                                        HorizontalContentAlignment="Center"
+                                        Text="{Binding PathingConfig.AutoFightConfig.BackToFightTimeoutMs, Mode=TwoWay}" />
+                        </Grid>
+                    </StackPanel>
+                    </ui:CardExpander>
+                </Grid>
+
                    <Grid Margin="16,10,16,16">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
