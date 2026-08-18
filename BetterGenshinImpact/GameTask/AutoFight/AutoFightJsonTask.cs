@@ -555,6 +555,11 @@ public class AutoFightJsonTask : ISoloTask
             // 更新当前角色名，供后续无指定角色动作使用
             _currentAvatarName = character;
         }
+        catch (RetryException)
+        {
+            // 游泳/复活检测触发的"前往七天神像"信号，需向上传播让 PathExecutor 重跑当前路径段
+            throw;
+        }
         catch (Exception e)
         {
             Logger.LogError("自动战斗：{Name} 执行失败：{Msg}", action.Name, e.Message);
