@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.Core.Recognition.OCR;
@@ -199,18 +200,23 @@ public sealed class MojangPickLoop
         {
             // 未识别到物品：转入滚轮分支
             LogNoResult();
-            HandleScroll(content, foundRectArea, scale);
 
-            // 自动截图：测试模式 + 开关开启时，连续未知达到阈值则对识别区域 OCR 并保存截图
-            if (testMode && TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotEnabled)
+            // 自动截图：开关开启时，连续未知达到阈值则复用最近一次未知识别区域截图，
+            // 后台异步 OCR + 去重 + 保存，不阻塞滚轮；与测试模式相互独立。
+            if (TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotEnabled)
             {
                 if (++_unknownStreak >= UnknownCaptureStreak)
                 {
                     _unknownStreak = 0;
-                    TryCaptureUnknown(content, foundRectArea, scale);
+                    var roi = MojangMatch.Instance.TakeUnknownRoi();
+                    if (roi is not null)
+                    {
+                        Task.Run(() => ProcessUnknownCapture(roi));
+                    }
                 }
             }
 
+            HandleScroll(content, foundRectArea, scale);
             return;
         }
 
@@ -339,7 +345,8 @@ public sealed class MojangPickLoop
         for (var k = 1; k <= scanCount; k++)
         {
             using var region = new Region(foundRectArea.X, foundRectArea.Y + ItemStepY * k, foundRectArea.Width, foundRectArea.Height);
-            var m = MojangMatch.Instance.Match(content.CaptureRectArea.SrcMat, region, scale);
+            // 扫描行不缓存未知识别区域截图，避免覆盖 F 行缓存
+            var m = MojangMatch.Instance.Match(content.CaptureRectArea.SrcMat, region, scale, cacheUnknownRoi: false);
             if (m is not { } mr)
             {
                 continue;
@@ -390,7 +397,8 @@ public sealed class MojangPickLoop
             }
 
             using var region = new Region(foundRectArea.X, y, foundRectArea.Width, foundRectArea.Height);
-            var m = MojangMatch.Instance.Match(content.CaptureRectArea.SrcMat, region, scale);
+            // 扫描行不缓存未知识别区域截图，避免覆盖 F 行缓存
+            var m = MojangMatch.Instance.Match(content.CaptureRectArea.SrcMat, region, scale, cacheUnknownRoi: false);
             if (m is { } mr)
             {
                 if (TaskContext.Instance().Config.AutoPickConfig.TestModeEnabled || LogLevel >= 2)
@@ -589,25 +597,14 @@ public sealed class MojangPickLoop
     }
 
     /// <summary>
-    /// 自动截图：对 F 键右侧文字识别区域做一次 OCR，并将原始截图裁剪后保存到按颜色分目录的素材目录。
-    /// 保存前与同色目录已有图片做去重比较（NCC ≥ 匹配阈值视为重复）；OCR 无结果或区域越界时不保存。
+    /// 后台处理自动截图：对未知识别区域截图做 OCR，按颜色分目录去重并保存；结束后释放截图。
+    /// OCR 引擎内部有锁，后台调用安全；异常仅记录，不影响拾取循环。
     /// </summary>
-    private void TryCaptureUnknown(CaptureContent content, Region foundRectArea, double scale)
+    private void ProcessUnknownCapture(Mat roi)
     {
         try
         {
-            var srcMat = content.CaptureRectArea.SrcMat;
-            var rect = MojangMatch.Instance.GetTextRegion(foundRectArea, scale);
-            if (rect.X < 0 || rect.Y < 0 || rect.X + rect.Width > srcMat.Width || rect.Y + rect.Height > srcMat.Height)
-            {
-                return; // 区域越界，跳过本次保存
-            }
-
-            string ocrText;
-            using (var textMat = new Mat(srcMat, rect))
-            {
-                ocrText = OcrFactory.Paddle.Ocr(textMat);
-            }
+            var ocrText = OcrFactory.Paddle.Ocr(roi);
 
             var name = SanitizeFileName(ocrText);
             if (string.IsNullOrEmpty(name))
@@ -615,10 +612,9 @@ public sealed class MojangPickLoop
                 return; // OCR 无结果或文件名非法，不保存
             }
 
-            using var roiMat = new Mat(srcMat, rect);
-            var colorIndex = MojangMatch.Instance.GetColorIndex(roiMat);
+            var colorIndex = MojangMatch.Instance.GetColorIndex(roi);
             var colorDir = Path.Combine(ScreenshotRootDir, ColorNames[colorIndex]);
-            if (MojangMatch.Instance.FindDuplicate(roiMat, colorDir, TaskContext.Instance().Config.AutoPickConfig.MatchThreshold))
+            if (MojangMatch.Instance.FindDuplicate(roi, colorDir, TaskContext.Instance().Config.AutoPickConfig.MatchThreshold))
             {
                 _logger.LogInformation("自动截图：{Name} 与已有截图重复，跳过保存", name);
                 return;
@@ -626,7 +622,7 @@ public sealed class MojangPickLoop
 
             Directory.CreateDirectory(colorDir);
             var path = UniqueFilePath(colorDir, name);
-            if (Cv2.ImEncode(".png", roiMat, out var bytes))
+            if (Cv2.ImEncode(".png", roi, out var bytes))
             {
                 File.WriteAllBytes(path, bytes);
                 _logger.LogInformation("自动截图已保存：{Path}", path);
@@ -635,6 +631,10 @@ public sealed class MojangPickLoop
         catch (Exception e)
         {
             _logger.LogError(e, "自动截图保存失败");
+        }
+        finally
+        {
+            roi.Dispose();
         }
     }
 

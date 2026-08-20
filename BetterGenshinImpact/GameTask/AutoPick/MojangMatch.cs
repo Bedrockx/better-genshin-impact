@@ -199,6 +199,28 @@ public sealed class MojangMatch
     }
 
     /// <summary>
+    /// 最近一次识别为未知的 F 键右侧区域截图（BGR 副本），供自动截图复用；取走即清空。
+    /// </summary>
+    private Mat? _lastUnknownRoi;
+
+    /// <summary>
+    /// 取走最近一次未知识别区域截图（调用方负责释放）；无缓存返回 null。
+    /// </summary>
+    public Mat? TakeUnknownRoi()
+    {
+        var roi = _lastUnknownRoi;
+        _lastUnknownRoi = null;
+        return roi;
+    }
+
+    /// <summary>清空未知识别区域截图缓存。</summary>
+    private void ClearUnknownRoi()
+    {
+        _lastUnknownRoi?.Dispose();
+        _lastUnknownRoi = null;
+    }
+
+    /// <summary>
     /// 颜色判定：返回区域图的主颜色索引（0灰/1绿/2蓝/3紫/4白，与 <see cref="Refs"/> 一致）。
     /// </summary>
     public int GetColorIndex(Mat srcBgr)
@@ -283,13 +305,15 @@ public sealed class MojangMatch
     /// <param name="srcMat">捕获区域源图（BGR）</param>
     /// <param name="fKeyRegion">F 键识别结果区域</param>
     /// <param name="scale">分辨率缩放系数</param>
+    /// <param name="cacheUnknownRoi">识别为未知时是否缓存区域截图（供自动截图复用，默认缓存）</param>
     /// <returns>识别结果；未识别到或区域越界返回 null</returns>
-    public MojangMatchResult? Match(Mat srcMat, Region fKeyRegion, double scale)
+    public MojangMatchResult? Match(Mat srcMat, Region fKeyRegion, double scale, bool cacheUnknownRoi = true)
     {
         var rect = GetTextRegion(fKeyRegion, scale);
 
         if (rect.X < 0 || rect.Y < 0 || rect.X + rect.Width > srcMat.Width || rect.Y + rect.Height > srcMat.Height)
         {
+            ClearUnknownRoi();
             return null;
         }
 
@@ -373,6 +397,13 @@ public sealed class MojangMatch
                 _logger.LogInformation(
                     "莫版测试未识别到：颜色={Color} 估算字数={EstLen} 最高分={BestScore:F3} 判定={JudgeMs:F2}ms 灰度={GrayMs:F2}ms NCC={NccMs:F2}ms 模板={TemplateCount}",
                     colorName, estLen, best is null ? 0 : bestScore, judgeMs, grayMs, nccSw.Elapsed.TotalMilliseconds, matchedCount);
+            }
+
+            // 识别为未知：缓存本帧识别区域截图（BGR 副本），供自动截图复用
+            if (cacheUnknownRoi)
+            {
+                _lastUnknownRoi?.Dispose();
+                _lastUnknownRoi = bgrMat.Clone();
             }
 
             return null;

@@ -67,7 +67,7 @@ namespace BetterGenshinImpact.GameTask.AutoPick
         [ObservableProperty] private bool _testModeEnabled = false;
 
         /// <summary>
-        /// 自动截图模式：仅测试模式可用，连续识别为未知时对识别区域 OCR 并保存截图（按颜色分目录、去重）
+        /// 自动截图模式：连续识别为未知时对识别区域 OCR 并保存截图（按颜色分目录、去重），与测试模式相互独立
         /// </summary>
         [ObservableProperty] private bool _autoScreenshotEnabled = false;
 
