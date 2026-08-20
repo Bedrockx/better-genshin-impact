@@ -429,6 +429,8 @@ public class AutoFightJsonTask : ISoloTask
     
             // 在持续索敌循环启动前标记战斗进行中，避免索敌循环因 FightStatusFlag 仍为 false 而立即退出
             AutoFightTask.FightStatusFlag = true;
+            // 重置上一场战斗可能残留的"无目标自动结束"请求，避免跨战斗误触发
+            AutoFightTask.NoTargetEndRequested = false;
     
             // 启动持续索敌循环（异步后台运行，与战斗任务并发）
             // 使用独立的 CancellationTokenSource，以便在战后独立取消索敌循环，不影响 cts2 关联的其他组件（如 expDetector）

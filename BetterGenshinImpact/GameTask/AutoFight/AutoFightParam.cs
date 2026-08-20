@@ -84,6 +84,9 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
         ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
         ChascaDownArrowPressThreshold = autoFightConfig.ChascaDownArrowPressThreshold;
+        // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 赋值后）插入 4 行 Chasca 赋值，
+        // 若与本行 EndFightWhenNoTargetSeconds 冲突，保留两侧新增行即可
+        EndFightWhenNoTargetSeconds = autoFightConfig.EndFightWhenNoTargetSeconds;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
@@ -144,6 +147,9 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public double ChascaSprayPressForce { get; set; } = 100;
     public double ChascaRollbackAngle { get; set; } = 15;
     public int ChascaDownArrowPressThreshold { get; set; } = 20;
+    // 合并冲突提示：恰斯卡特化 PR (#11) 同样在 LockLostWaitTime 之后插入 ChascaStableTime 等 4 个属性，
+    // 若与本行 EndFightWhenNoTargetSeconds 发生冲突，保留两侧新增行即可（本行 + 恰斯卡 4 行，顺序无关）
+    public double EndFightWhenNoTargetSeconds { get; set; } = 0;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -258,6 +264,9 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
         ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
         ChascaDownArrowPressThreshold = autoFightConfig.ChascaDownArrowPressThreshold;
+        // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 赋值后）插入 4 行 Chasca 赋值，
+        // 若与本行 EndFightWhenNoTargetSeconds 冲突，保留两侧新增行即可
+        EndFightWhenNoTargetSeconds = autoFightConfig.EndFightWhenNoTargetSeconds;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
         BackToFightDistance = autoFightConfig.BackToFightDistance;

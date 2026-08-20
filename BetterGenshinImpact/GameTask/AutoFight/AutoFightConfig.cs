@@ -235,6 +235,15 @@ public partial class AutoFightConfig : ObservableObject
     private bool _enableCombatTargeting = false;
 
     /// <summary>
+    /// 无目标自动结束战斗（秒）：默认 0 不生效；大于 0 时，持续索敌期间若连续该时长
+    /// 未检测到敌人血条或伤害数字，主动结束当前战斗。仅在开启"战斗中持续索敌"时生效。
+    /// 注意：恰斯卡特化 PR (#11) 在下方 _lockLostWaitTime 之后插入恰斯卡配置，
+    /// 本项刻意放在 _enableCombatTargeting 之后以错开合并位置，冲突时可参考 AutoFightParam.cs 的注释处理。
+    /// </summary>
+    [ObservableProperty]
+    private double _endFightWhenNoTargetSeconds = 0;
+
+    /// <summary>
     /// 脱锁等待时间（秒）：敌人不可见时等待一定时间后开始旋转索敌
     /// </summary>
     [ObservableProperty]
