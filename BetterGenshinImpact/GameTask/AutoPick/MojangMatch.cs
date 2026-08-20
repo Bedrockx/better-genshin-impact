@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BetterGenshinImpact.Core.Config;
+using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.GameTask.Common;
 using BetterGenshinImpact.GameTask.Model.Area;
 using Microsoft.Extensions.Logging;
@@ -185,6 +186,98 @@ public sealed class MojangMatch
     }
 
     /// <summary>
+    /// 计算 F 键右侧文字识别区域（1080p 坐标按 scale 缩放，供识别与自动截图裁剪共用）。
+    /// </summary>
+    public Rect GetTextRegion(Region fKeyRegion, double scale)
+    {
+        var centerY = fKeyRegion.Y + fKeyRegion.Height / 2;
+        return new Rect(
+            fKeyRegion.X + (int)(TextLeftOffset * scale),
+            centerY - (int)(RegionHeight / 2.0 * scale),
+            (int)(RegionWidth * scale),
+            (int)(RegionHeight * scale));
+    }
+
+    /// <summary>
+    /// 颜色判定：返回区域图的主颜色索引（0灰/1绿/2蓝/3紫/4白，与 <see cref="Refs"/> 一致）。
+    /// </summary>
+    public int GetColorIndex(Mat srcBgr)
+    {
+        using var bgr = srcBgr.Channels() == 4
+            ? srcBgr.CvtColor(ColorConversionCodes.BGRA2BGR)
+            : srcBgr.Clone();
+        var (_, colorIndex, _, _, _) = ToGray(bgr);
+        return colorIndex;
+    }
+
+    /// <summary>
+    /// 在指定目录中查找与候选截图重复的已有图片。
+    /// 已有图片按候选图判定的颜色灰度化后与候选图计算最大 NCC，任一 ≥ 阈值即视为重复。
+    /// 尺寸不一致的已有图先缩放到候选图尺寸再比较。
+    /// </summary>
+    /// <param name="srcBgr">候选截图（BGR/BGRA，按自身颜色灰度化）</param>
+    /// <param name="dirPath">目标颜色目录</param>
+    /// <param name="threshold">匹配阈值</param>
+    /// <returns>是否存在重复图片</returns>
+    public bool FindDuplicate(Mat srcBgr, string dirPath, double threshold)
+    {
+        using var bgr = srcBgr.Channels() == 4
+            ? srcBgr.CvtColor(ColorConversionCodes.BGRA2BGR)
+            : srcBgr.Clone();
+        var (gray, colorIndex, _, _, _) = ToGray(bgr);
+
+        if (!Directory.Exists(dirPath))
+        {
+            return false;
+        }
+
+        var (sumI, sumI2) = BuildIntegral(gray, bgr.Width, bgr.Height);
+        foreach (var file in Directory.EnumerateFiles(dirPath, "*.png"))
+        {
+            try
+            {
+                using var mat = new Mat(file, ImreadModes.Color);
+                if (mat.Empty())
+                {
+                    continue;
+                }
+
+                using var dupBgr = mat.Channels() == 4
+                    ? mat.CvtColor(ColorConversionCodes.BGRA2BGR)
+                    : mat.Clone();
+                using var resized = ResizeHelper.ResizeTo(dupBgr, bgr.Width, bgr.Height);
+                var dupGray = ToGrayByColor(resized, colorIndex);
+                var c = CropTemplate(dupGray, resized.Width, resized.Height);
+                var template = new MojangTemplate
+                {
+                    Name = string.Empty,
+                    Color = string.Empty,
+                    ItemName = string.Empty,
+                    Gray = c.Gray,
+                    Width = c.Width,
+                    Height = resized.Height,
+                    Len = 0,
+                    MeanT = c.MeanT,
+                    VarT = c.VarT,
+                    NonZero = c.NonZero,
+                };
+
+                var (score, _, _) = NccMax(gray, sumI, sumI2, bgr.Width, bgr.Height, template);
+                if (score >= threshold)
+                {
+                    return true;
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogDebug(e, "自动截图去重比较跳过图片：{File}", file);
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// 识别 F 键右侧文字区域对应的物品。
     /// </summary>
     /// <param name="srcMat">捕获区域源图（BGR）</param>
@@ -193,12 +286,7 @@ public sealed class MojangMatch
     /// <returns>识别结果；未识别到或区域越界返回 null</returns>
     public MojangMatchResult? Match(Mat srcMat, Region fKeyRegion, double scale)
     {
-        var centerY = fKeyRegion.Y + fKeyRegion.Height / 2;
-        var rect = new Rect(
-            fKeyRegion.X + (int)(TextLeftOffset * scale),
-            centerY - (int)(RegionHeight / 2.0 * scale),
-            (int)(RegionWidth * scale),
-            (int)(RegionHeight * scale));
+        var rect = GetTextRegion(fKeyRegion, scale);
 
         if (rect.X < 0 || rect.Y < 0 || rect.X + rect.Width > srcMat.Width || rect.Y + rect.Height > srcMat.Height)
         {
@@ -306,12 +394,7 @@ public sealed class MojangMatch
     /// <returns>匹配度是否达标</returns>
     public bool ConfirmMatch(Mat srcMat, Region fKeyRegion, double scale, string name, int colorIndex)
     {
-        var centerY = fKeyRegion.Y + fKeyRegion.Height / 2;
-        var rect = new Rect(
-            fKeyRegion.X + (int)(TextLeftOffset * scale),
-            centerY - (int)(RegionHeight / 2.0 * scale),
-            (int)(RegionWidth * scale),
-            (int)(RegionHeight * scale));
+        var rect = GetTextRegion(fKeyRegion, scale);
 
         if (rect.X < 0 || rect.Y < 0 || rect.X + rect.Width > srcMat.Width || rect.Y + rect.Height > srcMat.Height)
         {

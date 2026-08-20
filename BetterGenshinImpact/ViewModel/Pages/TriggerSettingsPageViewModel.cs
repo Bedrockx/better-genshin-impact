@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.GameTask.AutoPick;
 using BetterGenshinImpact.GameTask.AutoSkip.Assets;
@@ -32,6 +33,9 @@ public partial class TriggerSettingsPageViewModel : ViewModel
 
     [ObservableProperty] private bool _isWhitelistAutoPickMode;
 
+    /// <summary>自动截图模式开关是否可见（仅测试模式勾选时显示）。</summary>
+    [ObservableProperty] private bool _isAutoScreenshotVisible;
+
     [ObservableProperty] private List<string> _pickButtonNames;
 
     [ObservableProperty] private Dictionary<string, string> _pictureInPictureSourceTypeDict =
@@ -53,6 +57,9 @@ public partial class TriggerSettingsPageViewModel : ViewModel
         _navigationService = navigationService;
         _hangoutBranches = HangoutConfig.Instance.HangoutOptionsTitleList;
         UpdateAutoPickModeVisibility();
+        UpdateAutoScreenshotVisibility();
+        // 测试模式变化时同步自动截图开关的可见性
+        Config.AutoPickConfig.PropertyChanged += OnAutoPickConfigPropertyChanged;
 
         _pickButtonNames = new List<string> { "F", "E", "G" };
         if (!string.IsNullOrEmpty(Config.AutoPickConfig.PickKey)
@@ -106,6 +113,19 @@ public partial class TriggerSettingsPageViewModel : ViewModel
     {
         IsBlacklistAutoPickMode = Config.AutoPickConfig.Mode == AutoPickMode.Blacklist;
         IsWhitelistAutoPickMode = Config.AutoPickConfig.Mode == AutoPickMode.Whitelist;
+    }
+
+    private void OnAutoPickConfigPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AutoPickConfig.TestModeEnabled))
+        {
+            UpdateAutoScreenshotVisibility();
+        }
+    }
+
+    private void UpdateAutoScreenshotVisibility()
+    {
+        IsAutoScreenshotVisible = Config.AutoPickConfig.TestModeEnabled;
     }
 
     // [RelayCommand]

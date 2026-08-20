@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using BetterGenshinImpact.Core.Config;
@@ -55,7 +57,16 @@ public sealed class MojangPickLoop
     /// <summary>二次确认失败标记：存在时下一轮转入滚轮分支并消费。</summary>
     private bool _skipConfirm;
 
+    /// <summary>连续 F 可见且识别为未知的次数，达到 <see cref="UnknownCaptureStreak"/> 时触发自动截图。</summary>
+    private int _unknownStreak;
+
     private readonly MojangPickFilter _filter = new();
+
+    /// <summary>自动截图保存根目录（按颜色分子目录，收集后拷回源码素材目录跑 generate_templates.py）。</summary>
+    private static readonly string ScreenshotRootDir = Global.Absolute(@"GameTask\AutoPick\Assets\原图\自动截图");
+
+    /// <summary>连续识别为未知达到该次数时执行一次自动截图。</summary>
+    private const int UnknownCaptureStreak = 3;
 
     /// <summary>颜色展示顺序，与 MojangMatch 中 Refs 一致。</summary>
     private static readonly string[] ColorNames = ["灰", "绿", "蓝", "紫", "白"];
@@ -159,6 +170,8 @@ public sealed class MojangPickLoop
         {
             // 无 F 图标：清除二次确认失败标记，避免残留到后续轮次
             _skipConfirm = false;
+            // 无 F 图标：清除连续未知计数
+            _unknownStreak = 0;
 
             if (testMode)
             {
@@ -187,10 +200,23 @@ public sealed class MojangPickLoop
             // 未识别到物品：转入滚轮分支
             LogNoResult();
             HandleScroll(content, foundRectArea, scale);
+
+            // 自动截图：测试模式 + 开关开启时，连续未知达到阈值则对识别区域 OCR 并保存截图
+            if (testMode && TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotEnabled)
+            {
+                if (++_unknownStreak >= UnknownCaptureStreak)
+                {
+                    _unknownStreak = 0;
+                    TryCaptureUnknown(content, foundRectArea, scale);
+                }
+            }
+
             return;
         }
 
         var r = result.Value;
+        // 识别成功：清除连续未知计数
+        _unknownStreak = 0;
 
         if (testMode)
         {
@@ -560,6 +586,82 @@ public sealed class MojangPickLoop
         var draw = VisionContext.Instance().DrawContent;
         draw.RemoveRect("MojangTestF");
         draw.RemoveRect("MojangTestItem");
+    }
+
+    /// <summary>
+    /// 自动截图：对 F 键右侧文字识别区域做一次 OCR，并将原始截图裁剪后保存到按颜色分目录的素材目录。
+    /// 保存前与同色目录已有图片做去重比较（NCC ≥ 匹配阈值视为重复）；OCR 无结果或区域越界时不保存。
+    /// </summary>
+    private void TryCaptureUnknown(CaptureContent content, Region foundRectArea, double scale)
+    {
+        try
+        {
+            var srcMat = content.CaptureRectArea.SrcMat;
+            var rect = MojangMatch.Instance.GetTextRegion(foundRectArea, scale);
+            if (rect.X < 0 || rect.Y < 0 || rect.X + rect.Width > srcMat.Width || rect.Y + rect.Height > srcMat.Height)
+            {
+                return; // 区域越界，跳过本次保存
+            }
+
+            string ocrText;
+            using (var textMat = new Mat(srcMat, rect))
+            {
+                ocrText = OcrFactory.Paddle.Ocr(textMat);
+            }
+
+            var name = SanitizeFileName(ocrText);
+            if (string.IsNullOrEmpty(name))
+            {
+                return; // OCR 无结果或文件名非法，不保存
+            }
+
+            using var roiMat = new Mat(srcMat, rect);
+            var colorIndex = MojangMatch.Instance.GetColorIndex(roiMat);
+            var colorDir = Path.Combine(ScreenshotRootDir, ColorNames[colorIndex]);
+            if (MojangMatch.Instance.FindDuplicate(roiMat, colorDir, TaskContext.Instance().Config.AutoPickConfig.MatchThreshold))
+            {
+                _logger.LogInformation("自动截图：{Name} 与已有截图重复，跳过保存", name);
+                return;
+            }
+
+            Directory.CreateDirectory(colorDir);
+            var path = UniqueFilePath(colorDir, name);
+            if (Cv2.ImEncode(".png", roiMat, out var bytes))
+            {
+                File.WriteAllBytes(path, bytes);
+                _logger.LogInformation("自动截图已保存：{Path}", path);
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "自动截图保存失败");
+        }
+    }
+
+    /// <summary>清理 OCR 结果中的文件名非法字符。</summary>
+    private static string SanitizeFileName(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        var invalid = Path.GetInvalidFileNameChars();
+        return new string(text.Trim().Where(c => !invalid.Contains(c)).ToArray());
+    }
+
+    /// <summary>文件名唯一化：目录下已存在同名文件时追加 (n)。</summary>
+    private static string UniqueFilePath(string dir, string name)
+    {
+        var path = Path.Combine(dir, name + ".png");
+        var n = 1;
+        while (File.Exists(path))
+        {
+            path = Path.Combine(dir, $"{name}({n}).png");
+            n++;
+        }
+
+        return path;
     }
 
     /// <summary>
