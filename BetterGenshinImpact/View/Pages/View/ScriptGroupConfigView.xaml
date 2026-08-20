@@ -720,6 +720,115 @@
                     </ui:CardExpander>
                     </Grid>
 
+                    <Grid Margin="16,0">
+
+                        <ui:CardExpander Margin="0,0,36,0"
+                                         ContentPadding="0">
+                            <ui:CardExpander.Header>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  FontTypography="Body"
+                                                  Text="自定义地图追踪延迟"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1"
+                                                  Grid.Column="0"
+                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="自定义地图追踪各环节的等待时间（毫秒），默认值为原固定延迟"
+                                                  TextWrapping="Wrap" />
+                                </Grid>
+                            </ui:CardExpander.Header>
+                            <StackPanel>
+                                <Grid Margin="16">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  FontTypography="Body"
+                                                  Text="动作执行完成后的等待时间（毫秒）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1"
+                                                  Grid.Column="0"
+                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="战斗、简易策略、纳西妲收集、挖矿、钓鱼、退出重登等动作执行完后统一等待该时长，默认1000"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBox Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="1"
+                                                MinWidth="100"
+                                                Text="{Binding PathingConfig.ActionFinishedDelayMs, Mode=TwoWay}"
+                                                TextWrapping="NoWrap" />
+                                </Grid>
+                                <Grid Margin="16,0,16,16">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  FontTypography="Body"
+                                                  Text="传送前等待时间（毫秒）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1"
+                                                  Grid.Column="0"
+                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="上一分段最后点位不是传送/战斗/纳西妲收集/拾取周围时，传送前等待该时长，默认1000"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBox Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="1"
+                                                MinWidth="100"
+                                                Text="{Binding PathingConfig.TeleportBeforeDelayMs, Mode=TwoWay}"
+                                                TextWrapping="NoWrap" />
+                                </Grid>
+                                <Grid Margin="16,0,16,16">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  FontTypography="Body"
+                                                  Text="到达目标点后的停顿时间（毫秒）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1"
+                                                  Grid.Column="0"
+                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="精确接近目标点结束后等待该时长再执行后续动作，默认1000"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBox Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="1"
+                                                MinWidth="100"
+                                                Text="{Binding PathingConfig.ArriveTargetDelayMs, Mode=TwoWay}"
+                                                TextWrapping="NoWrap" />
+                                </Grid>
+                            </StackPanel>
+                        </ui:CardExpander>
+                    </Grid>
+
                                        <!-- 执行周期配置 -->
                     <Grid Margin="16,0">
 
