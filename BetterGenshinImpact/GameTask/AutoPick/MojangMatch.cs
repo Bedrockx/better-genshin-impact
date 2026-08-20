@@ -50,6 +50,9 @@ public sealed class MojangMatch
     /// <summary>1080p 下文字区域高度（模板高 26 + 上下各 1px）</summary>
     private const int RegionHeight = 28;
 
+    /// <summary>1080p 下自动截图保存区域高度（与模板素材规格 140×26 一致）</summary>
+    private const int ScreenshotHeight = 26;
+
     /// <summary>1080p 下文字区域相对 F 键的左侧偏移（模板实际 X）</summary>
     private const int TextLeftOffset = 122;
 
@@ -199,10 +202,38 @@ public sealed class MojangMatch
     }
 
     /// <summary>
-    /// 最近未知识别区域截图队列（BGR 副本，最新在队尾），供自动截图复用；
+    /// 最近未知识别区域截图队列（BGR 副本 140×26，最新在队尾），供自动截图复用；
     /// 容量随配置稳定次数变化，最多保留最近 N 张。取走即清空。
     /// </summary>
     private readonly Queue<Mat> _unknownRois = [];
+
+    /// <summary>
+    /// 计算自动截图保存区域（140×26，与模板素材规格一致；为识别区域上下各内缩 1px）。
+    /// </summary>
+    private static Rect GetScreenshotRegion(Region fKeyRegion, double scale)
+    {
+        var centerY = fKeyRegion.Y + fKeyRegion.Height / 2;
+        return new Rect(
+            fKeyRegion.X + (int)(TextLeftOffset * scale),
+            centerY - (int)(ScreenshotHeight / 2.0 * scale),
+            (int)(RegionWidth * scale),
+            (int)(ScreenshotHeight * scale));
+    }
+
+    /// <summary>
+    /// 裁剪自动截图保存区域（BGR 副本 140×26）；区域越界返回 null。
+    /// </summary>
+    private Mat? GetScreenshotRoi(Mat srcMat, Region fKeyRegion, double scale)
+    {
+        var rect = GetScreenshotRegion(fKeyRegion, scale);
+        if (rect.X < 0 || rect.Y < 0 || rect.X + rect.Width > srcMat.Width || rect.Y + rect.Height > srcMat.Height)
+        {
+            return null;
+        }
+
+        using var roi = new Mat(srcMat, rect);
+        return roi.Channels() == 4 ? roi.CvtColor(ColorConversionCodes.BGRA2BGR) : roi.Clone();
+    }
 
     /// <summary>
     /// 取走最近 count 张未知识别区域截图（最旧在前、最新在最后，调用方负责释放）；不足 count 张时返回实际数量。
@@ -451,14 +482,18 @@ public sealed class MojangMatch
                     colorName, estLen, best is null ? 0 : bestScore, judgeMs, grayMs, nccSw.Elapsed.TotalMilliseconds, matchedCount);
             }
 
-            // 识别为未知：缓存本帧识别区域截图（BGR 副本）供自动截图复用，只保留最近 N 张（N=配置稳定次数，至少 1）
+            // 识别为未知：缓存本帧截图区域（140×26，与模板素材规格一致）供自动截图复用，只保留最近 N 张（N=配置稳定次数，至少 1）
             if (cacheUnknownRoi)
             {
-                var capacity = Math.Max(1, TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotStreak);
-                _unknownRois.Enqueue(bgrMat.Clone());
-                while (_unknownRois.Count > capacity)
+                var roi = GetScreenshotRoi(srcMat, fKeyRegion, scale);
+                if (roi is not null)
                 {
-                    _unknownRois.Dequeue().Dispose();
+                    var capacity = Math.Max(1, TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotStreak);
+                    _unknownRois.Enqueue(roi);
+                    while (_unknownRois.Count > capacity)
+                    {
+                        _unknownRois.Dequeue().Dispose();
+                    }
                 }
             }
 
