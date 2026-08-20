@@ -2,8 +2,10 @@
 """由原图生成莫版模板文件夹与 templates.json（含 len 字段）。
 
 用法：直接运行本脚本（需 Python + numpy + Pillow）。
-输入：Assets/原图 下的 140x26 PNG；尺寸不符合规格的图片会被拒绝。
+输入：Assets/原图 下的 PNG；y 必须为 26，x 不超过 140，否则被拒绝。
 输出：Assets/莫版模板/{灰,白,绿,蓝,紫}/*.png 与 templates.json。
+同名图片（如 甜甜花 与 甜甜花(1)）只输出一个：取质量分最高者，其余跳过。
+质量分 = 前景像素数 * 前景平均匹配度 / 全像素数（背景归零计 0）。
 """
 import os
 import re
@@ -18,7 +20,7 @@ BASE = os.path.dirname(SCRIPT_DIR)                       # Assets
 SRC = os.path.join(BASE, "原图")
 OUT = SCRIPT_DIR                                          # Assets/莫版模板
 
-SPEC_W, SPEC_H = 140, 26
+SPEC_W, SPEC_H = 140, 26  # 标准尺寸；x 允许更小，y 必须等于 SPEC_H
 
 # 5 种参考文字颜色（顺序即颜色文件夹顺序）
 REFS = [
@@ -59,11 +61,9 @@ ref_lab_matrix = np.stack([ref_labs[n] for n in COLOR_NAMES], axis=0)
 
 
 def main():
-    seen = set()
-    entries = []
     rejected = []     # 尺寸不符
     dropped = []      # 无亮像素
-    dup_skipped = []  # 交互名重复
+    candidates = {}   # name -> [候选 dict]（同名多图全部保留，最后择优）
     total = 0
 
     for root, dirs, files in os.walk(SRC):
@@ -76,7 +76,7 @@ def main():
 
             with Image.open(fp) as im:
                 w, h = im.size
-                if (w, h) != (SPEC_W, SPEC_H):
+                if h != SPEC_H or w > SPEC_W:
                     rejected.append((fp, f"{w}x{h}"))
                     continue
                 rgb = np.array(im.convert("RGB"))
@@ -95,11 +95,6 @@ def main():
             is_z = grand == "Z获得物品与交互名称不一致"
             item_name = parent.strip("[]") if is_z else name
 
-            if name in seen:
-                dup_skipped.append(fp)
-                continue
-            seen.add(name)
-
             # 颜色判定：V>=180 中亮度前 30% 像素的平均色 -> 最近参考色
             lab = rgb_to_lab(rgb)
             vals = v[v >= VOTE_MIN_V]
@@ -116,18 +111,41 @@ def main():
             match[v < VOTE_MIN_V] = 0.0  # 背景归零
             gray = match.astype(np.uint8)
 
-            color_dir = os.path.join(OUT, main_name)
-            os.makedirs(color_dir, exist_ok=True)
-            out_fn = name + ".png"
-            Image.fromarray(gray, "L").save(os.path.join(color_dir, out_fn))
+            # 质量分 = 前景像素数 * 前景平均匹配度 / 全像素数
+            # （即 sum(前景 match) / 全像素数，背景归零计 0）
+            # 兼顾文字覆盖量与颜色匹配度，避免只有零星亮点的小图平均得分虚高
+            fg = v >= VOTE_MIN_V
+            quality = float(match[fg].mean() * int(fg.sum()) / (w * h))
 
-            entries.append({
-                "name": name,
+            candidates.setdefault(name, []).append({
+                "fp": fp,
                 "color": main_name,
-                "file": f"{main_name}/{out_fn}",
                 "itemName": item_name,
-                "len": min(len(name), 5),
+                "gray": gray,
+                "quality": quality,
             })
+
+    # 同名多图只保留质量分最高者，其余跳过
+    entries = []
+    dup_skipped = []
+    for name, cands in candidates.items():
+        best = max(cands, key=lambda c: c["quality"])
+        for c in cands:
+            if c is not best:
+                dup_skipped.append(c["fp"])
+
+        color_dir = os.path.join(OUT, best["color"])
+        os.makedirs(color_dir, exist_ok=True)
+        out_fn = name + ".png"
+        Image.fromarray(best["gray"], "L").save(os.path.join(color_dir, out_fn))
+
+        entries.append({
+            "name": name,
+            "color": best["color"],
+            "file": f"{best['color']}/{out_fn}",
+            "itemName": best["itemName"],
+            "len": min(len(name), 5),
+        })
 
     entries.sort(key=lambda e: (e["color"], e["name"]))
     json_path = os.path.join(OUT, "templates.json")
@@ -144,7 +162,7 @@ def main():
     print(f"无亮像素丢弃: {len(dropped)}")
     for d in dropped:
         print("  DROP", d)
-    print(f"交互名重复跳过: {len(dup_skipped)}")
+    print(f"同名择优后跳过: {len(dup_skipped)}")
     for d in dup_skipped:
         print("  DUP", d)
     print(f"JSON: {json_path}")
