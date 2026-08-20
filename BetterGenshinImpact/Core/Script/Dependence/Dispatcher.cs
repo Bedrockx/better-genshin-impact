@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using BetterGenshinImpact.GameTask.AutoFight;
 using BetterGenshinImpact.GameTask.AutoFight.Script;
 using BetterGenshinImpact.GameTask.AutoLeyLineOutcrop;
+using BetterGenshinImpact.GameTask.AutoPick;
 using BetterGenshinImpact.GameTask.AutoStygianOnslaught;
 using BetterGenshinImpact.GameTask.Common;
 
@@ -323,6 +324,32 @@ public class Dispatcher
         return GetLinkedCancellationTokenSource().Token;
     }
     
+    /// <summary>
+    /// 获取自动拾取记录（仅莫版拾取路径产生：拾取交互时的物品名 + 时间戳）并清空记录。
+    /// JS 侧用法（兼容旧版 C#，旧版无此方法时返回空数组不报错）：
+    /// <code>
+    /// const records = dispatcher.getPickRecords?.() ?? [];
+    /// for (const r of records) {
+    ///     log.info(`拾取: ${r.Name} @ ${r.Time}`);
+    /// }
+    /// </code>
+    /// </summary>
+    public object[] GetPickRecords()
+    {
+        var records = AutoPickRecordStore.Drain();
+        var result = new object[records.Length];
+        for (var i = 0; i < records.Length; i++)
+        {
+            dynamic expando = new ExpandoObject();
+            var dict = (IDictionary<string, object>)expando;
+            dict["Time"] = records[i].Time.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            dict["Name"] = records[i].Name;
+            result[i] = expando;
+        }
+
+        return result;
+    }
+
     /// <summary>  
     /// 运行自动秘境任务
     /// </summary>  

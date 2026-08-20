@@ -496,6 +496,8 @@ public sealed class MojangPickLoop
     private void Interact(string name, string itemName, AutoPickAssets assets)
     {
         _logger.LogInformation("交互或拾取：{Name}", name);
+        // 记录拾取历史（物品名 + 时间戳），供 JS 侧 dispatcher.getPickRecords() 获取；仅莫版拾取路径记录
+        AutoPickRecordStore.Record(string.IsNullOrEmpty(itemName) ? name : itemName);
         Simulation.SendInput.Keyboard.KeyPress(assets.PickVk);
     }
 
