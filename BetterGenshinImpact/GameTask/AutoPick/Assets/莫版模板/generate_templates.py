@@ -2,9 +2,10 @@
 """由原图生成莫版模板文件夹与 templates.json（含 len 字段）。
 
 用法：直接运行本脚本（需 Python + numpy + Pillow）。
-输入：Assets/原图 下的 PNG；y 必须为 26，x 不超过 140，否则被拒绝。
+输入：Assets/原图 下的 PNG；y 必须为 26（允许 28，自动裁掉上下各一行像素），x 不超过 140，否则被拒绝。
 输出：Assets/莫版模板/{灰,白,绿,蓝,紫}/*.png 与 templates.json。
-同名图片（如 甜甜花 与 甜甜花(1)）只输出一个：取质量分最高者，其余跳过。
+同色同名的多张图（如 甜甜花 与 甜甜花(1)）只输出一个：取质量分最高者，其余跳过；
+不同颜色的同名图（如 灰色甜甜花 与 绿色甜甜花）各自保留。
 质量分 = 前景像素数 * 前景平均匹配度 / 全像素数（背景归零计 0）。
 """
 import os
@@ -63,7 +64,7 @@ ref_lab_matrix = np.stack([ref_labs[n] for n in COLOR_NAMES], axis=0)
 def main():
     rejected = []     # 尺寸不符
     dropped = []      # 无亮像素
-    candidates = {}   # name -> [候选 dict]（同名多图全部保留，最后择优）
+    candidates = {}   # (name, color) -> [候选 dict]（同色同名多图全部保留，最后择优；不同颜色各自保留）
     total = 0
 
     for root, dirs, files in os.walk(SRC):
@@ -76,8 +77,13 @@ def main():
 
             with Image.open(fp) as im:
                 w, h = im.size
+                orig = f"{w}x{h}"
+                if h == SPEC_H + 2:
+                    # 140x28：裁掉上下各一行像素后按 140x26 处理
+                    im = im.crop((0, 1, w, h - 1))
+                    h -= 2
                 if h != SPEC_H or w > SPEC_W:
-                    rejected.append((fp, f"{w}x{h}"))
+                    rejected.append((fp, orig))
                     continue
                 rgb = np.array(im.convert("RGB"))
 
@@ -117,7 +123,7 @@ def main():
             fg = v >= VOTE_MIN_V
             quality = float(match[fg].mean() * int(fg.sum()) / (w * h))
 
-            candidates.setdefault(name, []).append({
+            candidates.setdefault((name, main_name), []).append({
                 "fp": fp,
                 "color": main_name,
                 "itemName": item_name,
@@ -125,24 +131,24 @@ def main():
                 "quality": quality,
             })
 
-    # 同名多图只保留质量分最高者，其余跳过
+    # 同色同名多图只保留质量分最高者，其余跳过；不同颜色的同名图各自保留
     entries = []
     dup_skipped = []
-    for name, cands in candidates.items():
+    for (name, color), cands in candidates.items():
         best = max(cands, key=lambda c: c["quality"])
         for c in cands:
             if c is not best:
                 dup_skipped.append(c["fp"])
 
-        color_dir = os.path.join(OUT, best["color"])
+        color_dir = os.path.join(OUT, color)
         os.makedirs(color_dir, exist_ok=True)
         out_fn = name + ".png"
         Image.fromarray(best["gray"], "L").save(os.path.join(color_dir, out_fn))
 
         entries.append({
             "name": name,
-            "color": best["color"],
-            "file": f"{best['color']}/{out_fn}",
+            "color": color,
+            "file": f"{color}/{out_fn}",
             "itemName": best["itemName"],
             "len": min(len(name), 5),
         })
