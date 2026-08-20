@@ -444,20 +444,11 @@
                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
                                   Text="连续 N 次识别为未知且最近 N 次截图互相匹配度达标时保存截图（0 表示关闭；按颜色分目录、去重）"
                                   TextWrapping="Wrap" />
-                    <ui:NumberBox Grid.Row="0"
-                                  Grid.RowSpan="2"
-                                  Grid.Column="1"
-                                  Margin="0,0,24,0"
-                                  Width="100"
-                                  VerticalAlignment="Center"
-                                  AcceptsExpression="False"
-                                  Maximum="20"
-                                  MaxDecimalPlaces="0"
-                                  Minimum="0"
-                                  SmallChange="1"
-                                  SpinButtonPlacementMode="Inline"
-                                  ValidationMode="InvalidInputOverwritten"
-                                  Value="{Binding Config.AutoPickConfig.AutoScreenshotStreak, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ui:TextBox Grid.Row="0"
+                                Grid.RowSpan="2"
+                                Grid.Column="1"
+                                Margin="0,0,8,0"
+                                Text="{Binding Config.AutoPickConfig.AutoScreenshotStreak, Mode=TwoWay}" />
                 </Grid>
                 <Grid Margin="16">
                     <Grid.RowDefinitions>
