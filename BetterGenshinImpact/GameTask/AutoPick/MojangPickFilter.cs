@@ -9,6 +9,7 @@ namespace BetterGenshinImpact.GameTask.AutoPick;
 /// <summary>
 /// 莫版拾取名单过滤。
 /// 白名单即莫版模板全集（有图即可拾取），在此之上叠加：
+///   - 内置默认黑名单（调查/烹饪/观察点/七天神像等，始终生效）；
 ///   - 全局黑名单（独立文件，初始为空）；
 ///   - 配置组白名单（覆盖全局黑名单）；
 ///   - 配置组黑名单（优先级最高）。
@@ -19,6 +20,12 @@ public sealed class MojangPickFilter
 {
     /// <summary>黑名单文件（每行一个交互名 Name）</summary>
     public const string BlackListPath = @"User\mojang_black_lists.txt";
+
+    /// <summary>
+    /// 内置默认黑名单：这些交互点当前没有模板截图（识别为未知时不会交互），
+    /// 默认排除以防后续补充模板后误交互。
+    /// </summary>
+    private static readonly HashSet<string> DefaultBlackList = ["调查", "烹饪", "观察点", "七天神像"];
 
     /// <summary>全局黑名单（文件持久化）</summary>
     private HashSet<string> _globalBlackList = [];
@@ -64,7 +71,8 @@ public sealed class MojangPickFilter
             return true;
         }
 
-        return !_globalBlackList.Contains(name);
+        // 内置默认黑名单与全局黑名单同级，均不可交互
+        return !_globalBlackList.Contains(name) && !DefaultBlackList.Contains(name);
     }
 
     /// <summary>加入全局黑名单并持久化（去重）。</summary>
