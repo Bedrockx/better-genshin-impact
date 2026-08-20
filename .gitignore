@@ -30,6 +30,9 @@ Tmp/
 node_modules/
 github_actions_cache/
 
+# WPF 编译临时文件
+*_wpftmp.csproj
+
 *.zip
 
 # Rider

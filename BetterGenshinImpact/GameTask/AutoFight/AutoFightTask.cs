@@ -52,6 +52,16 @@ public class AutoFightTask : ISoloTask
     private readonly double _dpi = TaskContext.Instance().DpiScale;
     
     public static bool FightStatusFlag { get; set; } = false;
+
+    /// <summary>
+    /// 请求结束当前战斗（游泳检测单次战斗第二次触发回点时置位，JSON 战斗循环检查后正常结束战斗）
+    /// </summary>
+    public static bool FightEndRequested { get; set; } = false;
+
+    /// <summary>
+    /// 本场战斗游泳回点是否已执行过（用于单次战斗第二次检测到游泳时结束战斗，每场战斗开始时重置）
+    /// </summary>
+    public static bool SwimBackToFightPerformed { get; set; } = false;
     
     private static readonly object PickLock = new object(); 
     
@@ -269,6 +279,9 @@ public class AutoFightTask : ISoloTask
         AvatarRecognition.ClearLegendaryBarTracker();
         // 每场新战斗重置"敌人可见时跳过战斗结束检查"的连续跳过计数，保证拥有完整的跳过次数
         ResetSkipCheckCounter();
+        // 每场新战斗重置游泳回点与结束请求标志，避免跨战斗残留
+        FightEndRequested = false;
+        SwimBackToFightPerformed = false;
         try
         {
             LogScreenResolution();
