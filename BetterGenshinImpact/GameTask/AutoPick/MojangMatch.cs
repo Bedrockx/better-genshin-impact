@@ -199,25 +199,77 @@ public sealed class MojangMatch
     }
 
     /// <summary>
-    /// 最近一次识别为未知的 F 键右侧区域截图（BGR 副本），供自动截图复用；取走即清空。
+    /// 最近未知识别区域截图队列（BGR 副本，最新在队尾），供自动截图复用；
+    /// 容量随配置稳定次数变化，最多保留最近 N 张。取走即清空。
     /// </summary>
-    private Mat? _lastUnknownRoi;
+    private readonly Queue<Mat> _unknownRois = [];
 
     /// <summary>
-    /// 取走最近一次未知识别区域截图（调用方负责释放）；无缓存返回 null。
+    /// 取走最近 count 张未知识别区域截图（最旧在前、最新在最后，调用方负责释放）；不足 count 张时返回实际数量。
     /// </summary>
-    public Mat? TakeUnknownRoi()
+    public List<Mat> TakeUnknownRois(int count)
     {
-        var roi = _lastUnknownRoi;
-        _lastUnknownRoi = null;
-        return roi;
+        var rois = new List<Mat>(count);
+        while (rois.Count < count && _unknownRois.Count > 0)
+        {
+            rois.Add(_unknownRois.Dequeue());
+        }
+
+        return rois;
     }
 
     /// <summary>清空未知识别区域截图缓存。</summary>
-    private void ClearUnknownRoi()
+    private void ClearUnknownRois()
     {
-        _lastUnknownRoi?.Dispose();
-        _lastUnknownRoi = null;
+        while (_unknownRois.Count > 0)
+        {
+            _unknownRois.Dequeue().Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 计算两张区域截图互相的匹配度（最大 NCC）：颜色以第一张判定为准，第二张按该颜色灰度化后与第一张比较；
+    /// 尺寸不一致时先缩放到第一张尺寸。用于自动截图"稳定帧"校验（同一物品不同帧截图应高度相似）。
+    /// </summary>
+    public double GetSimilarity(Mat a, Mat b)
+    {
+        using var bgrA = a.Channels() == 4
+            ? a.CvtColor(ColorConversionCodes.BGRA2BGR)
+            : a.Clone();
+        using var bgrB = b.Channels() == 4
+            ? b.CvtColor(ColorConversionCodes.BGRA2BGR)
+            : b.Clone();
+        var (grayA, colorIndex, _, _, _) = ToGray(bgrA);
+
+        byte[] grayB;
+        if (bgrB.Width == bgrA.Width && bgrB.Height == bgrA.Height)
+        {
+            grayB = ToGrayByColor(bgrB, colorIndex);
+        }
+        else
+        {
+            using var resized = ResizeHelper.ResizeTo(bgrB, bgrA.Width, bgrA.Height);
+            grayB = ToGrayByColor(resized, colorIndex);
+        }
+
+        var (sumI, sumI2) = BuildIntegral(grayA, bgrA.Width, bgrA.Height);
+        var c = CropTemplate(grayB, bgrA.Width, bgrA.Height);
+        var template = new MojangTemplate
+        {
+            Name = string.Empty,
+            Color = string.Empty,
+            ItemName = string.Empty,
+            Gray = c.Gray,
+            Width = c.Width,
+            Height = bgrA.Height,
+            Len = 0,
+            MeanT = c.MeanT,
+            VarT = c.VarT,
+            NonZero = c.NonZero,
+        };
+
+        var (score, _, _) = NccMax(grayA, sumI, sumI2, bgrA.Width, bgrA.Height, template);
+        return score;
     }
 
     /// <summary>
@@ -313,7 +365,7 @@ public sealed class MojangMatch
 
         if (rect.X < 0 || rect.Y < 0 || rect.X + rect.Width > srcMat.Width || rect.Y + rect.Height > srcMat.Height)
         {
-            ClearUnknownRoi();
+            ClearUnknownRois();
             return null;
         }
 
@@ -399,11 +451,15 @@ public sealed class MojangMatch
                     colorName, estLen, best is null ? 0 : bestScore, judgeMs, grayMs, nccSw.Elapsed.TotalMilliseconds, matchedCount);
             }
 
-            // 识别为未知：缓存本帧识别区域截图（BGR 副本），供自动截图复用
+            // 识别为未知：缓存本帧识别区域截图（BGR 副本）供自动截图复用，只保留最近 N 张（N=配置稳定次数，至少 1）
             if (cacheUnknownRoi)
             {
-                _lastUnknownRoi?.Dispose();
-                _lastUnknownRoi = bgrMat.Clone();
+                var capacity = Math.Max(1, TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotStreak);
+                _unknownRois.Enqueue(bgrMat.Clone());
+                while (_unknownRois.Count > capacity)
+                {
+                    _unknownRois.Dequeue().Dispose();
+                }
             }
 
             return null;

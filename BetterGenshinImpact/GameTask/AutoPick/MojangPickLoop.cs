@@ -58,16 +58,15 @@ public sealed class MojangPickLoop
     /// <summary>二次确认失败标记：存在时下一轮转入滚轮分支并消费。</summary>
     private bool _skipConfirm;
 
-    /// <summary>连续 F 可见且识别为未知的次数，达到 <see cref="UnknownCaptureStreak"/> 时触发自动截图。</summary>
+    /// <summary>
+    /// 连续 F 可见且识别为未知的次数，达到配置稳定次数（AutoScreenshotStreak）且最近 N 次截图互相匹配度达标时触发自动截图。
+    /// </summary>
     private int _unknownStreak;
 
     private readonly MojangPickFilter _filter = new();
 
     /// <summary>自动截图保存根目录（按颜色分子目录，收集后拷回源码素材目录跑 generate_templates.py）。</summary>
     private static readonly string ScreenshotRootDir = Global.Absolute(@"GameTask\AutoPick\Assets\原图\自动截图");
-
-    /// <summary>连续识别为未知达到该次数时执行一次自动截图。</summary>
-    private const int UnknownCaptureStreak = 3;
 
     /// <summary>颜色展示顺序，与 MojangMatch 中 Refs 一致。</summary>
     private static readonly string[] ColorNames = ["灰", "绿", "蓝", "紫", "白"];
@@ -201,17 +200,25 @@ public sealed class MojangPickLoop
             // 未识别到物品：转入滚轮分支
             LogNoResult();
 
-            // 自动截图：开关开启时，连续未知达到阈值则复用最近一次未知识别区域截图，
-            // 后台异步 OCR + 去重 + 保存，不阻塞滚轮；与测试模式相互独立。
-            if (TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotEnabled)
+            // 自动截图：稳定次数配置 > 0 时，连续未知达到该次数则取最近 N 次未知识别区域截图，
+            // 后台校验互相匹配度（画面稳定）后异步 OCR + 去重 + 保存，不阻塞滚轮；与测试模式相互独立。
+            var streak = TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotStreak;
+            if (streak > 0)
             {
-                if (++_unknownStreak >= UnknownCaptureStreak)
+                if (++_unknownStreak >= streak)
                 {
                     _unknownStreak = 0;
-                    var roi = MojangMatch.Instance.TakeUnknownRoi();
-                    if (roi is not null)
+                    var rois = MojangMatch.Instance.TakeUnknownRois(streak);
+                    if (rois.Count == streak)
                     {
-                        Task.Run(() => ProcessUnknownCapture(roi));
+                        Task.Run(() => ProcessStableCapture(rois));
+                    }
+                    else
+                    {
+                        foreach (var frame in rois)
+                        {
+                            frame.Dispose();
+                        }
                     }
                 }
             }
@@ -597,13 +604,31 @@ public sealed class MojangPickLoop
     }
 
     /// <summary>
-    /// 后台处理自动截图：对未知识别区域截图做 OCR，按颜色分目录去重并保存；结束后释放截图。
+    /// 后台处理自动截图：先校验最近 N 次截图两两互相匹配度（NCC ≥ 匹配阈值）确认画面稳定，
+    /// 再对最新一张做 OCR，按颜色分目录去重并保存；结束后释放全部截图。
+    /// 任一帧互匹配不达标视为画面不稳定，直接丢弃不保存。
     /// OCR 引擎内部有锁，后台调用安全；异常仅记录，不影响拾取循环。
     /// </summary>
-    private void ProcessUnknownCapture(Mat roi)
+    private void ProcessStableCapture(List<Mat> rois)
     {
         try
         {
+            var threshold = TaskContext.Instance().Config.AutoPickConfig.MatchThreshold;
+            for (var i = 0; i < rois.Count; i++)
+            {
+                for (var j = i + 1; j < rois.Count; j++)
+                {
+                    var s = MojangMatch.Instance.GetSimilarity(rois[i], rois[j]);
+                    if (s < threshold)
+                    {
+                        _logger.LogInformation("自动截图：最近{Count}次截图互相匹配度不足（{Score:F3} < {Threshold:F3}），画面不稳定，跳过保存",
+                            rois.Count, s, threshold);
+                        return;
+                    }
+                }
+            }
+
+            var roi = rois[^1]; // 最新一张做 OCR 与保存
             var ocrText = OcrFactory.Paddle.Ocr(roi);
 
             var name = SanitizeFileName(ocrText);
@@ -634,7 +659,10 @@ public sealed class MojangPickLoop
         }
         finally
         {
-            roi.Dispose();
+            foreach (var r in rois)
+            {
+                r.Dispose();
+            }
         }
     }
 
