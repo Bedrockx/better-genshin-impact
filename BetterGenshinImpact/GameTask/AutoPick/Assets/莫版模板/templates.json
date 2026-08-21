@@ -175,10 +175,10 @@
     "len": 5
   },
   {
-    "name": "破旧的刀谭",
+    "name": "破旧的刀镡",
     "color": "灰",
-    "file": "灰/破旧的刀谭.png",
-    "itemName": "破旧的刀谭",
+    "file": "灰/破旧的刀镡.png",
+    "itemName": "破旧的刀镡",
     "len": 5
   },
   {
@@ -252,10 +252,10 @@
     "len": 4
   },
   {
-    "name": "便攜轴承",
+    "name": "便携轴承",
     "color": "白",
-    "file": "白/便攜轴承.png",
-    "itemName": "便攜轴承",
+    "file": "白/便携轴承.png",
+    "itemName": "便携轴承",
     "len": 4
   },
   {
@@ -1197,10 +1197,10 @@
     "len": 3
   },
   {
-    "name": "霜盞花",
+    "name": "霜盏花",
     "color": "白",
-    "file": "白/霜盞花.png",
-    "itemName": "霜盞花",
+    "file": "白/霜盏花.png",
+    "itemName": "霜盏花",
     "len": 3
   },
   {
@@ -1288,16 +1288,16 @@
     "len": 2
   },
   {
-    "name": "黃金蟹",
+    "name": "黄金蟹",
     "color": "白",
-    "file": "白/黃金蟹.png",
+    "file": "白/黄金蟹.png",
     "itemName": "螃蟹",
     "len": 3
   },
   {
-    "name": "黃金鲈鱼",
+    "name": "黄金鲈鱼",
     "color": "白",
-    "file": "白/黃金鲈鱼.png",
+    "file": "白/黄金鲈鱼.png",
     "itemName": "鱼肉",
     "len": 4
   },
@@ -1729,10 +1729,10 @@
     "len": 4
   },
   {
-    "name": "影打刀锂",
+    "name": "影打刀镡",
     "color": "绿",
-    "file": "绿/影打刀锂.png",
-    "itemName": "影打刀锂",
+    "file": "绿/影打刀镡.png",
+    "itemName": "影打刀镡",
     "len": 4
   },
   {
@@ -2275,10 +2275,10 @@
     "len": 4
   },
   {
-    "name": "橫行霸者的利齿",
+    "name": "横行霸者的利齿",
     "color": "蓝",
-    "file": "蓝/橫行霸者的利齿.png",
-    "itemName": "橫行霸者的利齿",
+    "file": "蓝/横行霸者的利齿.png",
+    "itemName": "横行霸者的利齿",
     "len": 5
   },
   {
