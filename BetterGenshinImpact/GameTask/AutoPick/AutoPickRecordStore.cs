@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace BetterGenshinImpact.GameTask.AutoPick;
 
@@ -26,16 +27,25 @@ public static class AutoPickRecordStore
     /// <summary>线程安全队列：拾取记录（时间戳 + 物品名），拾取循环线程写入、JS 请求线程读出。</summary>
     private static readonly ConcurrentQueue<PickRecord> Records = new();
 
-    /// <summary>单条拾取记录。</summary>
-    public sealed record PickRecord(DateTime Time, string Name);
+    /// <summary>单条拾取记录（Name 为背包名/获得物品名，JS 侧 r.Name 显示此值；InteractName 为交互列表显示名）。</summary>
+    public sealed record PickRecord(DateTime Time, string Name, string InteractName);
 
     /// <summary>记录一次拾取交互（仅由莫版拾取路径调用，线程安全）。</summary>
-    public static void Record(string name)
+    /// <param name="bagName">背包名（获得物品名，满背包提示显示，JS 侧 r.Name 显示此值）</param>
+    /// <param name="interactName">交互名（交互列表显示名，黑名单按此匹配）</param>
+    public static void Record(string bagName, string interactName)
     {
-        Records.Enqueue(new PickRecord(DateTime.Now, name));
+        Records.Enqueue(new PickRecord(DateTime.Now, bagName, interactName));
         while (Records.Count > MaxRecords && Records.TryDequeue(out _))
         {
         }
+    }
+
+    /// <summary>获取最近 window 内的拾取记录（不消费队列，线程安全），供满背包自动加入黑名单匹配使用。</summary>
+    public static PickRecord[] PeekRecent(TimeSpan window)
+    {
+        var cutoff = DateTime.Now - window;
+        return Records.Where(r => r.Time >= cutoff).ToArray();
     }
 
     /// <summary>取出全部记录并清空（线程安全），JS 侧通过 dispatcher.getPickRecords() 调用。</summary>

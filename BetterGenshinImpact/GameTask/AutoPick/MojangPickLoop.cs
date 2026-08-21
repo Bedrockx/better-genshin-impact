@@ -111,7 +111,8 @@ public sealed class MojangPickLoop
     }
 
     /// <summary>
-    /// 满背包检查（节流）。检测到「背包已满」提示时，OCR 物品名并自动加入黑名单。
+    /// 满背包检查（节流）。检测到「背包已满」提示时，OCR 背包名并与最近 5 秒内交互过的物品匹配（取匹配度最高者），
+    /// 将该物品对应的全部交互名自动加入黑名单（满背包提示显示背包名，与交互名可能不一致）。
     /// </summary>
     public void CheckBagFull(CaptureContent content)
     {
@@ -143,7 +144,8 @@ public sealed class MojangPickLoop
             return;
         }
 
-        var names = MojangMatch.Instance.FindNamesByItemText(ocrText);
+        var names = MojangMatch.Instance.FindInteractNamesForBagFull(ocrText,
+            AutoPickRecordStore.PeekRecent(TimeSpan.FromSeconds(5)));
         if (names.Count == 0)
         {
             return;
@@ -496,8 +498,9 @@ public sealed class MojangPickLoop
     private void Interact(string name, string itemName, AutoPickAssets assets)
     {
         _logger.LogInformation("交互或拾取：{Name}", name);
-        // 记录拾取历史（物品名 + 时间戳），供 JS 侧 dispatcher.getPickRecords() 获取；仅莫版拾取路径记录
-        AutoPickRecordStore.Record(string.IsNullOrEmpty(itemName) ? name : itemName);
+        // 记录拾取历史（背包名 + 交互名 + 时间戳），供 JS 侧 dispatcher.getPickRecords() 获取及满背包自动黑名单使用；
+        // 背包名与交互名可能不一致（如 交互名"黄金蟹" 对应 背包名"螃蟹"），满背包提示显示的是背包名
+        AutoPickRecordStore.Record(string.IsNullOrEmpty(itemName) ? name : itemName, name);
         Simulation.SendInput.Keyboard.KeyPress(assets.PickVk);
     }
 

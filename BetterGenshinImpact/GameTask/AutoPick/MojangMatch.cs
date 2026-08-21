@@ -41,6 +41,9 @@ public sealed class MojangMatch
     /// <summary>NCC 匹配度下限（读配置）</summary>
     private static double MinScore => TaskContext.Instance().Config.AutoPickConfig.MatchThreshold;
 
+    /// <summary>满背包自动黑名单：OCR 文本与最近交互背包名匹配度的下限，低于则视为未匹配。</summary>
+    private const double BagFullMinMatchRatio = 0.5;
+
     /// <summary>bin 文件魔数 ("MBMB")</summary>
     private const int BinMagic = 0x4D424D42;
 
@@ -109,12 +112,13 @@ public sealed class MojangMatch
     }
 
     /// <summary>
-    /// 根据满背包提示文字（物品名或交互名），查找对应的交互名（Name）列表。
-    /// 返回与文本匹配度最高（且 > 0.75）的模板的交互名。
+    /// 满背包自动加入黑名单：将 OCR 文本（背包名）与最近交互记录匹配，取匹配度最高者，
+    /// 返回该物品对应的全部交互名（交互列表显示名，黑名单按此匹配）。
+    /// 匹配度低于 <see cref="BagFullMinMatchRatio"/> 时视为未匹配，返回空。
     /// </summary>
-    public IReadOnlyList<string> FindNamesByItemText(string text)
+    public IReadOnlyList<string> FindInteractNamesForBagFull(string text, IReadOnlyList<AutoPickRecordStore.PickRecord> recent)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrWhiteSpace(text) || recent.Count == 0)
         {
             return [];
         }
@@ -125,29 +129,59 @@ public sealed class MojangMatch
             return [];
         }
 
-        var best = new List<string>();
+        // 满背包提示显示的是背包名，OCR 可能有噪音：在最近交互记录（背包名）中取匹配度最高者
+        var bestBagName = string.Empty;
+        var bestInteractName = string.Empty;
         var bestRatio = 0.0;
-        foreach (var t in _templatesByName.Values)
+        foreach (var r in recent)
         {
-            var ratio = Math.Max(MatchRatio(KeepChinese(t.Name), pureText),
-                                 MatchRatio(KeepChinese(t.ItemName), pureText));
-            if (ratio < 0.75)
+            var bagName = KeepChinese(r.Name);
+            if (bagName.Length == 0)
             {
                 continue;
             }
 
+            var ratio = MatchRatio(bagName, pureText);
             if (ratio > bestRatio + 1e-9)
             {
                 bestRatio = ratio;
-                best = [t.Name];
-            }
-            else if (Math.Abs(ratio - bestRatio) <= 1e-9)
-            {
-                best.Add(t.Name);
+                bestBagName = r.Name;
+                bestInteractName = r.InteractName;
             }
         }
 
-        return best;
+        if (bestRatio < BagFullMinMatchRatio)
+        {
+            return [];
+        }
+
+        // 背包名与交互名可能不一致（如 背包名"螃蟹" 对应 交互名"黄金蟹/将军蟹/…"）：
+        // 将本次交互记录的交互名与该背包名对应的全部交互名一并加入黑名单
+        var names = new HashSet<string>();
+        if (!string.IsNullOrEmpty(bestInteractName))
+        {
+            names.Add(bestInteractName);
+        }
+
+        if (!string.IsNullOrEmpty(bestBagName))
+        {
+            foreach (var n in FindInteractNamesByItemName(bestBagName))
+            {
+                names.Add(n);
+            }
+        }
+
+        return names.ToList();
+    }
+
+    /// <summary>按背包名（itemName）反查全部交互名（Name）。</summary>
+    public IReadOnlyList<string> FindInteractNamesByItemName(string itemName)
+    {
+        return _templatesByName.Values
+            .Where(t => string.Equals(t.ItemName, itemName, StringComparison.Ordinal))
+            .Select(t => t.Name)
+            .Distinct()
+            .ToList();
     }
 
     /// <summary>仅保留中文字符。</summary>
