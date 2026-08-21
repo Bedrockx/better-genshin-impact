@@ -16,6 +16,6 @@
 
 ## 入库规则
 
-- 灰度模板 PNG 与 `templates.json` 为生成物，**不入库**（见根目录 `.gitignore`）；
-- `generate_templates.py`、`pack_to_bin.py` 与打包产物 `Assets/莫版模板.bin` 正常入库；
+- 灰度模板 PNG 为生成物，**不入库**（见根目录 `.gitignore`）；
+- `generate_templates.py`、`pack_to_bin.py`、`templates.json` 与打包产物 `Assets/莫版模板.bin` 正常入库；
 - 运行时识别读取的是 `Assets/莫版模板.bin`。
