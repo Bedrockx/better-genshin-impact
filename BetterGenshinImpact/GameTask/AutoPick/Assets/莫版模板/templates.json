@@ -287,10 +287,24 @@
     "len": 3
   },
   {
+    "name": "冰星果",
+    "color": "白",
+    "file": "白/冰星果.png",
+    "itemName": "冰星果",
+    "len": 3
+  },
+  {
     "name": "冰晶蝶",
     "color": "白",
     "file": "白/冰晶蝶.png",
     "itemName": "晶核",
+    "len": 3
+  },
+  {
+    "name": "冰醋栗",
+    "color": "白",
+    "file": "白/冰醋栗.png",
+    "itemName": "冰醋栗",
     "len": 3
   },
   {
@@ -301,11 +315,25 @@
     "len": 3
   },
   {
+    "name": "冰魄虫",
+    "color": "白",
+    "file": "白/冰魄虫.png",
+    "itemName": "冰魄虫",
+    "len": 3
+  },
+  {
     "name": "冷鲜肉",
     "color": "白",
     "file": "白/冷鲜肉.png",
     "itemName": "冷鲜肉",
     "len": 3
+  },
+  {
+    "name": "凝月泪滴",
+    "color": "白",
+    "file": "白/凝月泪滴.png",
+    "itemName": "凝月泪滴",
+    "len": 4
   },
   {
     "name": "初露之源",
@@ -327,13 +355,6 @@
     "file": "白/卷心菜.png",
     "itemName": "卷心菜",
     "len": 3
-  },
-  {
-    "name": "合成",
-    "color": "白",
-    "file": "白/合成.png",
-    "itemName": "合成",
-    "len": 2
   },
   {
     "name": "吉光虫",
@@ -567,6 +588,13 @@
     "len": 4
   },
   {
+    "name": "晶矿虫",
+    "color": "白",
+    "file": "白/晶矿虫.png",
+    "itemName": "晶矿虫",
+    "len": 3
+  },
+  {
     "name": "月莲",
     "color": "白",
     "file": "白/月莲.png",
@@ -791,6 +819,13 @@
     "len": 3
   },
   {
+    "name": "火腿",
+    "color": "白",
+    "file": "白/火腿.png",
+    "itemName": "火腿",
+    "len": 2
+  },
+  {
     "name": "灼灼彩菊",
     "color": "白",
     "file": "白/灼灼彩菊.png",
@@ -950,6 +985,13 @@
     "file": "白/红果果菇.png",
     "itemName": "红果果菇",
     "len": 4
+  },
+  {
+    "name": "红甜菜",
+    "color": "白",
+    "file": "白/红甜菜.png",
+    "itemName": "红甜菜",
+    "len": 3
   },
   {
     "name": "红角蜥",
@@ -1176,6 +1218,13 @@
     "len": 5
   },
   {
+    "name": "金蕨",
+    "color": "白",
+    "file": "白/金蕨.png",
+    "itemName": "金蕨",
+    "len": 2
+  },
+  {
     "name": "金鱼草",
     "color": "白",
     "file": "白/金鱼草.png",
@@ -1204,6 +1253,13 @@
     "len": 2
   },
   {
+    "name": "雪球花",
+    "color": "白",
+    "file": "白/雪球花.png",
+    "itemName": "雪球花",
+    "len": 3
+  },
+  {
     "name": "雷晶蝶",
     "color": "白",
     "file": "白/雷晶蝶.png",
@@ -1215,6 +1271,13 @@
     "color": "白",
     "file": "白/霓裳花.png",
     "itemName": "霓裳花",
+    "len": 3
+  },
+  {
+    "name": "霜仙花",
+    "color": "白",
+    "file": "白/霜仙花.png",
+    "itemName": "霜仙花",
     "len": 3
   },
   {
@@ -1358,6 +1421,13 @@
     "len": 5
   },
   {
+    "name": "大英雄的经验",
+    "color": "紫",
+    "file": "紫/大英雄的经验.png",
+    "itemName": "大英雄的经验",
+    "len": 5
+  },
+  {
     "name": "宝饰的焰剑",
     "color": "紫",
     "file": "紫/宝饰的焰剑.png",
@@ -1400,10 +1470,31 @@
     "len": 5
   },
   {
+    "name": "战狂的时计",
+    "color": "紫",
+    "file": "紫/战狂的时计.png",
+    "itemName": "战狂的时计",
+    "len": 5
+  },
+  {
     "name": "战狂的翎羽",
     "color": "紫",
     "file": "紫/战狂的翎羽.png",
     "itemName": "战狂的翎羽",
+    "len": 5
+  },
+  {
+    "name": "战狂的骨杯",
+    "color": "紫",
+    "file": "紫/战狂的骨杯.png",
+    "itemName": "战狂的骨杯",
+    "len": 5
+  },
+  {
+    "name": "战狂的鬼面",
+    "color": "紫",
+    "file": "紫/战狂的鬼面.png",
+    "itemName": "战狂的鬼面",
     "len": 5
   },
   {
@@ -1652,6 +1743,13 @@
     "len": 5
   },
   {
+    "name": "「慈爱」的教导",
+    "color": "绿",
+    "file": "绿/「慈爱」的教导.png",
+    "itemName": "「慈爱」的教导",
+    "len": 5
+  },
+  {
     "name": "冒险家尾羽",
     "color": "绿",
     "file": "绿/冒险家尾羽.png",
@@ -1747,6 +1845,13 @@
     "color": "绿",
     "file": "绿/幸运儿沙漏.png",
     "itemName": "幸运儿沙漏",
+    "len": 5
+  },
+  {
+    "name": "幸运儿绿花",
+    "color": "绿",
+    "file": "绿/幸运儿绿花.png",
+    "itemName": "幸运儿绿花",
     "len": 5
   },
   {
@@ -1981,6 +2086,13 @@
     "len": 5
   },
   {
+    "name": "精锻用良矿",
+    "color": "绿",
+    "file": "绿/精锻用良矿.png",
+    "itemName": "精锻用良矿",
+    "len": 5
+  },
+  {
     "name": "羽状鳍翅",
     "color": "绿",
     "file": "绿/羽状鳍翅.png",
@@ -2125,6 +2237,13 @@
     "color": "蓝",
     "file": "蓝/冒险家怀表.png",
     "itemName": "冒险家怀表",
+    "len": 5
+  },
+  {
+    "name": "冒险家的经验",
+    "color": "蓝",
+    "file": "蓝/冒险家的经验.png",
+    "itemName": "冒险家的经验",
     "len": 5
   },
   {
@@ -2317,6 +2436,13 @@
     "len": 5
   },
   {
+    "name": "战狂的鬼面",
+    "color": "蓝",
+    "file": "蓝/战狂的鬼面.png",
+    "itemName": "战狂的鬼面",
+    "len": 5
+  },
+  {
     "name": "攫金鸦印",
     "color": "蓝",
     "file": "蓝/攫金鸦印.png",
@@ -2342,6 +2468,13 @@
     "color": "蓝",
     "file": "蓝/教官的羽饰.png",
     "itemName": "教官的羽饰",
+    "len": 5
+  },
+  {
+    "name": "教官的胸花",
+    "color": "蓝",
+    "file": "蓝/教官的胸花.png",
+    "itemName": "教官的胸花",
     "len": 5
   },
   {
@@ -2485,6 +2618,20 @@
     "len": 5
   },
   {
+    "name": "游医的枭羽",
+    "color": "蓝",
+    "file": "蓝/游医的枭羽.png",
+    "itemName": "游医的枭羽",
+    "len": 5
+  },
+  {
+    "name": "游医的药壶",
+    "color": "蓝",
+    "file": "蓝/游医的药壶.png",
+    "itemName": "游医的药壶",
+    "len": 5
+  },
+  {
     "name": "游医的银莲",
     "color": "蓝",
     "file": "蓝/游医的银莲.png",
@@ -2546,6 +2693,13 @@
     "file": "蓝/精制机轴.png",
     "itemName": "精制机轴",
     "len": 4
+  },
+  {
+    "name": "精锻用魔矿",
+    "color": "蓝",
+    "file": "蓝/精锻用魔矿.png",
+    "itemName": "精锻用魔矿",
+    "len": 5
   },
   {
     "name": "织金红绸",
