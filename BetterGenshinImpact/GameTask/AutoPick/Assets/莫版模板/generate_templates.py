@@ -93,7 +93,12 @@ def main():
                 continue
 
             stem = os.path.splitext(fn)[0]
-            stem = re.sub(r"\(\d+\)$", "", stem)
+            # 归一化文件名，保证同名判断正确：
+            # 1) 剥离 Windows 副本后缀 " (N)" 及 "_N"（连同其前导空格/下划线）；
+            # 2) 去除尾随空格/下划线（剥离副本后缀后可能残留）。
+            stem = re.sub(r"[ _]*\(\d+\)$", "", stem)
+            stem = re.sub(r"[ _]*_\d+$", "", stem)
+            stem = stem.rstrip(" _")
             name = stem
 
             grand = os.path.basename(os.path.dirname(root))
