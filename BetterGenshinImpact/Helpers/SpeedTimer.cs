@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -53,5 +53,16 @@ public class SpeedTimer
         }
 
         _stopwatch.Stop();
+    }
+
+    public string ToSummary()
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var pair in _timeRecordDic)
+        {
+            sb.Append($"{pair.Key}:{pair.Value.TotalMilliseconds}ms,");
+        }
+
+        return sb.Length > 0 ? sb.ToString(0, sb.Length - 1) : string.Empty;
     }
 }

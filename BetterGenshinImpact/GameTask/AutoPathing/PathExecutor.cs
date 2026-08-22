@@ -47,9 +47,13 @@ public partial class PathExecutor
     private readonly TrapEscaper _trapEscaper;
     private readonly BlessingOfTheWelkinMoonTask _blessingOfTheWelkinMoonTask = new();
     private AutoSkipTrigger? _autoSkipTrigger;
+    // 上一个走过的路径点（用于卡死脱困时回头走，只在本类内使用，避免改动MoveTo签名）
+    private WaypointForTrack? _prevTrackWaypoint;
     public int SuccessFight = 0;
     //路径追踪完全走完所有路径结束的标识
     public bool SuccessEnd = false;
+    //是否因 HandledException 中途结束（JS 调用不设置 EndAction 时，即表示中途放弃路径，不能视为成功）
+    public bool EndByHandledException = false;
     private PathingPartyConfig? _partyConfig;
     private CancellationToken ct;
     private PathExecutorSuspend pathExecutorSuspend;
@@ -80,7 +84,6 @@ public partial class PathExecutor
     private DateTime _useGadgetLastUseTime = DateTime.MinValue;
 
     private const int RetryTimes = 2;
-    private int _inTrap = 0;
 
 
     //记录当前相关点位数组
@@ -183,6 +186,7 @@ public partial class PathExecutor
                         Navigation.SetPrevPosition((float)waypoints[0].X, (float)waypoints[0].Y);
                     }
 
+                    _prevTrackWaypoint = null;
                     foreach (var waypoint in waypoints) // 一条路径
                     {
                         CurWaypoint = (waypoints.FindIndex(wps => wps == waypoint), waypoint);
@@ -204,7 +208,7 @@ public partial class PathExecutor
                                 }
                                 else
                                 {
-                                    await Delay(1000, ct);
+                                    await Delay(PartyConfig.TeleportBeforeDelayMs, ct);
                                 }
                             }
                             await HandleTeleportWaypoint(waypoint);
@@ -242,6 +246,7 @@ public partial class PathExecutor
                                 await AfterMoveToTarget(waypoint);
                             }
                         }
+                        _prevTrackWaypoint = waypoint;
                     }
 
                     if (waypoints == waypointsList.Last())
@@ -253,6 +258,7 @@ public partial class PathExecutor
                 catch (HandledException handledException)
                 {
                     SuccessEnd = true;
+                    EndByHandledException = true;
                     break;
                 }
                 catch (NormalEndException normalEndException)
@@ -767,9 +773,8 @@ public partial class PathExecutor
         Logger.LogDebug("粗略接近途经点，位置({x2},{y2})", $"{waypoint.GameX:F1}", $"{waypoint.GameY:F1}");
         await WaitUntilRotatedTo(targetOrientation, 5);
         moveToStartTime = DateTime.UtcNow;
-        var lastPositionRecord = DateTime.UtcNow;
+        _trapEscaper.Reset(); // 每个点位开始时清空卡死检测状态
         var fastMode = false;
-        var prevPositions = new List<Point2f>();
         var fastModeColdTime = DateTime.MinValue;
         var prevNotTooFarPosition = position;
         int num = 0, distanceTooFarRetryCount = 0, consecutiveRotationCountBeyondAngle = 0;
@@ -815,6 +820,7 @@ public partial class PathExecutor
             if (distance < 4)
             {
                 Logger.LogDebug("到达路径点附近");
+                _trapEscaper.Reset(); // 到达点位，清空卡死计数
                 break;
             }
 
@@ -864,35 +870,11 @@ public partial class PathExecutor
                 prevNotTooFarPosition = position;
             }
 
-            // 非攀爬状态下，检测是否卡死（脱困触发器）
-            if (waypoint.MoveMode != MoveModeEnum.Climb.Code)
+            // 非攀爬状态下，检测是否卡死（脱困触发器，检测与分轮脱困逻辑见TrapEscaper）
+            if (waypoint.MoveMode != MoveModeEnum.Climb.Code &&
+                await _trapEscaper.CheckAndEscape(waypoint, _prevTrackWaypoint, position, additionalTimeInMs))
             {
-                if ((DateTime.UtcNow - lastPositionRecord).TotalMilliseconds > 1000 + additionalTimeInMs)
-                {
-                    lastPositionRecord = DateTime.UtcNow;
-                    prevPositions.Add(position);
-                    if (prevPositions.Count > 8)
-                    {
-                        var delta = prevPositions[^1] - prevPositions[^8];
-                        if (Math.Abs(delta.X) + Math.Abs(delta.Y) < 3)
-                        {
-                            _inTrap++;
-                            if (_inTrap > 2)
-                            {
-                                throw new RetryException("此路线出现3次卡死，重试一次路线或放弃此路线！");
-                            }
-
-                            Logger.LogWarning("疑似卡死，尝试脱离...");
-
-                            //调用脱困代码，由TrapEscaper接管移动
-                            await _trapEscaper.RotateAndMove();
-                            await _trapEscaper.MoveTo(waypoint);
-                            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-                            Logger.LogInformation("卡死脱离结束");
-                            continue;
-                        }
-                    }
-                }
+                continue;
             }
 
             // 旋转视角
@@ -1118,8 +1100,8 @@ public partial class PathExecutor
 
         Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
 
-        // 到达目的地后停顿一秒
-        await Delay(1000, ct);
+        // 到达目的地后停顿
+        await Delay(PartyConfig.ArriveTargetDelayMs, ct);
     }
 
     private async Task BeforeMoveCloseToTarget(WaypointForTrack waypoint)
@@ -1176,7 +1158,7 @@ public partial class PathExecutor
             {
                 SuccessFight++;
             }
-            await Delay(1000, ct);
+            await Delay(PartyConfig.ActionFinishedDelayMs, ct);
         }
     }
 
@@ -1444,5 +1426,74 @@ public partial class PathExecutor
         {
             throw new HandledException("达成结束条件，结束地图追踪");
         }
+    }
+
+    /// <summary>
+    /// 轻量级移动到目标点：循环截图 → 判断坐标 → 朝向目标点 → 按住 W 前进，直到到达目标点附近或超时
+    /// 供战斗中回点等场景使用，不依赖 PathExecutor 实例状态（无切人/疾跑/赶路/卡死脱困/异常界面处理等重逻辑）
+    /// </summary>
+    /// <param name="waypoint">目标点</param>
+    /// <param name="timeoutMs">整段动作（转向+移动）的总超时预算，毫秒</param>
+    /// <param name="ct">取消令牌</param>
+    /// <returns>是否成功到达目标点附近</returns>
+    public static async Task<bool> MoveToTargetLightweight(WaypointForTrack waypoint, int timeoutMs, CancellationToken ct)
+    {
+        var rotateTask = new CameraRotateTask(ct);
+        var startTime = DateTime.UtcNow;
+
+        // 先获取当前位置并转向目标点
+        Point2f position;
+        using (var screen = CaptureToRectArea())
+        {
+            position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
+        }
+        if (position != new Point2f())
+        {
+            var targetOrientation = Navigation.GetTargetOrientation(waypoint, position);
+            await rotateTask.WaitUntilRotatedTo(targetOrientation, 2);
+        }
+
+        // 按住 W 前进
+        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                if ((DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMs)
+                {
+                    Logger.LogWarning("回点移动：总时长超过 {TimeoutMs} 毫秒，超时结束", timeoutMs);
+                    return false;
+                }
+
+                using var screen = CaptureToRectArea();
+                position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
+                if (position == new Point2f())
+                {
+                    // 坐标识别失败，下一帧重试
+                    await Delay(100, ct);
+                    continue;
+                }
+
+                var distance = Navigation.GetDistance(waypoint, position);
+                if (distance < 4)
+                {
+                    Logger.LogDebug("回点移动：到达目标点附近");
+                    return true;
+                }
+
+                // 边走边转向目标点
+                var currentOrientation = Navigation.GetTargetOrientation(waypoint, position);
+                rotateTask.RotateToApproach(currentOrientation, screen);
+
+                await Delay(50, ct);
+            }
+        }
+        finally
+        {
+            // 松开 W
+            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+        }
+
+        return false;
     }
 }

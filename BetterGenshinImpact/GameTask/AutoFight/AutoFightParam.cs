@@ -69,10 +69,30 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         TargetingDetectionInterval = autoFightConfig.TargetingDetectionInterval;
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
+        ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaAutoSaveScreenshot = autoFightConfig.ChascaAutoSaveScreenshot;
+        ChascaNoRotateBeforeSeconds = autoFightConfig.ChascaNoRotateBeforeSeconds;
+        ChascaPressStrength = autoFightConfig.ChascaPressStrength;
+        ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
+        ChascaBulletThreshold = autoFightConfig.ChascaBulletThreshold;
+        ChascaSequenceSlotCount = autoFightConfig.ChascaSequenceSlotCount;
+        ChascaSmoothRotateEnabled = autoFightConfig.ChascaSmoothRotateEnabled;
+        ChascaSmoothRotateSpeed = autoFightConfig.ChascaSmoothRotateSpeed;
+        ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
+        ChascaAimForceX = autoFightConfig.ChascaAimForceX;
+        ChascaAimForceY = autoFightConfig.ChascaAimForceY;
+        ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
+        ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
+        ChascaDownArrowPressThreshold = autoFightConfig.ChascaDownArrowPressThreshold;
+        // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 赋值后）插入 4 行 Chasca 赋值，
+        // 若与本行 EndFightWhenNoTargetSeconds 冲突，保留两侧新增行即可
+        EndFightWhenNoTargetSeconds = autoFightConfig.EndFightWhenNoTargetSeconds;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
+        BackToFightDistance = autoFightConfig.BackToFightDistance;
+        BackToFightTimeoutMs = autoFightConfig.BackToFightTimeoutMs;
     }
 
     public FightFinishDetectConfig FinishDetectConfig { get; set; } = new();
@@ -100,10 +120,36 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     
     public bool QinDoublePickUp { get; set; } = false;
     public static bool SwimmingEnabled  { get; set; } = false;
+    /// <summary>
+    /// 战斗中回点触发距离（游戏内距离，默认-1禁用；大于0时战斗中与战斗点距离超过该值则回点），仅 JSON 策略生效
+    /// </summary>
+    public double BackToFightDistance { get; set; } = -1;
+    /// <summary>
+    /// 单次回点超时（毫秒），整段回点动作（转向+移动）的总预算，默认2000，仅 JSON 策略生效
+    /// </summary>
+    public int BackToFightTimeoutMs { get; set; } = 2000;
     public bool EnableCombatTargeting { get; set; } = false;
     public int TargetingDetectionInterval { get; set; } = 50;
     public bool DrawRecognitionResults { get; set; } = true;
     public double LockLostWaitTime { get; set; } = 0.5;
+    public double ChascaStableTime { get; set; } = 0.5;
+    public bool ChascaAutoSaveScreenshot { get; set; } = false;
+    public double ChascaNoRotateBeforeSeconds { get; set; } = 1;
+    public double ChascaPressStrength { get; set; } = 1;
+    public double ChascaInitialRotateX { get; set; } = 1000;
+    public double ChascaBulletThreshold { get; set; } = 0.8;
+    public int ChascaSequenceSlotCount { get; set; } = 2;
+    public bool ChascaSmoothRotateEnabled { get; set; } = false;
+    public double ChascaSmoothRotateSpeed { get; set; } = 80;
+    public double ChascaRotateStepAngle { get; set; } = 50;
+    public double ChascaAimForceX { get; set; } = 0.2625;
+    public double ChascaAimForceY { get; set; } = 0.1875;
+    public double ChascaSprayPressForce { get; set; } = 100;
+    public double ChascaRollbackAngle { get; set; } = 15;
+    public int ChascaDownArrowPressThreshold { get; set; } = 20;
+    // 合并冲突提示：恰斯卡特化 PR (#11) 同样在 LockLostWaitTime 之后插入 ChascaStableTime 等 4 个属性，
+    // 若与本行 EndFightWhenNoTargetSeconds 发生冲突，保留两侧新增行即可（本行 + 恰斯卡 4 行，顺序无关）
+    public double EndFightWhenNoTargetSeconds { get; set; } = 0;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -203,7 +249,27 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         TargetingDetectionInterval = autoFightConfig.TargetingDetectionInterval;
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
+        ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaAutoSaveScreenshot = autoFightConfig.ChascaAutoSaveScreenshot;
+        ChascaNoRotateBeforeSeconds = autoFightConfig.ChascaNoRotateBeforeSeconds;
+        ChascaPressStrength = autoFightConfig.ChascaPressStrength;
+        ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
+        ChascaBulletThreshold = autoFightConfig.ChascaBulletThreshold;
+        ChascaSequenceSlotCount = autoFightConfig.ChascaSequenceSlotCount;
+        ChascaSmoothRotateEnabled = autoFightConfig.ChascaSmoothRotateEnabled;
+        ChascaSmoothRotateSpeed = autoFightConfig.ChascaSmoothRotateSpeed;
+        ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
+        ChascaAimForceX = autoFightConfig.ChascaAimForceX;
+        ChascaAimForceY = autoFightConfig.ChascaAimForceY;
+        ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
+        ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
+        ChascaDownArrowPressThreshold = autoFightConfig.ChascaDownArrowPressThreshold;
+        // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 赋值后）插入 4 行 Chasca 赋值，
+        // 若与本行 EndFightWhenNoTargetSeconds 冲突，保留两侧新增行即可
+        EndFightWhenNoTargetSeconds = autoFightConfig.EndFightWhenNoTargetSeconds;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
+        BackToFightDistance = autoFightConfig.BackToFightDistance;
+        BackToFightTimeoutMs = autoFightConfig.BackToFightTimeoutMs;
     }
 }

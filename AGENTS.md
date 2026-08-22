@@ -17,6 +17,10 @@
 1. 请优先使用 Newtonsoft.Json 作为json序列化工具，但是如果这个模型已经被System.Text.Json序列化过了，那么就直接使用System.Text.Json反序列化。
 2. 所有简单的对话框弹出需求优先使用 ThemedMessageBox 弹出。而不是 WPF 自带的 MessageBox。
 
+## 实现约定
+
+- 实现功能时，优先参考已有实现，保持代码和注释风格一致。
+
 ## MVVM 架构规则
 
 ### 基础架构

@@ -1,5 +1,6 @@
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Script.Group;
+using BetterGenshinImpact.View.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -7,6 +8,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using System.Windows;
 using Windows.System;
 using Wpf.Ui.Violeta.Controls;
 
@@ -61,15 +63,19 @@ public partial class ScriptGroupConfigViewModel : ObservableObject, IViewModel
         new KeyValuePair<RecoverTiming, string>(RecoverTiming.OnlyTeleport, "只在传送点"),
         new KeyValuePair<RecoverTiming, string>(RecoverTiming.Never, "不回复"),
     };
-    public ScriptGroupConfigViewModel(AllConfig config, ScriptGroupConfig scriptGroupConfig)
+    public ScriptGroupConfigViewModel(AllConfig config, ScriptGroupConfig scriptGroupConfig, ScriptGroup? group = null)
     {
         ScriptGroupConfig = scriptGroupConfig;
+        Group = group;
         PathingConfig = scriptGroupConfig.PathingConfig;
         PathingConfig.PropertyChanged += OnPathingConfigPropertyChanged;
         AutoFightViewModel = new AutoFightViewModel(config);
         ShellConfig = scriptGroupConfig.ShellConfig;
         EnableShellConfig = scriptGroupConfig.EnableShellConfig;
     }
+
+    /// <summary>所属配置组（用于打开莫版拾取名单配置窗口）。</summary>
+    public ScriptGroup? Group { get; }
 
     // 赶路角色为 自动 或 玛薇卡 时显示跳飞相关配置
     public bool IsHurryOnMwkOrAuto => PathingConfig.HurryOnAvatar is "自动" or "玛薇卡";
@@ -148,5 +154,23 @@ public partial class ScriptGroupConfigViewModel : ObservableObject, IViewModel
     private async Task OnGoToAutoEatUrlAsync()
     {
         await Launcher.LaunchUriAsync(new Uri("https://www.bettergi.com/dev/js/dispatcher.html#autoeat-自动吃食物"));
+    }
+
+    /// <summary>
+    /// 打开当前配置组的莫版拾取名单配置窗口（配置组级白名单/黑名单）。
+    /// </summary>
+    [RelayCommand]
+    private void OnOpenMojangPickConfig()
+    {
+        if (Group is null)
+        {
+            return;
+        }
+
+        var window = new MojangBlackListConfigWindow(Group)
+        {
+            Owner = Application.Current.MainWindow
+        };
+        window.ShowDialog();
     }
 }

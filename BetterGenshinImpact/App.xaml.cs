@@ -9,6 +9,7 @@ using BetterGenshinImpact.Core.Recognition.OCR;
 using BetterGenshinImpact.Core.Recognition.ONNX;
 using BetterGenshinImpact.Core.Monitor;
 using BetterGenshinImpact.GameTask;
+using BetterGenshinImpact.GameTask.AutoPick;
 using BetterGenshinImpact.GameTask.Music.Service;
 using BetterGenshinImpact.Helpers;
 using BetterGenshinImpact.Helpers.Extensions;
@@ -259,6 +260,9 @@ public partial class App : Application
             await _host.StartAsync();
             ServerTimeHelper.Initialize(_host.Services.GetRequiredService<IServerTimeProvider>());
             await UrlProtocolHelper.RegisterAsync();
+
+            // 后台预加载莫版匹配模板（bin 优先），避免阻塞启动 UI；加载日志随启动输出
+            await Task.Run(MojangMatch.Preload);
         }
         catch (Exception ex)
         {
