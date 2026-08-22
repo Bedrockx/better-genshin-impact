@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.GameTask.Common;
@@ -46,6 +47,9 @@ public sealed class MojangMatch
 
     /// <summary>bin 文件魔数 ("MBMB")</summary>
     private const int BinMagic = 0x4D424D42;
+
+    /// <summary>用户额外模板文件夹（相对启动目录；随程序分发 readme.md，PNG 由用户自备、不入库）</summary>
+    private const string ExtraTemplateDir = @"User\mojang_templates";
 
     /// <summary>1080p 下文字区域宽度（模板宽，X 方向精确不滑动）</summary>
     private const int RegionWidth = 140;
@@ -844,12 +848,19 @@ public sealed class MojangMatch
     {
         var assetsDir = Global.Absolute(@"GameTask\AutoPick\Assets");
         var binPath = Path.Combine(assetsDir, "莫版模板.bin");
+        MojangMatch matcher;
         if (File.Exists(binPath))
         {
-            return LoadFromBin(binPath);
+            matcher = LoadFromBin(binPath);
+        }
+        else
+        {
+            matcher = LoadFromJsonAndPng(Path.Combine(assetsDir, "莫版模板"));
         }
 
-        return LoadFromJsonAndPng(Path.Combine(assetsDir, "莫版模板"));
+        // 内置模板加载完成后，追加加载用户额外模板（同名时用户模板优先）
+        LoadFromExtraFolder(matcher);
+        return matcher;
     }
 
     private static MojangMatch LoadFromBin(string binPath)
@@ -936,6 +947,134 @@ public sealed class MojangMatch
 
         LogLoaded(matcher);
         return matcher;
+    }
+
+    /// <summary>
+    /// 加载用户额外模板：递归扫描 <see cref="ExtraTemplateDir"/> 下全部 PNG，
+    /// 处理方式与 generate_templates.py 一致（尺寸校验、颜色判定、灰度化、文件名归一化）。
+    /// 与内置模板同名（同颜色、同字数）时以用户模板为准（覆盖）。
+    /// </summary>
+    private static void LoadFromExtraFolder(MojangMatch matcher)
+    {
+        var dir = Global.Absolute(ExtraTemplateDir);
+        if (!Directory.Exists(dir))
+        {
+            return;
+        }
+
+        var logger = App.GetLogger<MojangMatch>();
+        var loaded = 0;
+        var skipped = 0;
+        foreach (var file in Directory.EnumerateFiles(dir, "*.png", SearchOption.AllDirectories)
+                     .OrderBy(f => f, StringComparer.Ordinal))
+        {
+            try
+            {
+                if (TryLoadExtraTemplate(matcher, file))
+                {
+                    loaded++;
+                }
+                else
+                {
+                    skipped++;
+                }
+            }
+            catch (Exception e)
+            {
+                logger.LogDebug(e, "额外模板加载失败：{File}", file);
+                skipped++;
+            }
+        }
+
+        if (loaded > 0 || skipped > 0)
+        {
+            logger.LogInformation("额外模板加载完成：{Loaded} 个，跳过 {Skipped} 个（{Dir}）", loaded, skipped, dir);
+        }
+    }
+
+    /// <summary>加载单个额外模板 PNG（彩色图，自动做颜色判定与灰度化），返回是否成功加入。</summary>
+    private static bool TryLoadExtraTemplate(MojangMatch matcher, string filePath)
+    {
+        using var mat = new Mat(filePath, ImreadModes.Color);
+        if (mat.Empty())
+        {
+            return false;
+        }
+
+        var height = mat.Height;
+        if (height != 26 && height != 28)
+        {
+            return false; // 仅允许 140×26 或 140×28
+        }
+
+        // 140×28：裁掉上下各一行像素后按 140×26 处理；140×26 直接使用
+        using var roiMat = new Mat(mat, new Rect(0, height == 28 ? 1 : 0, mat.Width, 26));
+        if (roiMat.Width > 140)
+        {
+            return false; // 宽度超过 140
+        }
+
+        using var bgr = roiMat.Channels() == 4
+            ? roiMat.CvtColor(ColorConversionCodes.BGRA2BGR)
+            : roiMat.Clone();
+
+        // 颜色判定 + 灰度化（与 generate_templates.py 一致）；无亮像素视为无效
+        var (gray, colorIndex, _, _, maxX) = ToGray(bgr);
+        if (maxX == 0)
+        {
+            return false;
+        }
+
+        var name = NormalizeTemplateName(Path.GetFileNameWithoutExtension(filePath));
+        if (string.IsNullOrEmpty(name))
+        {
+            return false;
+        }
+
+        var c = CropTemplate(gray, bgr.Width, bgr.Height);
+        var template = new MojangTemplate
+        {
+            Name = name,
+            Color = Refs[colorIndex].Name,
+            ItemName = name,
+            Gray = c.Gray,
+            Width = c.Width,
+            Height = bgr.Height,
+            Len = Math.Min(name.Length, 5),
+            MeanT = c.MeanT,
+            VarT = c.VarT,
+            NonZero = c.NonZero,
+        };
+
+        AddExtraTemplate(matcher, template);
+        return true;
+    }
+
+    /// <summary>
+    /// 文件名归一化（与 generate_templates.py 一致）：剥离 Windows 副本后缀 " (N)" 与 "_N"（连同前导空格/下划线），
+    /// 再去掉尾随空格/下划线。
+    /// </summary>
+    private static string NormalizeTemplateName(string stem)
+    {
+        stem = Regex.Replace(stem, @"[ _]*\(\d+\)$", "");
+        stem = Regex.Replace(stem, @"[ _]*_\d+$", "");
+        return stem.TrimEnd(' ', '_');
+    }
+
+    /// <summary>添加用户额外模板：同 key（颜色、字数）下同名模板先移除再加入，_templatesByName 直接覆盖，保证用户模板优先。</summary>
+    private static void AddExtraTemplate(MojangMatch matcher, MojangTemplate template)
+    {
+        var key = (template.Color, template.Len);
+        if (!matcher._templatesByColorAndLen.TryGetValue(key, out var list))
+        {
+            list = [];
+            matcher._templatesByColorAndLen[key] = list;
+        }
+
+        list.RemoveAll(t => string.Equals(t.Name, template.Name, StringComparison.Ordinal));
+        list.Add(template);
+
+        matcher._templatesByName[template.Name] = template;
     }
 
     private static string ReadString(BinaryReader br)

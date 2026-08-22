@@ -392,7 +392,7 @@
                     <ui:TextBlock Grid.Row="1"
                                   Grid.Column="0"
                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                  Text="使用莫版匹配代替OCR进行识别"
+                                  Text="使用莫版匹配代替OCR进行识别；需要添加额外模板图片时，前往 User\mojang_templates 目录按 readme.md 要求放置"
                                   TextWrapping="Wrap" />
                     <ui:ToggleSwitch Grid.Row="0"
                                      Grid.RowSpan="2"
