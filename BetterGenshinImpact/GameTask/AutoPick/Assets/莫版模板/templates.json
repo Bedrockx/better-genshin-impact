@@ -182,6 +182,13 @@
     "len": 5
   },
   {
+    "name": "猎弓",
+    "color": "灰",
+    "file": "灰/猎弓.png",
+    "itemName": "猎弓",
+    "len": 2
+  },
+  {
     "name": "破损的面具",
     "color": "灰",
     "file": "灰/破损的面具.png",
@@ -677,6 +684,13 @@
     "file": "白/树莓.png",
     "itemName": "树莓",
     "len": 2
+  },
+  {
+    "name": "植绒草",
+    "color": "白",
+    "file": "白/植绒草.png",
+    "itemName": "植绒草",
+    "len": 3
   },
   {
     "name": "毗波耶",
@@ -1348,6 +1362,13 @@
     "color": "白",
     "file": "白/鬼兜虫.png",
     "itemName": "鬼兜虫",
+    "len": 3
+  },
+  {
+    "name": "魔晶块",
+    "color": "白",
+    "file": "白/魔晶块.png",
+    "itemName": "魔晶块",
     "len": 3
   },
   {
