@@ -18,7 +18,7 @@ from PIL import Image
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # Assets/莫版模板
 BASE = os.path.dirname(SCRIPT_DIR)                       # Assets
-SRC = os.path.join(BASE, "原图")
+SRC = os.path.join(BASE, "原图", "sorted-final")  # 已筛选去重后的最终素材
 OUT = SCRIPT_DIR                                          # Assets/莫版模板
 
 SPEC_W, SPEC_H = 140, 26  # 标准尺寸；x 允许更小，y 必须等于 SPEC_H
@@ -33,7 +33,8 @@ REFS = [
 ]
 COLOR_NAMES = [n for n, _ in REFS]
 T = 80.0
-VOTE_MIN_V = 180
+# 背景归零阈值：HSV 中 V 通道百分制 65（0-255 制 ≈166），V 低于此值的像素视为背景归零
+VOTE_MIN_V = int(round(65.0 / 100.0 * 255))
 
 
 def rgb_to_lab(rgb):
@@ -106,7 +107,7 @@ def main():
             is_z = grand == "Z获得物品与交互名称不一致"
             item_name = parent.strip("[]") if is_z else name
 
-            # 颜色判定：V>=180 中亮度前 30% 像素的平均色 -> 最近参考色
+            # 颜色判定：V>=65% 中亮度前 30% 像素的平均色 -> 最近参考色
             lab = rgb_to_lab(rgb)
             vals = v[v >= VOTE_MIN_V]
             thr = np.percentile(vals, 70)  # 前 30% 最高亮

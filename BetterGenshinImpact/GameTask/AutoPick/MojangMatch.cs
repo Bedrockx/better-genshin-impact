@@ -36,8 +36,8 @@ public sealed class MojangMatch
     /// <summary>线性截断阈值：匹配度 = 255 * max(0, 1 - dE/T)</summary>
     private const double T = 80.0;
 
-    /// <summary>参与颜色判定 / 灰度化归零的最小亮度 V</summary>
-    private const int VoteMinV = 180;
+    /// <summary>参与颜色判定 / 灰度化归零的最小亮度 V：HSV 中 V 通道百分制 65（0-255 制 ≈166）</summary>
+    private const int VoteMinV = 166;
 
     /// <summary>NCC 匹配度下限（读配置）</summary>
     private static double MinScore => TaskContext.Instance().Config.AutoPickConfig.MatchThreshold;
@@ -469,7 +469,7 @@ public sealed class MojangMatch
         var (gray, colorIndex, judgeMs, grayMs, maxX) = ToGray(bgrMat);
         var colorName = Refs[colorIndex].Name;
 
-        // 用 V>=180 像素的最大 x 估算字数
+        // 用 V>=65% 像素的最大 x 估算字数
         var estLen = maxX <= 65 ? 2 : maxX <= 94 ? 3 : maxX <= 122 ? 4 : 5;
 
         // 按 x, x-1, x+1, x-2, x+2 ... 顺序生成待匹配的字数列表
@@ -723,7 +723,7 @@ public sealed class MojangMatch
         var g = new byte[n];
         var r = new byte[n];
 
-        // 1. 颜色判定：V>=180 中亮度前 30% 像素的平均色 -> 最近参考色
+        // 1. 颜色判定：V>=65% 中亮度前 30% 像素的平均色 -> 最近参考色
         var judgeSw = Stopwatch.StartNew();
         var brightV = new List<int>(n);
         var maxX = 0;
