@@ -75,7 +75,7 @@ namespace BetterGenshinImpact.GameTask.AutoPick
         /// <summary>
         /// 莫版匹配阈值（匹配度低于该值视为未识别到）
         /// </summary>
-        [ObservableProperty] private double _matchThreshold = 0.85;
+        [ObservableProperty] private double _mojangMatchThreshold = 0.85;
 
         /// <summary>
         /// 莫版拾取日志级别：0=精简（仅交互时输出） 1=常规（黑名单/无结果节流输出） 2=调试（完整耗时位置匹配度，不节流）

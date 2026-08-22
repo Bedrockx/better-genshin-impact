@@ -40,7 +40,7 @@ public sealed class MojangMatch
     private const int VoteMinV = 166;
 
     /// <summary>NCC 匹配度下限（读配置）</summary>
-    private static double MinScore => TaskContext.Instance().Config.AutoPickConfig.MatchThreshold;
+    private static double MinScore => TaskContext.Instance().Config.AutoPickConfig.MojangMatchThreshold;
 
     /// <summary>满背包自动黑名单：OCR 文本与最近交互背包名匹配度的下限，低于则视为未匹配。</summary>
     private const double BagFullMinMatchRatio = 0.5;

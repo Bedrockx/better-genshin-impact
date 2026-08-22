@@ -618,7 +618,7 @@ public sealed class MojangPickLoop
     {
         try
         {
-            var threshold = TaskContext.Instance().Config.AutoPickConfig.MatchThreshold;
+            var threshold = TaskContext.Instance().Config.AutoPickConfig.MojangMatchThreshold;
             for (var i = 0; i < rois.Count; i++)
             {
                 for (var j = i + 1; j < rois.Count; j++)
@@ -644,7 +644,7 @@ public sealed class MojangPickLoop
 
             var colorIndex = MojangMatch.Instance.GetColorIndex(roi);
             var colorDir = Path.Combine(ScreenshotRootDir, ColorNames[colorIndex]);
-            if (MojangMatch.Instance.FindDuplicate(roi, colorDir, TaskContext.Instance().Config.AutoPickConfig.MatchThreshold))
+            if (MojangMatch.Instance.FindDuplicate(roi, colorDir, TaskContext.Instance().Config.AutoPickConfig.MojangMatchThreshold))
             {
                 _logger.LogInformation("自动截图：{Name} 与已有截图重复，跳过保存", name);
                 return;
