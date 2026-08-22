@@ -248,7 +248,7 @@
     "name": "丛林树蛙",
     "color": "白",
     "file": "白/丛林树蛙.png",
-    "itemName": "青蛙",
+    "itemName": "丛林树蛙",
     "len": 4
   },
   {
@@ -297,7 +297,7 @@
     "name": "冰晶蝶",
     "color": "白",
     "file": "白/冰晶蝶.png",
-    "itemName": "晶核",
+    "itemName": "冰晶蝶",
     "len": 3
   },
   {
@@ -360,14 +360,14 @@
     "name": "吉光虫",
     "color": "白",
     "file": "白/吉光虫.png",
-    "itemName": "发光髓",
+    "itemName": "吉光虫",
     "len": 3
   },
   {
     "name": "嗜髓蜥",
     "color": "白",
     "file": "白/嗜髓蜥.png",
-    "itemName": "蜥蜴尾巴",
+    "itemName": "嗜髓蜥",
     "len": 3
   },
   {
@@ -381,7 +381,7 @@
     "name": "固晶甲虫",
     "color": "白",
     "file": "白/固晶甲虫.png",
-    "itemName": "铁块",
+    "itemName": "固晶甲虫",
     "len": 4
   },
   {
@@ -444,7 +444,7 @@
     "name": "太阳蟹",
     "color": "白",
     "file": "白/太阳蟹.png",
-    "itemName": "螃蟹",
+    "itemName": "太阳蟹",
     "len": 3
   },
   {
@@ -479,7 +479,7 @@
     "name": "将军蟹",
     "color": "白",
     "file": "白/将军蟹.png",
-    "itemName": "螃蟹",
+    "itemName": "将军蟹",
     "len": 3
   },
   {
@@ -500,7 +500,7 @@
     "name": "岩晶蝶",
     "color": "白",
     "file": "白/岩晶蝶.png",
-    "itemName": "晶核",
+    "itemName": "岩晶蝶",
     "len": 3
   },
   {
@@ -577,7 +577,7 @@
     "name": "晴天鳅鳅",
     "color": "白",
     "file": "白/晴天鳅鳅.png",
-    "itemName": "鳅鳅宝玉",
+    "itemName": "晴天鳅鳅",
     "len": 4
   },
   {
@@ -605,7 +605,7 @@
     "name": "月萤虫",
     "color": "白",
     "file": "白/月萤虫.png",
-    "itemName": "晶核",
+    "itemName": "月萤虫",
     "len": 3
   },
   {
@@ -696,7 +696,7 @@
     "name": "水晶蝶",
     "color": "白",
     "file": "白/水晶蝶.png",
-    "itemName": "晶核",
+    "itemName": "水晶蝶",
     "len": 3
   },
   {
@@ -724,7 +724,7 @@
     "name": "泥蛙",
     "color": "白",
     "file": "白/泥蛙.png",
-    "itemName": "青蛙",
+    "itemName": "泥蛙",
     "len": 2
   },
   {
@@ -738,7 +738,7 @@
     "name": "流沙鳗鳗",
     "color": "白",
     "file": "白/流沙鳗鳗.png",
-    "itemName": "鳗肉",
+    "itemName": "流沙鳗鳗",
     "len": 4
   },
   {
@@ -766,7 +766,7 @@
     "name": "海蓝蟹",
     "color": "白",
     "file": "白/海蓝蟹.png",
-    "itemName": "螃蟹",
+    "itemName": "海蓝蟹",
     "len": 3
   },
   {
@@ -780,7 +780,7 @@
     "name": "深海鳗鳗",
     "color": "白",
     "file": "白/深海鳗鳗.png",
-    "itemName": "鳗肉",
+    "itemName": "深海鳗鳗",
     "len": 4
   },
   {
@@ -815,7 +815,7 @@
     "name": "火晶蝶",
     "color": "白",
     "file": "白/火晶蝶.png",
-    "itemName": "晶核",
+    "itemName": "火晶蝶",
     "len": 3
   },
   {
@@ -864,7 +864,7 @@
     "name": "燃素蜜虫",
     "color": "白",
     "file": "白/燃素蜜虫.png",
-    "itemName": "发光髓",
+    "itemName": "燃素蜜虫",
     "len": 4
   },
   {
@@ -997,7 +997,7 @@
     "name": "红角蜥",
     "color": "白",
     "file": "白/红角蜥.png",
-    "itemName": "蜥蜴尾巴",
+    "itemName": "红角蜥",
     "len": 3
   },
   {
@@ -1018,7 +1018,7 @@
     "name": "绿角蜥",
     "color": "白",
     "file": "白/绿角蜥.png",
-    "itemName": "蜥蜴尾巴",
+    "itemName": "绿角蜥",
     "len": 3
   },
   {
@@ -1067,7 +1067,7 @@
     "name": "草晶蝶",
     "color": "白",
     "file": "白/草晶蝶.png",
-    "itemName": "晶核",
+    "itemName": "草晶蝶",
     "len": 3
   },
   {
@@ -1088,14 +1088,14 @@
     "name": "萤火虫",
     "color": "白",
     "file": "白/萤火虫.png",
-    "itemName": "发光髓",
+    "itemName": "萤火虫",
     "len": 3
   },
   {
     "name": "落日鳅鳅",
     "color": "白",
     "file": "白/落日鳅鳅.png",
-    "itemName": "鳅鳅宝玉",
+    "itemName": "落日鳅鳅",
     "len": 4
   },
   {
@@ -1116,28 +1116,28 @@
     "name": "蓝蛙",
     "color": "白",
     "file": "白/蓝蛙.png",
-    "itemName": "青蛙",
+    "itemName": "蓝蛙",
     "len": 2
   },
   {
     "name": "蓝角蜥",
     "color": "白",
     "file": "白/蓝角蜥.png",
-    "itemName": "蜥蜴尾巴",
+    "itemName": "蓝角蜥",
     "len": 3
   },
   {
     "name": "蓝鳍鲈鱼",
     "color": "白",
     "file": "白/蓝鳍鲈鱼.png",
-    "itemName": "鱼肉",
+    "itemName": "蓝鳍鲈鱼",
     "len": 4
   },
   {
     "name": "薄红蟹",
     "color": "白",
     "file": "白/薄红蟹.png",
-    "itemName": "螃蟹",
+    "itemName": "薄红蟹",
     "len": 3
   },
   {
@@ -1151,7 +1151,7 @@
     "name": "藤纹陆鳗鳗",
     "color": "白",
     "file": "白/藤纹陆鳗鳗.png",
-    "itemName": "鳗肉",
+    "itemName": "藤纹陆鳗鳗",
     "len": 5
   },
   {
@@ -1179,7 +1179,7 @@
     "name": "蝴蝶",
     "color": "白",
     "file": "白/蝴蝶.png",
-    "itemName": "蝴蝶翅膀",
+    "itemName": "蝴蝶",
     "len": 2
   },
   {
@@ -1200,7 +1200,7 @@
     "name": "赤尾蜥",
     "color": "白",
     "file": "白/赤尾蜥.png",
-    "itemName": "蜥蜴尾巴",
+    "itemName": "赤尾蜥",
     "len": 3
   },
   {
@@ -1214,7 +1214,7 @@
     "name": "赤鳍陆鳗鳗",
     "color": "白",
     "file": "白/赤鳍陆鳗鳗.png",
-    "itemName": "鳗肉",
+    "itemName": "赤鳍陆鳗鳗",
     "len": 5
   },
   {
@@ -1235,7 +1235,7 @@
     "name": "金鳅鳅",
     "color": "白",
     "file": "白/金鳅鳅.png",
-    "itemName": "鳅鳅宝玉",
+    "itemName": "金鳅鳅",
     "len": 3
   },
   {
@@ -1263,7 +1263,7 @@
     "name": "雷晶蝶",
     "color": "白",
     "file": "白/雷晶蝶.png",
-    "itemName": "晶核",
+    "itemName": "雷晶蝶",
     "len": 3
   },
   {
@@ -1319,7 +1319,7 @@
     "name": "风晶蝶",
     "color": "白",
     "file": "白/风晶蝶.png",
-    "itemName": "晶核",
+    "itemName": "风晶蝶",
     "len": 3
   },
   {
@@ -1375,21 +1375,21 @@
     "name": "黄金蟹",
     "color": "白",
     "file": "白/黄金蟹.png",
-    "itemName": "螃蟹",
+    "itemName": "黄金蟹",
     "len": 3
   },
   {
     "name": "黄金鲈鱼",
     "color": "白",
     "file": "白/黄金鲈鱼.png",
-    "itemName": "鱼肉",
+    "itemName": "黄金鲈鱼",
     "len": 4
   },
   {
     "name": "黑背鲈鱼",
     "color": "白",
     "file": "白/黑背鲈鱼.png",
-    "itemName": "鱼肉",
+    "itemName": "黑背鲈鱼",
     "len": 4
   },
   {

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.GameTask.Common;
@@ -35,8 +36,8 @@ public sealed class MojangMatch
     /// <summary>线性截断阈值：匹配度 = 255 * max(0, 1 - dE/T)</summary>
     private const double T = 80.0;
 
-    /// <summary>参与颜色判定 / 灰度化归零的最小亮度 V</summary>
-    private const int VoteMinV = 180;
+    /// <summary>参与颜色判定 / 灰度化归零的最小亮度 V：HSV 中 V 通道百分制 65（0-255 制 ≈166）</summary>
+    private const int VoteMinV = 166;
 
     /// <summary>NCC 匹配度下限（读配置）</summary>
     private static double MinScore => TaskContext.Instance().Config.AutoPickConfig.MatchThreshold;
@@ -47,11 +48,35 @@ public sealed class MojangMatch
     /// <summary>bin 文件魔数 ("MBMB")</summary>
     private const int BinMagic = 0x4D424D42;
 
+    /// <summary>用户额外模板文件夹（相对启动目录；随程序分发 readme.md，PNG 由用户自备、不入库）</summary>
+    private const string ExtraTemplateDir = @"User\mojang_templates";
+
+    /// <summary>种子模式：化种匣下白色物品种子显示为「X」的种子，文字前固定多出「（x4~12，宽9，高23）</summary>
+    private const int SeedMarkerDxMin = 4;
+
+    /// <summary>「字形匹配的 x 扫描上限（窗口覆盖 x4~12）</summary>
+    private const int SeedMarkerDxMax = 8;
+
+    /// <summary>「字形匹配达标阈值（实测正例≥0.98，普通文字≤0.89）</summary>
+    private const double SeedMarkerMinScore = 0.90;
+
+    /// <summary>种子模式下材料名相对行首的偏移扫描起点（「宽9+间距，文字起点 x≈18，允许±1渲染波动）</summary>
+    private const int SeedDxMin = 17;
+
+    /// <summary>种子模式下材料名偏移扫描终点</summary>
+    private const int SeedDxMax = 20;
+
+    /// <summary>种子模式截断模板最大宽（120 = 140 - 右侧20容差，偏移18 时材料名最大 102）</summary>
+    private const int MaxSeedWidth = 102;
+
     /// <summary>1080p 下文字区域宽度（模板宽，X 方向精确不滑动）</summary>
     private const int RegionWidth = 140;
 
     /// <summary>1080p 下文字区域高度（模板高 26 + 上下各 1px）</summary>
     private const int RegionHeight = 28;
+
+    /// <summary>1080p 下自动截图保存区域高度（与模板素材规格 140×26 一致）</summary>
+    private const int ScreenshotHeight = 26;
 
     /// <summary>1080p 下文字区域相对 F 键的左侧偏移（模板实际 X）</summary>
     private const int TextLeftOffset = 122;
@@ -67,6 +92,9 @@ public sealed class MojangMatch
     ];
 
     private static readonly double[][] RefLabs = Refs.Select(r => RgbToLab(r.R, r.G, r.B)).ToArray();
+
+    /// <summary>「（左书名号）字形模板：化种匣种子文字行首标记，从 140×28 种子截图 x4~12 截取（9×23）。</summary>
+    private static readonly MojangTemplate SeedMarkerTemplate = BuildSeedMarkerTemplate();
 
     /// <summary>颜色展示顺序，与 <see cref="Refs"/> 一致</summary>
     private static readonly string[] ColorOrder = Refs.Select(r => r.Name).ToArray();
@@ -89,6 +117,9 @@ public sealed class MojangMatch
     private readonly Dictionary<(string Color, int Len), List<MojangTemplate>> _templatesByColorAndLen = [];
 
     private readonly Dictionary<string, MojangTemplate> _templatesByName = [];
+
+    /// <summary>种子模式截断模板缓存：宽模板（&gt; <see cref="MaxSeedWidth"/>）首次进入种子模式时截断并缓存。</summary>
+    private readonly Dictionary<MojangTemplate, MojangTemplate> _seedTruncated = [];
 
     private readonly ILogger _logger = App.GetLogger<MojangMatch>();
 
@@ -233,10 +264,38 @@ public sealed class MojangMatch
     }
 
     /// <summary>
-    /// 最近未知识别区域截图队列（BGR 副本，最新在队尾），供自动截图复用；
+    /// 最近未知识别区域截图队列（BGR 副本 140×26，最新在队尾），供自动截图复用；
     /// 容量随配置稳定次数变化，最多保留最近 N 张。取走即清空。
     /// </summary>
     private readonly Queue<Mat> _unknownRois = [];
+
+    /// <summary>
+    /// 计算自动截图保存区域（140×26，与模板素材规格一致；为识别区域上下各内缩 1px）。
+    /// </summary>
+    private static Rect GetScreenshotRegion(Region fKeyRegion, double scale)
+    {
+        var centerY = fKeyRegion.Y + fKeyRegion.Height / 2;
+        return new Rect(
+            fKeyRegion.X + (int)(TextLeftOffset * scale),
+            centerY - (int)(ScreenshotHeight / 2.0 * scale),
+            (int)(RegionWidth * scale),
+            (int)(ScreenshotHeight * scale));
+    }
+
+    /// <summary>
+    /// 裁剪自动截图保存区域（BGR 副本 140×26）；区域越界返回 null。
+    /// </summary>
+    private Mat? GetScreenshotRoi(Mat srcMat, Region fKeyRegion, double scale)
+    {
+        var rect = GetScreenshotRegion(fKeyRegion, scale);
+        if (rect.X < 0 || rect.Y < 0 || rect.X + rect.Width > srcMat.Width || rect.Y + rect.Height > srcMat.Height)
+        {
+            return null;
+        }
+
+        using var roi = new Mat(srcMat, rect);
+        return roi.Channels() == 4 ? roi.CvtColor(ColorConversionCodes.BGRA2BGR) : roi.Clone();
+    }
 
     /// <summary>
     /// 取走最近 count 张未知识别区域截图（最旧在前、最新在最后，调用方负责释放）；不足 count 张时返回实际数量。
@@ -410,7 +469,7 @@ public sealed class MojangMatch
         var (gray, colorIndex, judgeMs, grayMs, maxX) = ToGray(bgrMat);
         var colorName = Refs[colorIndex].Name;
 
-        // 用 V>=180 像素的最大 x 估算字数
+        // 用 V>=65% 像素的最大 x 估算字数
         var estLen = maxX <= 65 ? 2 : maxX <= 94 ? 3 : maxX <= 122 ? 4 : 5;
 
         // 按 x, x-1, x+1, x-2, x+2 ... 顺序生成待匹配的字数列表
@@ -435,44 +494,103 @@ public sealed class MojangMatch
 
         var (sumI, sumI2) = BuildIntegral(gray, bgrMat.Width, bgrMat.Height);
 
+        // 种子模式：检测行首「（化种匣下白色物品种子样式）
+        var isSeed = IsSeedMarker(gray, sumI, sumI2, bgrMat.Width, bgrMat.Height);
+
         var nccSw = Stopwatch.StartNew();
         MojangTemplate? best = null;
         var bestScore = -1.0;
         var bestDx = 0;
         var bestDy = 0;
         var matchedCount = 0;
-        foreach (var len in lens)
+
+        // 正常模式：按估算字数逐类匹配，x 方向固定对齐（截图与模板 x 相同）
+        void MatchNormal()
         {
-            if (!_templatesByColorAndLen.TryGetValue((colorName, len), out var list) || list.Count == 0)
+            foreach (var len in lens)
             {
-                continue;
-            }
-
-            // 识别完当前字数类后，若该类最高分已达标则提前退出
-            var lenBestScore = -1.0;
-            foreach (var t in list)
-            {
-                var (score, dx, dy) = NccMax(gray, sumI, sumI2, bgrMat.Width, bgrMat.Height, t);
-                matchedCount++;
-                if (score > lenBestScore)
+                if (!_templatesByColorAndLen.TryGetValue((colorName, len), out var list) || list.Count == 0)
                 {
-                    lenBestScore = score;
+                    continue;
                 }
 
-                if (score > bestScore)
+                // 识别完当前字数类后，若该类最高分已达标则提前退出
+                var lenBestScore = -1.0;
+                foreach (var t in list)
                 {
-                    bestScore = score;
-                    best = t;
-                    bestDx = dx;
-                    bestDy = dy;
-                }
-            }
+                    var (score, dx, dy) = NccMax(gray, sumI, sumI2, bgrMat.Width, bgrMat.Height, t);
+                    matchedCount++;
+                    if (score > lenBestScore)
+                    {
+                        lenBestScore = score;
+                    }
 
-            if (lenBestScore > MinScore)
-            {
-                break;
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = t;
+                        bestDx = dx;
+                        bestDy = dy;
+                    }
+                }
+
+                if (lenBestScore > MinScore)
+                {
+                    break;
+                }
             }
         }
+
+        // 种子模式：材料名被「右移约 18px 且字数估算失效（整行含「」的种子），跨字数按固定偏移扫描
+        void MatchSeed()
+        {
+            for (var len = 2; len <= 5; len++)
+            {
+                if (!_templatesByColorAndLen.TryGetValue((colorName, len), out var list) || list.Count == 0)
+                {
+                    continue;
+                }
+
+                var lenBestScore = -1.0;
+                foreach (var t in list)
+                {
+                    var st = GetSeedTemplate(t);
+                    var (score, dx, dy) = NccSeed(gray, sumI, sumI2, bgrMat.Width, bgrMat.Height, st);
+                    matchedCount++;
+                    if (score > lenBestScore)
+                    {
+                        lenBestScore = score;
+                    }
+
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = t;
+                        bestDx = dx;
+                        bestDy = dy;
+                    }
+                }
+
+                if (lenBestScore > MinScore)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (isSeed)
+        {
+            MatchSeed();
+            if (bestScore < MinScore)
+            {
+                MatchNormal(); // 种子模式未达标时回退正常匹配，避免「误判导致正常物品漏识别
+            }
+        }
+        else
+        {
+            MatchNormal();
+        }
+
         nccSw.Stop();
 
         if (best is null || bestScore < MinScore)
@@ -481,18 +599,22 @@ public sealed class MojangMatch
                 || TaskContext.Instance().Config.AutoPickConfig.PickLogLevel >= 2)
             {
                 _logger.LogInformation(
-                    "莫版测试未识别到：颜色={Color} 估算字数={EstLen} 最高分={BestScore:F3} 判定={JudgeMs:F2}ms 灰度={GrayMs:F2}ms NCC={NccMs:F2}ms 模板={TemplateCount}",
-                    colorName, estLen, best is null ? 0 : bestScore, judgeMs, grayMs, nccSw.Elapsed.TotalMilliseconds, matchedCount);
+                    "莫版测试未识别到：颜色={Color} 估算字数={EstLen} 种子模式={IsSeed} 最高分={BestScore:F3} 判定={JudgeMs:F2}ms 灰度={GrayMs:F2}ms NCC={NccMs:F2}ms 模板={TemplateCount}",
+                    colorName, estLen, isSeed, best is null ? 0 : bestScore, judgeMs, grayMs, nccSw.Elapsed.TotalMilliseconds, matchedCount);
             }
 
-            // 识别为未知：缓存本帧识别区域截图（BGR 副本）供自动截图复用，只保留最近 N 张（N=配置稳定次数，至少 1）
+            // 识别为未知：缓存本帧截图区域（140×26，与模板素材规格一致）供自动截图复用，只保留最近 N 张（N=配置稳定次数，至少 1）
             if (cacheUnknownRoi)
             {
-                var capacity = Math.Max(1, TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotStreak);
-                _unknownRois.Enqueue(bgrMat.Clone());
-                while (_unknownRois.Count > capacity)
+                var roi = GetScreenshotRoi(srcMat, fKeyRegion, scale);
+                if (roi is not null)
                 {
-                    _unknownRois.Dequeue().Dispose();
+                    var capacity = Math.Max(1, TaskContext.Instance().Config.AutoPickConfig.AutoScreenshotStreak);
+                    _unknownRois.Enqueue(roi);
+                    while (_unknownRois.Count > capacity)
+                    {
+                        _unknownRois.Dequeue().Dispose();
+                    }
                 }
             }
 
@@ -533,8 +655,17 @@ public sealed class MojangMatch
             : roiMat.Clone();
         var gray = ToGrayByColor(bgrMat, colorIndex);
         var (sumI, sumI2) = BuildIntegral(gray, bgrMat.Width, bgrMat.Height);
-        var (score, _, _) = NccMax(gray, sumI, sumI2, bgrMat.Width, bgrMat.Height, template);
-        return score >= MinScore;
+
+        // 种子模式二次确认：与首次识别一致，检测「后按偏移扫描
+        if (IsSeedMarker(gray, sumI, sumI2, bgrMat.Width, bgrMat.Height))
+        {
+            var st = GetSeedTemplate(template);
+            var (score, _, _) = NccSeed(gray, sumI, sumI2, bgrMat.Width, bgrMat.Height, st);
+            return score >= MinScore;
+        }
+
+        var (normalScore, _, _) = NccMax(gray, sumI, sumI2, bgrMat.Width, bgrMat.Height, template);
+        return normalScore >= MinScore;
     }
 
     /// <summary>
@@ -592,7 +723,7 @@ public sealed class MojangMatch
         var g = new byte[n];
         var r = new byte[n];
 
-        // 1. 颜色判定：V>=180 中亮度前 30% 像素的平均色 -> 最近参考色
+        // 1. 颜色判定：V>=65% 中亮度前 30% 像素的平均色 -> 最近参考色
         var judgeSw = Stopwatch.StartNew();
         var brightV = new List<int>(n);
         var maxX = 0;
@@ -733,6 +864,194 @@ public sealed class MojangMatch
         return numerator / denom;
     }
 
+    /// <summary>
+    /// 检测截图是否处于化种匣种子模式：行首 x4~12 出现「字形（用「模板做 NCC），
+    /// 且「两侧（x0~3、x13~17）无文字笔画（种子文字自 x18 起，普通文字 x0 起即有笔画）。
+    /// </summary>
+    private static bool IsSeedMarker(byte[] gray, long[] sumI, long[] sumI2, int w, int h)
+    {
+        var best = -1.0;
+        for (var dy = 0; dy <= h - SeedMarkerTemplate.Height; dy++)
+        {
+            for (var dx = SeedMarkerDxMin; dx <= SeedMarkerDxMax; dx++)
+            {
+                var s = NccAt(gray, sumI, sumI2, w, SeedMarkerTemplate, dx, dy);
+                if (s > best)
+                {
+                    best = s;
+                }
+            }
+        }
+
+        if (best < SeedMarkerMinScore)
+        {
+            return false;
+        }
+
+        var limitY = Math.Min(26, h);
+        for (var y = 0; y < limitY; y++)
+        {
+            var row = y * w;
+            for (var x = 0; x < 4; x++)
+            {
+                if (gray[row + x] > 0)
+                {
+                    return false;
+                }
+            }
+
+            for (var x = 13; x < 18; x++)
+            {
+                if (gray[row + x] > 0)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 种子模式匹配：材料名被「右移约 18px，按固定偏移（<see cref="SeedDxMin"/>~<see cref="SeedDxMax"/>）
+    /// 扫描 x 方向（y 方向沿用上下滑动），返回最大 NCC 及其位置。
+    /// </summary>
+    private static (double Score, int Dx, int Dy) NccSeed(byte[] img, long[] sumI, long[] sumI2, int imgW, int imgH, MojangTemplate t)
+    {
+        var dyMax = imgH - t.Height + 1;
+        if (dyMax <= 0)
+        {
+            return (0, 0, 0);
+        }
+
+        var best = -1.0;
+        var bestDx = 0;
+        var bestDy = 0;
+        for (var dx = SeedDxMin; dx <= SeedDxMax; dx++)
+        {
+            if (dx + t.Width > imgW)
+            {
+                continue;
+            }
+
+            for (var dy = 0; dy < dyMax; dy++)
+            {
+                var s = NccAt(img, sumI, sumI2, imgW, t, dx, dy);
+                if (s > best)
+                {
+                    best = s;
+                    bestDx = dx;
+                    bestDy = dy;
+                }
+            }
+        }
+
+        return (best, bestDx, bestDy);
+    }
+
+    /// <summary>获取种子模式用模板：宽模板（&gt; <see cref="MaxSeedWidth"/>）返回截断到 102px 的缓存变体，否则返回原模板。</summary>
+    private MojangTemplate GetSeedTemplate(MojangTemplate t)
+    {
+        if (t.Width <= MaxSeedWidth)
+        {
+            return t;
+        }
+
+        if (!_seedTruncated.TryGetValue(t, out var cut))
+        {
+            cut = BuildTruncated(t, MaxSeedWidth);
+            _seedTruncated[t] = cut;
+        }
+
+        return cut;
+    }
+
+    /// <summary>将模板截断到指定宽度（保留左侧 maxWidth 列）并重算统计量与非零列表。</summary>
+    private static MojangTemplate BuildTruncated(MojangTemplate t, int maxWidth)
+    {
+        var w = Math.Min(t.Width, maxWidth);
+        var gray = new byte[w * t.Height];
+        for (var y = 0; y < t.Height; y++)
+        {
+            Array.Copy(t.Gray, y * t.Width, gray, y * w, w);
+        }
+
+        double sumT = 0, sumT2 = 0;
+        foreach (var v in gray)
+        {
+            sumT += v;
+            sumT2 += v * v;
+        }
+
+        var meanT = sumT / gray.Length;
+        return new MojangTemplate
+        {
+            Name = t.Name,
+            Color = t.Color,
+            ItemName = t.ItemName,
+            Gray = gray,
+            Width = w,
+            Height = t.Height,
+            Len = t.Len,
+            MeanT = meanT,
+            VarT = sumT2 - gray.Length * meanT * meanT,
+            NonZero = BuildNonZero(gray, w, t.Height),
+        };
+    }
+
+    /// <summary>构建「（左书名号）字形模板：从化种匣种子截图（140×28 白色文字）行首 x4~12 截取的 9×23 像素。</summary>
+    private static MojangTemplate BuildSeedMarkerTemplate()
+    {
+        byte[] gray =
+        [
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            138, 225, 225, 225, 225, 225, 225, 204, 0,
+            182, 255, 255, 255, 255, 255, 255, 233, 13,
+            182, 255, 255, 242, 138, 129, 129, 111, 0,
+            182, 255, 255, 209, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+            182, 255, 255, 194, 0, 0, 0, 0, 0,
+        ];
+
+        double sumT = 0, sumT2 = 0;
+        foreach (var v in gray)
+        {
+            sumT += v;
+            sumT2 += v * v;
+        }
+
+        var meanT = sumT / gray.Length;
+        return new MojangTemplate
+        {
+            Name = string.Empty,
+            Color = string.Empty,
+            ItemName = string.Empty,
+            Gray = gray,
+            Width = 9,
+            Height = 23,
+            Len = 0,
+            MeanT = meanT,
+            VarT = sumT2 - gray.Length * meanT * meanT,
+            NonZero = BuildNonZero(gray, 9, 23),
+        };
+    }
+
     /// <summary>构建灰度图的求和积分图与平方和积分图（尺寸 (h+1)x(w+1)）。</summary>
     private static (long[] SumI, long[] SumI2) BuildIntegral(byte[] img, int w, int h)
     {
@@ -809,12 +1128,19 @@ public sealed class MojangMatch
     {
         var assetsDir = Global.Absolute(@"GameTask\AutoPick\Assets");
         var binPath = Path.Combine(assetsDir, "莫版模板.bin");
+        MojangMatch matcher;
         if (File.Exists(binPath))
         {
-            return LoadFromBin(binPath);
+            matcher = LoadFromBin(binPath);
+        }
+        else
+        {
+            matcher = LoadFromJsonAndPng(Path.Combine(assetsDir, "莫版模板"));
         }
 
-        return LoadFromJsonAndPng(Path.Combine(assetsDir, "莫版模板"));
+        // 内置模板加载完成后，追加加载用户额外模板（同名时用户模板优先）
+        LoadFromExtraFolder(matcher);
+        return matcher;
     }
 
     private static MojangMatch LoadFromBin(string binPath)
@@ -901,6 +1227,134 @@ public sealed class MojangMatch
 
         LogLoaded(matcher);
         return matcher;
+    }
+
+    /// <summary>
+    /// 加载用户额外模板：递归扫描 <see cref="ExtraTemplateDir"/> 下全部 PNG，
+    /// 处理方式与 generate_templates.py 一致（尺寸校验、颜色判定、灰度化、文件名归一化）。
+    /// 与内置模板同名（同颜色、同字数）时以用户模板为准（覆盖）。
+    /// </summary>
+    private static void LoadFromExtraFolder(MojangMatch matcher)
+    {
+        var dir = Global.Absolute(ExtraTemplateDir);
+        if (!Directory.Exists(dir))
+        {
+            return;
+        }
+
+        var logger = App.GetLogger<MojangMatch>();
+        var loaded = 0;
+        var skipped = 0;
+        foreach (var file in Directory.EnumerateFiles(dir, "*.png", SearchOption.AllDirectories)
+                     .OrderBy(f => f, StringComparer.Ordinal))
+        {
+            try
+            {
+                if (TryLoadExtraTemplate(matcher, file))
+                {
+                    loaded++;
+                }
+                else
+                {
+                    skipped++;
+                }
+            }
+            catch (Exception e)
+            {
+                logger.LogDebug(e, "额外模板加载失败：{File}", file);
+                skipped++;
+            }
+        }
+
+        if (loaded > 0 || skipped > 0)
+        {
+            logger.LogInformation("额外模板加载完成：{Loaded} 个，跳过 {Skipped} 个（{Dir}）", loaded, skipped, dir);
+        }
+    }
+
+    /// <summary>加载单个额外模板 PNG（彩色图，自动做颜色判定与灰度化），返回是否成功加入。</summary>
+    private static bool TryLoadExtraTemplate(MojangMatch matcher, string filePath)
+    {
+        using var mat = new Mat(filePath, ImreadModes.Color);
+        if (mat.Empty())
+        {
+            return false;
+        }
+
+        var height = mat.Height;
+        if (height != 26 && height != 28)
+        {
+            return false; // 仅允许 140×26 或 140×28
+        }
+
+        // 140×28：裁掉上下各一行像素后按 140×26 处理；140×26 直接使用
+        using var roiMat = new Mat(mat, new Rect(0, height == 28 ? 1 : 0, mat.Width, 26));
+        if (roiMat.Width > 140)
+        {
+            return false; // 宽度超过 140
+        }
+
+        using var bgr = roiMat.Channels() == 4
+            ? roiMat.CvtColor(ColorConversionCodes.BGRA2BGR)
+            : roiMat.Clone();
+
+        // 颜色判定 + 灰度化（与 generate_templates.py 一致）；无亮像素视为无效
+        var (gray, colorIndex, _, _, maxX) = ToGray(bgr);
+        if (maxX == 0)
+        {
+            return false;
+        }
+
+        var name = NormalizeTemplateName(Path.GetFileNameWithoutExtension(filePath));
+        if (string.IsNullOrEmpty(name))
+        {
+            return false;
+        }
+
+        var c = CropTemplate(gray, bgr.Width, bgr.Height);
+        var template = new MojangTemplate
+        {
+            Name = name,
+            Color = Refs[colorIndex].Name,
+            ItemName = name,
+            Gray = c.Gray,
+            Width = c.Width,
+            Height = bgr.Height,
+            Len = Math.Min(name.Length, 5),
+            MeanT = c.MeanT,
+            VarT = c.VarT,
+            NonZero = c.NonZero,
+        };
+
+        AddExtraTemplate(matcher, template);
+        return true;
+    }
+
+    /// <summary>
+    /// 文件名归一化（与 generate_templates.py 一致）：剥离 Windows 副本后缀 " (N)" 与 "_N"（连同前导空格/下划线），
+    /// 再去掉尾随空格/下划线。
+    /// </summary>
+    private static string NormalizeTemplateName(string stem)
+    {
+        stem = Regex.Replace(stem, @"[ _]*\(\d+\)$", "");
+        stem = Regex.Replace(stem, @"[ _]*_\d+$", "");
+        return stem.TrimEnd(' ', '_');
+    }
+
+    /// <summary>添加用户额外模板：同 key（颜色、字数）下同名模板先移除再加入，_templatesByName 直接覆盖，保证用户模板优先。</summary>
+    private static void AddExtraTemplate(MojangMatch matcher, MojangTemplate template)
+    {
+        var key = (template.Color, template.Len);
+        if (!matcher._templatesByColorAndLen.TryGetValue(key, out var list))
+        {
+            list = [];
+            matcher._templatesByColorAndLen[key] = list;
+        }
+
+        list.RemoveAll(t => string.Equals(t.Name, template.Name, StringComparison.Ordinal));
+        list.Add(template);
+
+        matcher._templatesByName[template.Name] = template;
     }
 
     private static string ReadString(BinaryReader br)
