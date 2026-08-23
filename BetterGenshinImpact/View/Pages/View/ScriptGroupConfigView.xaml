@@ -736,12 +736,12 @@
                                     <ui:TextBlock Grid.Row="0"
                                                   Grid.Column="0"
                                                   FontTypography="Body"
-                                                  Text="自定义地图追踪延迟"
+                                                  Text="自定义地图追踪延迟与距离"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBlock Grid.Row="1"
                                                   Grid.Column="0"
                                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="自定义地图追踪各环节的等待时间（毫秒），默认值为原固定延迟"
+                                                  Text="自定义地图追踪各环节的等待时间（毫秒）与到达/冲刺距离（米），默认值均为原固定值"
                                                   TextWrapping="Wrap" />
                                 </Grid>
                             </ui:CardExpander.Header>
@@ -822,6 +822,112 @@
                                                 Grid.Column="1"
                                                 MinWidth="100"
                                                 Text="{Binding PathingConfig.ArriveTargetDelayMs, Mode=TwoWay}"
+                                                TextWrapping="NoWrap" />
+                                </Grid>
+
+                                <!-- 距离控制配置 -->
+                                <Grid Margin="16,0,16,16">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  FontTypography="Body"
+                                                  Text="途径点判定到达距离（米）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1"
+                                                  Grid.Column="0"
+                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="移动过程中与当前途径点的距离小于该值时判定已到达，默认4"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBox Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="1"
+                                                MinWidth="100"
+                                                Text="{Binding PathingConfig.WaypointArriveDistance, Mode=TwoWay}"
+                                                TextWrapping="NoWrap" />
+                                </Grid>
+                                <Grid Margin="16,0,16,16">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  FontTypography="Body"
+                                                  Text="目标点判定到达距离（米）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1"
+                                                  Grid.Column="0"
+                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="精确接近目标点时，与目标点的距离小于该值判定到达，默认2"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBox Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="1"
+                                                MinWidth="100"
+                                                Text="{Binding PathingConfig.TargetArriveDistance, Mode=TwoWay}"
+                                                TextWrapping="NoWrap" />
+                                </Grid>
+                                <Grid Margin="16,0,16,16">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  FontTypography="Body"
+                                                  Text="run/dash模式切换行走距离（米）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1"
+                                                  Grid.Column="0"
+                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="Run/Dash模式下距离大于该值启用疾跑/冲刺，小于等于该值时切换为行走，默认20"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBox Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="1"
+                                                MinWidth="100"
+                                                Text="{Binding PathingConfig.RunDashSwitchWalkDistance, Mode=TwoWay}"
+                                                TextWrapping="NoWrap" />
+                                </Grid>
+                                <Grid Margin="16,0,16,16">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ui:TextBlock Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  FontTypography="Body"
+                                                  Text="walk模式触发冲刺距离（米）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Grid.Row="1"
+                                                  Grid.Column="0"
+                                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="普通行走模式下距离大于该值时自动触发短冲刺（需开启自动冲刺），默认20"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBox Grid.Row="0"
+                                                Grid.RowSpan="2"
+                                                Grid.Column="1"
+                                                MinWidth="100"
+                                                Text="{Binding PathingConfig.WalkSprintDistance, Mode=TwoWay}"
                                                 TextWrapping="NoWrap" />
                                 </Grid>
                             </StackPanel>

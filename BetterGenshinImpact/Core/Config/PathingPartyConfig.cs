@@ -142,6 +142,35 @@ public partial class PathingPartyConfig : ObservableObject
     [ObservableProperty]
     private int _arriveTargetDelayMs = 1000;
 
+    /// <summary>
+    /// 途径点判定到达距离（米），默认 4。
+    /// 移动过程中与当前途径点的距离小于该值时，判定已到达该途径点。
+    /// </summary>
+    [ObservableProperty]
+    private double _waypointArriveDistance = 4;
+
+    /// <summary>
+    /// 目标点判定到达距离（米），默认 2。
+    /// 精确接近（MoveCloseTo）目标点过程中，与目标点的距离小于该值时判定到达。
+    /// </summary>
+    [ObservableProperty]
+    private double _targetArriveDistance = 2;
+
+    /// <summary>
+    /// run/dash 模式切换行走距离（米），默认 20。
+    /// 当前节点为 Run/Dash 模式时，与目标点的距离大于该值启用疾跑/冲刺，
+    /// 小于等于该值时松开冲刺键切换为行走。
+    /// </summary>
+    [ObservableProperty]
+    private double _runDashSwitchWalkDistance = 20;
+
+    /// <summary>
+    /// walk 模式触发冲刺距离（米），默认 20。
+    /// 普通行走模式下，与目标点的距离大于该值时自动触发短冲刺（配合自动冲刺开关）。
+    /// </summary>
+    [ObservableProperty]
+    private double _walkSprintDistance = 20;
+
     // 启用进入剧情自动脱离
     [ObservableProperty]
     private bool _autoSkipEnabled = true;
