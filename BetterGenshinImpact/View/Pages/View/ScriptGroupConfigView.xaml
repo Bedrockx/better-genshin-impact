@@ -1697,22 +1697,27 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <ui:TextBlock FontTypography="Body"
-                                                  Text="启用恰斯卡特化逻辑"
+                                                  Text="角色特化动作"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="勾选后启用恰斯卡飞行索敌特化（长按E骑乘蓄力）；关闭后恰斯卡长按E走通用逻辑，下方恰斯卡独有配置项隐藏"
+                                                  Text="选择要配置的特化动作：选择恰斯卡E(hold)时显示恰斯卡特化配置项，选择空白则隐藏（仅影响界面显示，不影响行为）"
                                                   TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ui:ToggleSwitch Grid.Column="1"
-                                                 Margin="0,0,24,0"
-                                                 IsChecked="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled, Mode=TwoWay}" />
+                                <ComboBox Grid.Column="1"
+                                          Width="180"
+                                          Margin="0,0,36,0"
+                                          SelectedValue="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization, Mode=TwoWay}"
+                                          SelectedValuePath="Tag">
+                                    <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.None}">空白</ComboBoxItem>
+                                    <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">恰斯卡E(hold)</ComboBoxItem>
+                                </ComboBox>
                             </Grid>
                             <Grid Margin="16,4,16,16">
                                 <Grid.Style>
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1740,7 +1745,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1767,7 +1772,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1795,7 +1800,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1823,7 +1828,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1851,7 +1856,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1879,7 +1884,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1907,7 +1912,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1937,7 +1942,7 @@
                                             <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSmoothRotateEnabled}" Value="True">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1965,7 +1970,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1998,7 +2003,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -2026,7 +2031,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -2054,7 +2059,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSmoothRotateEnabled}" Value="False">
@@ -2085,7 +2090,7 @@
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSpecializationEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.ChascaSmoothRotateEnabled}" Value="False">

@@ -231,11 +231,11 @@ public partial class AutoFightConfig : ObservableObject
     private double _lockLostWaitTime = 0.5;
 
     /// <summary>
-    /// 启用恰斯卡特化逻辑：勾选后启用恰斯卡飞行索敌特化（长按 E 骑乘蓄力），
-    /// 关闭后恰斯卡长按 E 走通用逻辑，且下方恰斯卡独有配置项不显示。默认开启
+    /// 角色特化动作：选择要配置的特化动作类型，仅影响界面显示对应的特化配置项，不影响行为。
+    /// 选择"恰斯卡E(hold)"时显示恰斯卡特化配置项；选择"空白"时隐藏
     /// </summary>
     [ObservableProperty]
-    private bool _chascaSpecializationEnabled = true;
+    private AvatarSpecializationType _avatarSpecialization = AvatarSpecializationType.ChascaEHold;
 
     /// <summary>
     /// 恰斯卡稳定时间（秒）：距离上一次事件（进入第二步/识别到伤害数字/旋转/子弹变化/喷射动画）
@@ -365,4 +365,20 @@ public enum DamageNumberRecognitionMode
     Disabled,
     Ocr,
     Color
+}
+
+/// <summary>
+/// 角色特化动作：仅用于控制界面显示对应的特化配置项，不影响行为
+/// </summary>
+public enum AvatarSpecializationType
+{
+    /// <summary>
+    /// 空白：不显示任何特化配置项
+    /// </summary>
+    None,
+
+    /// <summary>
+    /// 恰斯卡E(hold)：长按 E 骑乘蓄力特化
+    /// </summary>
+    ChascaEHold
 }

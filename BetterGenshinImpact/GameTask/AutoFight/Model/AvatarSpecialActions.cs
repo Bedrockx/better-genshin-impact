@@ -1271,12 +1271,6 @@ public static class AvatarSpecialAction
             // 恰斯卡长按 E：骑乘蓄力瞄准
             case "恰斯卡":
             {
-                // 未勾选"启用恰斯卡特化逻辑"时不走特化，回退通用 UseSkill 逻辑
-                if (!TaskContext.Instance().Config.AutoFightConfig.ChascaSpecializationEnabled)
-                {
-                    return false;
-                }
-
                 using (AvatarRecognition.BeginExclusiveOperation())
                 {
                     // 平滑旋转控制（声明于 try 外，保证 finally 中可取消独立异步旋转循环）
