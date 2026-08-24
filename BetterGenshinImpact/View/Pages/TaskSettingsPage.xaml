@@ -971,7 +971,7 @@
                                                   Text="角色特化动作"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="选择要配置的特化动作：选择恰斯卡E(hold)时显示恰斯卡特化配置项，选择空白则隐藏（仅影响界面显示，不影响行为）"
+                                                  Text="选择要配置的特化动作"
                                                   TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1"
@@ -981,6 +981,7 @@
                                           SelectedValuePath="Tag">
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.None}">空白</ComboBoxItem>
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">恰斯卡E(hold)</ComboBoxItem>
+                                    <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">阿蕾奇诺attack(10)</ComboBoxItem>
                                 </ComboBox>
                             </Grid>
                             <Grid Margin="16,4,16,16">
@@ -989,6 +990,9 @@
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1019,6 +1023,9 @@
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
@@ -1044,6 +1051,9 @@
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1074,6 +1084,9 @@
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
@@ -1100,6 +1113,9 @@
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1130,6 +1146,9 @@
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
@@ -1158,6 +1177,9 @@
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
@@ -1184,6 +1206,9 @@
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1216,6 +1241,9 @@
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
@@ -1242,6 +1270,9 @@
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1277,6 +1308,9 @@
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
@@ -1305,6 +1339,9 @@
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
@@ -1331,6 +1368,9 @@
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.ChascaSmoothRotateEnabled}" Value="False">
@@ -1362,6 +1402,9 @@
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding Config.AutoFightConfig.ChascaSmoothRotateEnabled}" Value="False">

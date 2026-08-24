@@ -1202,6 +1202,7 @@ public static class AvatarSpecialAction
         [("UseSkill", "纳西妲")]   = args => args is ActionArgs { Hold: true },
         [("UseSkill", "坎蒂丝")]   = args => args is ActionArgs { Hold: true },
         [("UseSkill", "恰斯卡")]   = args => args is ActionArgs { Hold: true },
+        [("Attack", "阿蕾奇诺")]   = args => true,
         [("Charge",   "那维莱特")] = null,
         [("Charge",   "恰斯卡")]   = null,
         [("Charge",   "桑多涅")]   = null,
@@ -1230,6 +1231,8 @@ public static class AvatarSpecialAction
                 return ExecuteUseSkillSpecialized(avatar, character);
             case "Charge":
                 return ExecuteChargeSpecialized(avatar, character, ((ActionArgs)args).Ms);
+            case "Attack":
+                return ExecuteAttackSpecialized(avatar, character, ((ActionArgs)args).Ms);
             default:
                 return false;
         }
@@ -1968,6 +1971,32 @@ public static class AvatarSpecialAction
                         Simulation.SendInput.Mouse.MiddleButtonClick();
                     }
                 }
+            }
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Attack 普攻特化分派
+    /// </summary>
+    private static bool ExecuteAttackSpecialized(Avatar avatar, string character, int ms)
+    {
+        switch (character)
+        {
+            // 阿蕾奇诺：普攻特化
+            case "阿蕾奇诺":
+            {
+                using (AvatarRecognition.BeginExclusiveOperation())
+                {
+                    // 暂不设退出条件，动作待实现
+                    while (true)
+                    {
+                        // TODO: 阿蕾奇诺特化动作待实现
+                    }
+                }
+
+                return true;
             }
             default:
                 return false;

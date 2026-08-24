@@ -380,5 +380,10 @@ public enum AvatarSpecializationType
     /// <summary>
     /// 恰斯卡E(hold)：长按 E 骑乘蓄力特化
     /// </summary>
-    ChascaEHold
+    ChascaEHold,
+
+    /// <summary>
+    /// 阿蕾奇诺attack(10)：必须攻击 10 次才触发的特化
+    /// </summary>
+    ArlecchinoAttack10
 }
