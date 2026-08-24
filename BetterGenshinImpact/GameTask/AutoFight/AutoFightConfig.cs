@@ -363,31 +363,25 @@ public partial class AutoFightConfig : ObservableObject
     private bool _arlecchinoC2Enabled = true;
 
     /// <summary>
-    /// 阿蕾奇诺：携带专武开关。勾选时重击收契为 155，否则为 130。
-    /// </summary>
-    [ObservableProperty]
-    private bool _arlecchinoSignatureEnabled = true;
-
-    /// <summary>
-    /// 阿蕾奇诺：契量强化线（%）。契量低于此值视为空契/无强化普攻。
+    /// 阿蕾奇诺：低契放 Q 刷 E 契阈值（%）。契量低于此值视为低契，可触发放 Q 刷 E。
     /// 默认 40。
     /// </summary>
     [ObservableProperty]
-    private double _arlecchinoBondStrengthenLine = 40;
+    private double _arlecchinoRefreshEBondThreshold = 40;
 
     /// <summary>
-    /// 阿蕾奇诺：契空且 Q 可用时，E 剩余 CD 超过此值（秒）才放 Q 刷新 E。
+    /// 阿蕾奇诺：低契放 Q 刷 E 时 E 最小 CD（秒）。契低且 Q 可用时，E 剩余 CD 超过此值才放 Q 刷新 E。
     /// 默认 8。
     /// </summary>
     [ObservableProperty]
-    private double _arlecchinoBondRefreshECooldown = 8;
+    private double _arlecchinoRefreshEMinCd = 8;
 
     /// <summary>
-    /// 阿蕾奇诺：重击收契量（%）。携带专武为 155，否则为 130。
-    /// 重击溢出阈值（契量超过多少不重击）由此自动推导：200 − 收契量。
+    /// 阿蕾奇诺：重击收契阈值（%）。契量 + 该阈值 &lt; 200 时才重击收契（避免溢出浪费）。
+    /// 不携带专武（重击实际收契量较少）时建议使用 80。默认 55。
     /// </summary>
     [ObservableProperty]
-    private int _arlecchinoBondChargeAmount = 155;
+    private int _arlecchinoBondChargeThreshold = 55;
 
     /// <summary>
     /// 阿蕾奇诺：普攻动作循环（战斗策略语言，如 attack, wait(1.5), attack）。

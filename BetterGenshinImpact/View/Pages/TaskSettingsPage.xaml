@@ -961,6 +961,64 @@
                                             Margin="0,0,36,0"
                                             Text="{Binding Config.AutoFightConfig.LockLostWaitTime}" />
                             </Grid>
+                            <Grid Margin="16,8,16,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="{i18n:T 伤害数字识别模式}"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="{i18n:T 当血条不可见或传奇等固定位置血条时使用伤害数字辅助定位敌人}"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Width="120"
+                                          Margin="0,0,36,0"
+                                          SelectedValue="{Binding Config.AutoFightConfig.DamageNumberRecognitionMode, Mode=TwoWay}"
+                                          SelectedValuePath="Tag">
+                                    <ComboBoxItem Tag="{x:Static autofight:DamageNumberRecognitionMode.Disabled}" Content="{i18n:T 禁用}" />
+                                    <ComboBoxItem Tag="{x:Static autofight:DamageNumberRecognitionMode.Ocr}" Content="{i18n:T OCR识别}" />
+                                    <ComboBoxItem Tag="{x:Static autofight:DamageNumberRecognitionMode.Color}" Content="{i18n:T 颜色识别}" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid Margin="16,8,16,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="{i18n:T 索敌识别间隔（毫秒）}"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="{i18n:T 每次索敌识别之间的间隔时间}"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding Config.AutoFightConfig.TargetingDetectionInterval}" />
+                            </Grid>
+                            <Grid Margin="16,8,16,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="{i18n:T 绘制识别结果位置}"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="{i18n:T 在遮罩窗口上显示血条、伤害数字等识别结果的边框}"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch Grid.Column="1"
+                                                 Margin="0,0,36,0"
+                                                 IsChecked="{Binding Config.AutoFightConfig.DrawRecognitionResults, Mode=TwoWay}" />
+                            </Grid>
                             <Grid Margin="16,8,16,8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -981,7 +1039,7 @@
                                           SelectedValuePath="Tag">
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.None}">空白</ComboBoxItem>
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">恰斯卡E(hold)</ComboBoxItem>
-                                    <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">阿蕾奇诺attack(10)</ComboBoxItem>
+                                    <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">阿蕾奇诺a(10)</ComboBoxItem>
                                 </ComboBox>
                             </Grid>
                             <Grid Margin="16,4,16,16">
@@ -1430,64 +1488,6 @@
                                             Margin="0,0,36,0"
                                             Text="{Binding Config.AutoFightConfig.ChascaSmoothRotateSpeed}" />
                             </Grid>
-                            <Grid Margin="16,8,16,16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <ui:TextBlock FontTypography="Body"
-                                                  Text="{i18n:T 伤害数字识别模式}"
-                                                  TextWrapping="Wrap" />
-                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="{i18n:T 当血条不可见或传奇等固定位置血条时使用伤害数字辅助定位敌人}"
-                                                  TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ComboBox Grid.Column="1"
-                                          Width="120"
-                                          Margin="0,0,36,0"
-                                          SelectedValue="{Binding Config.AutoFightConfig.DamageNumberRecognitionMode, Mode=TwoWay}"
-                                          SelectedValuePath="Tag">
-                                    <ComboBoxItem Tag="{x:Static autofight:DamageNumberRecognitionMode.Disabled}" Content="{i18n:T 禁用}" />
-                                    <ComboBoxItem Tag="{x:Static autofight:DamageNumberRecognitionMode.Ocr}" Content="{i18n:T OCR识别}" />
-                                    <ComboBoxItem Tag="{x:Static autofight:DamageNumberRecognitionMode.Color}" Content="{i18n:T 颜色识别}" />
-                                </ComboBox>
-                            </Grid>
-                            <Grid Margin="16,8,16,16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <ui:TextBlock FontTypography="Body"
-                                                  Text="{i18n:T 索敌识别间隔（毫秒）}"
-                                                  TextWrapping="Wrap" />
-                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="{i18n:T 每次索敌识别之间的间隔时间}"
-                                                  TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ui:TextBox Grid.Column="1"
-                                            Width="120"
-                                            Margin="0,0,36,0"
-                                            Text="{Binding Config.AutoFightConfig.TargetingDetectionInterval}" />
-                            </Grid>
-                            <Grid Margin="16,8,16,16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <ui:TextBlock FontTypography="Body"
-                                                  Text="{i18n:T 绘制识别结果位置}"
-                                                  TextWrapping="Wrap" />
-                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="{i18n:T 在遮罩窗口上显示血条、伤害数字等识别结果的边框}"
-                                                  TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ui:ToggleSwitch Grid.Column="1"
-                                                 Margin="0,0,36,0"
-                                                 IsChecked="{Binding Config.AutoFightConfig.DrawRecognitionResults, Mode=TwoWay}" />
-                            </Grid>
                             <Grid Margin="16,4,16,16">
                                 <Grid.Style>
                                     <Style TargetType="Grid">
@@ -1538,15 +1538,16 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <ui:TextBlock FontTypography="Body"
-                                                  Text="阿蕾奇诺：携带专武"
+                                                  Text="阿蕾奇诺：重击收契阈值（%）"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="勾选时重击收契为 155，否则为 130（默认勾选）"
+                                                  Text="契量 + 该阈值 &lt; 200 才重击收契；不携带专武时建议 80（默认 55）"
                                                   TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ui:ToggleSwitch Grid.Column="1"
-                                                 Margin="0,0,24,0"
-                                                 IsChecked="{Binding Config.AutoFightConfig.ArlecchinoSignatureEnabled, Mode=TwoWay}" />
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding Config.AutoFightConfig.ArlecchinoBondChargeThreshold}" />
                             </Grid>
                             <Grid Margin="16,4,16,16">
                                 <Grid.Style>
@@ -1568,16 +1569,16 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <ui:TextBlock FontTypography="Body"
-                                                  Text="阿蕾奇诺：空契阈值（%）"
+                                                  Text="阿蕾奇诺：低契放Q刷E契阈值（%）"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="契量低于此值视为空契/无强化普攻（默认 40）"
+                                                  Text="契量低于此值视为低契（默认 40）"
                                                   TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ui:TextBox Grid.Column="1"
                                             Width="120"
                                             Margin="0,0,36,0"
-                                            Text="{Binding Config.AutoFightConfig.ArlecchinoBondStrengthenLine}" />
+                                            Text="{Binding Config.AutoFightConfig.ArlecchinoRefreshEBondThreshold}" />
                             </Grid>
                             <Grid Margin="16,4,16,16">
                                 <Grid.Style>
@@ -1599,47 +1600,16 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <ui:TextBlock FontTypography="Body"
-                                                  Text="阿蕾奇诺：契空放Q的E-CD阈值（秒）"
+                                                  Text="阿蕾奇诺：低契放Q刷E时E最小CD（秒）"
                                                   TextWrapping="Wrap" />
                                     <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="契空且 Q 可用时，E 剩余 CD 超过此值才放 Q 刷新 E（默认 8）"
+                                                  Text="低契且 Q 可用时，E 剩余 CD 超过此值才放 Q 刷新 E（默认 8）"
                                                   TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ui:TextBox Grid.Column="1"
                                             Width="120"
                                             Margin="0,0,36,0"
-                                            Text="{Binding Config.AutoFightConfig.ArlecchinoBondRefreshECooldown}" />
-                            </Grid>
-                            <Grid Margin="16,4,16,16">
-                                <Grid.Style>
-                                    <Style TargetType="Grid">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Grid.Style>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <ui:TextBlock FontTypography="Body"
-                                                  Text="阿蕾奇诺：重击收契量（%）"
-                                                  TextWrapping="Wrap" />
-                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
-                                                  Text="携带专武为 155，否则为 130；重击溢出阈值由此自动推导（默认 155）"
-                                                  TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ui:TextBox Grid.Column="1"
-                                            Width="120"
-                                            Margin="0,0,36,0"
-                                            Text="{Binding Config.AutoFightConfig.ArlecchinoBondChargeAmount}" />
+                                            Text="{Binding Config.AutoFightConfig.ArlecchinoRefreshEMinCd}" />
                             </Grid>
                             <Grid Margin="16,4,16,16">
                                 <Grid.Style>
