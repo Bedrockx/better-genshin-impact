@@ -84,6 +84,14 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
         ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
         ChascaDownArrowPressThreshold = autoFightConfig.ChascaDownArrowPressThreshold;
+        ArlecchinoC2Enabled = autoFightConfig.ArlecchinoC2Enabled;
+        ArlecchinoSignatureEnabled = autoFightConfig.ArlecchinoSignatureEnabled;
+        ArlecchinoBondStrengthenLine = autoFightConfig.ArlecchinoBondStrengthenLine;
+        ArlecchinoBondRefreshECooldown = autoFightConfig.ArlecchinoBondRefreshECooldown;
+        ArlecchinoBondChargeAmount = autoFightConfig.ArlecchinoBondChargeAmount;
+        ArlecchinoNormalAttackLoop = autoFightConfig.ArlecchinoNormalAttackLoop;
+        ArlecchinoDebugLogEnabled = autoFightConfig.ArlecchinoDebugLogEnabled;
+        ArlecchinoFightEndCheckRound = autoFightConfig.ArlecchinoFightEndCheckRound;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
@@ -134,6 +142,28 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public double ChascaSprayPressForce { get; set; } = 100;
     public double ChascaRollbackAngle { get; set; } = 15;
     public int ChascaDownArrowPressThreshold { get; set; } = 20;
+    public bool ArlecchinoC2Enabled { get; set; } = true;
+    public bool ArlecchinoSignatureEnabled { get; set; } = true;
+    public double ArlecchinoBondStrengthenLine { get; set; } = 40;
+    public double ArlecchinoBondRefreshECooldown { get; set; } = 8;
+    public int ArlecchinoBondChargeAmount { get; set; } = 155;
+    /// <summary>
+    /// 阿蕾奇诺：最近一次放 E 的时刻（战斗内跨多次 attack 调用保留，
+    /// 用于 2 命以下重击收契的 5 秒等待判断）。由契量状态机更新读取。
+    /// </summary>
+    public System.DateTime ArlecchinoLastETime { get; set; } = System.DateTime.MinValue;
+    /// <summary>
+    /// 阿蕾奇诺：普攻动作循环（战斗策略语言，多个序列用 | 分隔）
+    /// </summary>
+    public string ArlecchinoNormalAttackLoop { get; set; } = "";
+    /// <summary>
+    /// 阿蕾奇诺：调试日志开关（每 500ms 输出一次契量状态 info 日志）
+    /// </summary>
+    public bool ArlecchinoDebugLogEnabled { get; set; } = false;
+    /// <summary>
+    /// 阿蕾奇诺：战斗结束检查轮次（每 N 轮检查一次；0 不检查）
+    /// </summary>
+    public int ArlecchinoFightEndCheckRound { get; set; } = 0;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -248,6 +278,14 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
         ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
         ChascaDownArrowPressThreshold = autoFightConfig.ChascaDownArrowPressThreshold;
+        ArlecchinoC2Enabled = autoFightConfig.ArlecchinoC2Enabled;
+        ArlecchinoSignatureEnabled = autoFightConfig.ArlecchinoSignatureEnabled;
+        ArlecchinoBondStrengthenLine = autoFightConfig.ArlecchinoBondStrengthenLine;
+        ArlecchinoBondRefreshECooldown = autoFightConfig.ArlecchinoBondRefreshECooldown;
+        ArlecchinoBondChargeAmount = autoFightConfig.ArlecchinoBondChargeAmount;
+        ArlecchinoNormalAttackLoop = autoFightConfig.ArlecchinoNormalAttackLoop;
+        ArlecchinoDebugLogEnabled = autoFightConfig.ArlecchinoDebugLogEnabled;
+        ArlecchinoFightEndCheckRound = autoFightConfig.ArlecchinoFightEndCheckRound;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
     }

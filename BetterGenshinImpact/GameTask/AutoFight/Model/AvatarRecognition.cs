@@ -39,6 +39,14 @@ public sealed record VisualRecognitionConfig(
     double ChascaSprayPressForce = 100,
     double ChascaRollbackAngle = 15,
     int ChascaDownArrowPressThreshold = 20,
+    bool ArlecchinoC2Enabled = true,
+    bool ArlecchinoSignatureEnabled = true,
+    double ArlecchinoBondStrengthenLine = 40,
+    double ArlecchinoBondRefreshECooldown = 8,
+    int ArlecchinoBondChargeAmount = 155,
+    string ArlecchinoNormalAttackLoop = "",
+    bool ArlecchinoDebugLogEnabled = false,
+    int ArlecchinoFightEndCheckRound = 0,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
@@ -68,6 +76,12 @@ public static class AvatarRecognition
     /// 清除当前战斗参数，后续视觉配置回退到全局配置。
     /// </summary>
     public static void ClearCurrentAutoFightParam() => _currentAutoFightParam.Value = null;
+
+    /// <summary>
+    /// 当前战斗的 AutoFightParam（可能为 null，表示无逐队伍配置）。
+    /// 供特化逻辑访问战斗内保留的可变状态（如阿蕾奇诺的最近放 E 时刻）。
+    /// </summary>
+    public static AutoFightParam? CurrentAutoFightParam => _currentAutoFightParam.Value;
 
     /// <summary>
     /// 清除传奇血条追踪状态。每次新战斗开始时应调用，避免上一场战斗
@@ -260,6 +274,14 @@ public static class AvatarRecognition
                 param.ChascaSprayPressForce,
                 param.ChascaRollbackAngle,
                 param.ChascaDownArrowPressThreshold,
+                param.ArlecchinoC2Enabled,
+                param.ArlecchinoSignatureEnabled,
+                param.ArlecchinoBondStrengthenLine,
+                param.ArlecchinoBondRefreshECooldown,
+                param.ArlecchinoBondChargeAmount,
+                param.ArlecchinoNormalAttackLoop,
+                param.ArlecchinoDebugLogEnabled,
+                param.ArlecchinoFightEndCheckRound,
                 param.DamageNumberRecognitionMode);
         }
 
@@ -283,6 +305,14 @@ public static class AvatarRecognition
             config.ChascaSprayPressForce,
             config.ChascaRollbackAngle,
             config.ChascaDownArrowPressThreshold,
+            config.ArlecchinoC2Enabled,
+            config.ArlecchinoSignatureEnabled,
+            config.ArlecchinoBondStrengthenLine,
+            config.ArlecchinoBondRefreshECooldown,
+            config.ArlecchinoBondChargeAmount,
+            config.ArlecchinoNormalAttackLoop,
+            config.ArlecchinoDebugLogEnabled,
+            config.ArlecchinoFightEndCheckRound,
             config.DamageNumberRecognitionMode);
     }
 

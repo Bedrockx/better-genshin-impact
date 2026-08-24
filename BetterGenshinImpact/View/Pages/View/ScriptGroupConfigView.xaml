@@ -2217,6 +2217,251 @@
                                                  Margin="0,0,36,0"
                                                  IsChecked="{Binding PathingConfig.AutoFightConfig.DrawRecognitionResults, Mode=TwoWay}" />
                             </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="阿蕾奇诺：2命及以上"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="勾选后 E 之后可直接重击收契，否则需等待 E 之后 5 秒才能重击（默认勾选）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch Grid.Column="1"
+                                                 Margin="0,0,24,0"
+                                                 IsChecked="{Binding PathingConfig.AutoFightConfig.ArlecchinoC2Enabled, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="阿蕾奇诺：携带专武"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="勾选时重击收契为 155，否则为 130（默认勾选）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch Grid.Column="1"
+                                                 Margin="0,0,24,0"
+                                                 IsChecked="{Binding PathingConfig.AutoFightConfig.ArlecchinoSignatureEnabled, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="阿蕾奇诺：空契阈值（%）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="契量低于此值视为空契/无强化普攻（默认 40）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ArlecchinoBondStrengthenLine}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="阿蕾奇诺：契空放Q的E-CD阈值（秒）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="契空且 Q 可用时，E 剩余 CD 超过此值才放 Q 刷新 E（默认 8）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ArlecchinoBondRefreshECooldown}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="阿蕾奇诺：重击收契量（%）"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="携带专武为 155，否则为 130；重击溢出阈值由此自动推导（默认 155）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ArlecchinoBondChargeAmount}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="阿蕾奇诺：普攻动作循环"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="战斗策略语言，如 attack, wait(1.5), attack；多个序列用 | 分隔，每轮循环依次切换；留空使用内置普攻闪A"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="280"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ArlecchinoNormalAttackLoop}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="阿蕾奇诺：调试日志"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="勾选后每 500ms 输出一次契量状态 info 日志（契量、红血、E 就绪、E-CD、Q 就绪）"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch Grid.Column="1"
+                                                 Margin="0,0,24,0"
+                                                 IsChecked="{Binding PathingConfig.AutoFightConfig.ArlecchinoDebugLogEnabled, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid Margin="16,4,16,16">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.None}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <ui:TextBlock FontTypography="Body"
+                                                  Text="阿蕾奇诺：战斗结束检查轮次"
+                                                  TextWrapping="Wrap" />
+                                    <ui:TextBlock Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                                  Text="每 N 轮契量状态机循环触发一次战斗结束检查；0 表示不检查"
+                                                  TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:TextBox Grid.Column="1"
+                                            Width="120"
+                                            Margin="0,0,36,0"
+                                            Text="{Binding PathingConfig.AutoFightConfig.ArlecchinoFightEndCheckRound}" />
+                            </Grid>
                         </StackPanel>
                     </ui:CardExpander>
                     </Grid>

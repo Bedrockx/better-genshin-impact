@@ -1202,7 +1202,9 @@ public static class AvatarSpecialAction
         [("UseSkill", "纳西妲")]   = args => args is ActionArgs { Hold: true },
         [("UseSkill", "坎蒂丝")]   = args => args is ActionArgs { Hold: true },
         [("UseSkill", "恰斯卡")]   = args => args is ActionArgs { Hold: true },
-        [("Attack", "阿蕾奇诺")]   = args => true,
+        // 阿蕾奇诺普攻特化：仅 attack(n)（n>0，脚本秒数→毫秒）触发；
+        // 单独的 attack（ms=0）不触发，走通用普攻逻辑
+        [("Attack",   "阿蕾奇诺")] = args => args is ActionArgs { Ms: > 0 },
         [("Charge",   "那维莱特")] = null,
         [("Charge",   "恰斯卡")]   = null,
         [("Charge",   "桑多涅")]   = null,
@@ -1984,23 +1986,247 @@ public static class AvatarSpecialAction
     {
         switch (character)
         {
-            // 阿蕾奇诺：普攻特化
+            // 阿蕾奇诺：普攻特化（契量状态机）
             case "阿蕾奇诺":
             {
                 using (AvatarRecognition.BeginExclusiveOperation())
                 {
-                    // 暂不设退出条件，动作待实现
-                    while (true)
-                    {
-                        // TODO: 阿蕾奇诺特化动作待实现
-                    }
-                }
+                    var visConfig = AvatarRecognition.GetVisualRecognitionConfig();
+                    var c2Enabled = visConfig.ArlecchinoC2Enabled;
+                    var bondStrengthenLine = visConfig.ArlecchinoBondStrengthenLine; // 契量低于此视为空契/无强化
+                    var bondRefreshECooldown = visConfig.ArlecchinoBondRefreshECooldown;          // 契空+Q可用时 E 剩余 CD 超过此值才放 Q（秒）
+                    var bondChargeAmount = visConfig.ArlecchinoBondChargeAmount;      // 重击收契量（%）：携带专武 155，否则 130
+                    var normalAttackLoop = visConfig.ArlecchinoNormalAttackLoop;      // 普攻动作循环（战斗策略语言，| 分隔多序列，空则用内置普攻闪A）
+                    var debugLogEnabled = visConfig.ArlecchinoDebugLogEnabled;        // 调试日志开关
+                    var fightEndCheckRound = visConfig.ArlecchinoFightEndCheckRound;  // 战斗结束检查轮次（每 N 轮一次；0 不检查）
+                    var dpi = TaskContext.Instance().DpiScale;
 
-                return true;
+                    // 重击前允许的最大契量（避免溢出浪费），由收契量自动推导：契上限 200% − 本次回收量
+                    var chargeThreshold = 200 - bondChargeAmount;
+
+                    // 解析普攻动作循环：按 | 分隔多套序列；解析失败或为空时回退内置普攻闪A
+                    List<List<CombatCommand>> attackLoopSequences = [];
+                    if (!string.IsNullOrWhiteSpace(normalAttackLoop))
+                    {
+                        try
+                        {
+                            foreach (var seq in normalAttackLoop.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                            {
+                                var commands = CombatScriptParser.ParseLinePart(seq, avatar.Name);
+                                if (commands.Count > 0)
+                                {
+                                    attackLoopSequences.Add(commands);
+                                }
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            Logger.LogWarning("阿蕾奇诺普攻动作循环解析失败，回退内置普攻闪A：{Message}", e.Message);
+                            attackLoopSequences = [];
+                        }
+                    }
+
+                    // 本次 Attack 调用内的状态
+                    // 上一次放 E 的时刻存于战斗参数（AutoFightParam.ArlecchinoLastETime），跨多次 attack 调用保留，
+                    // 用于 2 命以下重击收契的 5 秒等待判断
+                    var fightParam = AvatarRecognition.CurrentAutoFightParam;
+                    var lastETime = fightParam?.ArlecchinoLastETime ?? DateTime.MinValue;
+                    var eAfterActionDone = true;        // 本次 E 后是否已完成重击或放 Q（初值为 true：首个 E 之前无需先重击）
+                    var startTime = DateTime.UtcNow;    // 循环起始时间（超时判断用 ms 时长）
+                    var loopRound = 0;                  // 循环轮次计数（战斗结束检查用）
+                    var lastDebugLogTime = DateTime.MinValue; // 调试日志节流
+
+                    while ((DateTime.UtcNow - startTime).TotalMilliseconds < ms)
+                    {
+                        if (avatar.Ct is { IsCancellationRequested: true })
+                        {
+                            return true;
+                        }
+
+                        loopRound++;
+
+                        // 战斗结束检查：每 N 轮触发一次（N>0 才检查）
+                        if (fightEndCheckRound > 0 && loopRound % fightEndCheckRound == 0)
+                        {
+                            var finishConfig = new AutoFightTask.TaskFightFinishDetectConfig(fightParam.FinishDetectConfig);
+                            if (AutoFightTask.CheckFightFinish(finishConfig, avatar.Ct).Result)
+                            {
+                                Logger.LogInformation("阿蕾奇诺普攻特化：检测到战斗结束，提前退出");
+                                return true;
+                            }
+                        }
+
+                        // 读契量与红血（契区域统一截取一次）
+                        using var capture = CaptureToRectArea();
+                        var bondPercent = MeasureBondPercent(capture);
+                        var redBlood = IsArlecchinoRedBlood(capture);
+
+                        // 契量状态判断
+                        var isBondEmpty = bondPercent < bondStrengthenLine; // 契量低于强化线 = 空契（无强化普攻）
+
+                        var eReady = avatar.IsSkillReady();      // E 是否就绪
+                        var eRemainingCd = avatar.GetSkillCdSeconds(); // E 剩余 CD（秒）
+                        var now = DateTime.UtcNow;
+
+                        // 调试日志：每 500ms 节流输出一次
+                        if (debugLogEnabled && (now - lastDebugLogTime).TotalMilliseconds >= 500)
+                        {
+                            lastDebugLogTime = now;
+                            Logger.LogInformation("阿蕾奇诺普攻特化：契量 {BondPercent:F1}%，红血={RedBlood}，E就绪={EReady}，E-CD={ERemainingCd:F1}s，Q就绪={QReady}",
+                                bondPercent, redBlood, eReady, eRemainingCd, avatar.IsBurstReady);
+                        }
+
+                        // ① 红血 且 Q 可用 → 放 Q 回血（Q 会清空契并使 E 的 CD 归零）
+                        if (redBlood && avatar.IsBurstReady)
+                        {
+                            avatar.UseBurst();
+                            eAfterActionDone = true;
+                            Sleep(200, avatar.Ct);
+                            continue;
+                        }
+
+                        // ② 契空 且 Q 可用 且 E 剩余 CD 超过配置阈值 → 放 Q 刷新 E
+                        if (isBondEmpty && avatar.IsBurstReady && eRemainingCd > bondRefreshECooldown)
+                        {
+                            avatar.UseBurst();
+                            eAfterActionDone = true;
+                            Sleep(200, avatar.Ct);
+                            continue;
+                        }
+
+                        // ③ E 已就绪：本 E 后未完成重击/放 Q → 无条件先重击（腾出印记窗口）再放 E
+                        if (eReady && !eAfterActionDone)
+                        {
+                            avatar.Charge(ChargeMs);
+                            eAfterActionDone = true;
+                            Sleep(100, avatar.Ct);
+                            continue;
+                        }
+
+                        // ③' E 已就绪 且 本 E 后已完成重击/放 Q → 直接放 E 挂印记
+                        if (eReady && eAfterActionDone)
+                        {
+                            Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                            if (fightParam != null)
+                            {
+                                fightParam.ArlecchinoLastETime = now; // 记录放 E 时刻（战斗内保留）
+                            }
+                            lastETime = now;
+                            eAfterActionDone = false; // 本次 E 后尚未重击/放 Q，禁止直接连续 E
+                            Sleep(100, avatar.Ct);
+                            continue;
+                        }
+
+                        // ④ 正常收契重击：契量不超过上限、本 E 未重击、且（2命 或 E 后已满 5 秒）
+                        if (!eAfterActionDone
+                            && bondPercent <= chargeThreshold
+                            && (c2Enabled || (now - lastETime).TotalSeconds >= 5))
+                        {
+                            avatar.Charge(ChargeMs);
+                            eAfterActionDone = true;
+                            Sleep(100, avatar.Ct);
+                            continue;
+                        }
+
+                        // 默认分支：配置了普攻动作循环则按序列执行（多序列每轮切换），否则内置普攻闪A
+                        if (attackLoopSequences.Count > 0)
+                        {
+                            var seq = attackLoopSequences[loopRound % attackLoopSequences.Count];
+                            foreach (var cmd in seq)
+                            {
+                                cmd.Execute(avatar);
+                            }
+                        }
+                        else
+                        {
+                            Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+                            Sleep(100, avatar.Ct);
+                        }
+                    }
+
+                    return true;
+                }
             }
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// 阿蕾奇诺重击收契的时长（毫秒），供契量状态机调用 avatar.Charge。
+    /// </summary>
+    private const int ChargeMs = 450;
+
+    /// <summary>
+    /// 红血检测：血条中心区域连通域判断是否红血。
+    /// 区域与颜色阈值照抄参考 CombatHealthDetector（基于 1080p 基准）。
+    /// </summary>
+    private static bool IsArlecchinoRedBlood(ImageRegion ra)
+    {
+        const int x = 808, y = 1009, w = 3, h = 3;
+        var lower = new Scalar(255, 90, 89);
+        var upper = new Scalar(255, 91, 90);
+        return CountConnectedRegions(ra, x, y, w, h, lower, upper) > 1;
+    }
+
+    /// <summary>
+    /// 契量识别：返回契量百分比（0~200%）。
+    /// 契包裹在血条上、上下各一层；在契区域内按契色二值化后，
+    /// 上、下两个分隔连通域各自取 x 跨度，求均值后按契区域宽度归一化为契量。
+    /// 契量 = 200% × 上下连通域 x 长度均值 / 契区域宽度。
+    /// </summary>
+    private static double MeasureBondPercent(ImageRegion ra)
+    {
+        // 契区域：X=812, W=295（→ 812~1107）；Y/H 照抄参考（契上下包裹血条，Y 覆盖两层）
+        const int bondX = 812, bondW = 295, bondY = 1000, bondH = 20;
+        // 契颜色 #FF8C89 ≈ BGR(255,140,137)；用容差小的参考阈值降低误判
+        var lower = new Scalar(243, 132, 128);
+        var upper = new Scalar(255, 156, 152);
+
+        using var bondRect = ra.DeriveCrop(bondX, bondY, bondW, bondH);
+        using var mask = OpenCvCommonHelper.Threshold(bondRect.SrcMat, lower, upper);
+        using var labels = new Mat();
+        using var stats = new Mat();
+        using var centroids = new Mat();
+        var numLabels = Cv2.ConnectedComponentsWithStats(mask, labels, stats, centroids,
+            connectivity: PixelConnectivity.Connectivity4, ltype: MatType.CV_32S);
+
+        // 统计所有契色连通域（label>=1）的 x 跨度（width），取均值作为契量跨度
+        double totalWidth = 0;
+        int count = 0;
+        if (numLabels > 1)
+        {
+            // stats 每行: [left, top, width, height, area]，label 从 1 开始
+            for (int i = 1; i < numLabels; i++)
+            {
+                var w = stats.At<int>(i, (int)ConnectedComponentsTypes.Width);
+                totalWidth += w;
+                count++;
+            }
+        }
+
+        if (count == 0)
+        {
+            return 0;
+        }
+
+        var avgWidth = totalWidth / count;
+        return avgWidth / bondW * 200.0;
+    }
+
+    /// <summary>
+    /// 连通域个数统计工具：裁剪区域→颜色阈值二值化→连通域计数。
+    /// 返回连通域总数（含背景 label 0）。
+    /// </summary>
+    private static int CountConnectedRegions(ImageRegion ra, int x, int y, int w, int h, Scalar lower, Scalar upper)
+    {
+        using var rect = ra.DeriveCrop(x, y, w, h);
+        using var mask = OpenCvCommonHelper.Threshold(rect.SrcMat, lower, upper);
+        using var labels = new Mat();
+        using var stats = new Mat();
+        using var centroids = new Mat();
+        return Cv2.ConnectedComponentsWithStats(mask, labels, stats, centroids,
+            connectivity: PixelConnectivity.Connectivity4, ltype: MatType.CV_32S);
     }
 
     /// <summary>

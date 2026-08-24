@@ -355,6 +355,60 @@ public partial class AutoFightConfig : ObservableObject
     [ObservableProperty]
     private bool _drawRecognitionResults = true;
 
+    /// <summary>
+    /// 阿蕾奇诺：2命及以上开关。勾选后 E 之后可直接重击收契，
+    /// 否则需等待 E 之后 5 秒才能重击。默认勾选（2命及以上）。
+    /// </summary>
+    [ObservableProperty]
+    private bool _arlecchinoC2Enabled = true;
+
+    /// <summary>
+    /// 阿蕾奇诺：携带专武开关。勾选时重击收契为 155，否则为 130。
+    /// </summary>
+    [ObservableProperty]
+    private bool _arlecchinoSignatureEnabled = true;
+
+    /// <summary>
+    /// 阿蕾奇诺：契量强化线（%）。契量低于此值视为空契/无强化普攻。
+    /// 默认 40。
+    /// </summary>
+    [ObservableProperty]
+    private double _arlecchinoBondStrengthenLine = 40;
+
+    /// <summary>
+    /// 阿蕾奇诺：契空且 Q 可用时，E 剩余 CD 超过此值（秒）才放 Q 刷新 E。
+    /// 默认 8。
+    /// </summary>
+    [ObservableProperty]
+    private double _arlecchinoBondRefreshECooldown = 8;
+
+    /// <summary>
+    /// 阿蕾奇诺：重击收契量（%）。携带专武为 155，否则为 130。
+    /// 重击溢出阈值（契量超过多少不重击）由此自动推导：200 − 收契量。
+    /// </summary>
+    [ObservableProperty]
+    private int _arlecchinoBondChargeAmount = 155;
+
+    /// <summary>
+    /// 阿蕾奇诺：普攻动作循环（战斗策略语言，如 attack, wait(1.5), attack）。
+    /// 默认为空使用内置普攻闪A；非空且解析成功时，契量状态机默认分支按此循环执行；
+    /// 多个序列用 | 分隔，每轮循环依次切换使用。
+    /// </summary>
+    [ObservableProperty]
+    private string _arlecchinoNormalAttackLoop = "";
+
+    /// <summary>
+    /// 阿蕾奇诺：调试日志开关。勾选后契量状态机每 500ms 输出一次 info 日志（当前契量、红血、E 就绪、E-CD、Q 就绪）。
+    /// </summary>
+    [ObservableProperty]
+    private bool _arlecchinoDebugLogEnabled = false;
+
+    /// <summary>
+    /// 阿蕾奇诺：战斗结束检查轮次。每 N 轮契量状态机循环触发一次战斗结束检查；0 表示不检查。
+    /// </summary>
+    [ObservableProperty]
+    private int _arlecchinoFightEndCheckRound = 0;
+
 }
 
 /// <summary>
