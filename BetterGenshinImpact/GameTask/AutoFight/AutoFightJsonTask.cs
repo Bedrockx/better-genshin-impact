@@ -75,13 +75,14 @@ public class AutoFightJsonTask : ISoloTask
     // 每步水平旋转均按比例附带向下下压（见下压比例常量）；力度初始保守，
     // 之后按红箭头收敛效果乘法自适应调节（见 RedArrowAimLoopAsync），整体仍偏保守防越轴震荡
     private const int RedArrowStepIntervalMs = 100;   // 旋转环步进间隔（100ms 一次）
-    private const double RedArrowInitialStepX = 20;  // 初始水平旋转力度（像素/步，保守小值）
-    private const double RedArrowMinStepX = 5;       // 水平用力下限（防过小空转）
-    private const double RedArrowMaxStepX = 120;     // 水平用力上限（整体偏保守，防过度旋转）
-    private const double RedArrowAngleToPx = 30;     // 偏差角度→步进上限换算（每度像素，方向符号需真机标定）
-    private const int RedArrowRatioWindowSize = 5;   // 实测比例滑动窗口（取中位数抗噪，同恰斯卡）
-    private const double RedArrowExpectedStepDeg = 2; // 期望每步旋转角度（保守收敛量，度）
+    private const double RedArrowInitialStepX = 30;   // 初始"每度像素"自适应力度（原 150，调为五分之一）
+    private const double RedArrowMinStepX = 5;       // 每度像素下限（防过小空转）
+    private const double RedArrowMaxStepX = 600;     // 每度像素上限（原 120，再翻 5 倍）
+    private const double RedArrowTargetRatio = 0.33; // 目标每次旋转掉角度差值的 33%（剩 67% 下一帧继续，指数收敛）
+    private const double RedArrowEmaNewWeight = 0.3; // EMA 新值权重：平滑后角度 = 0.7×旧 + 0.3×新（参考恰斯卡，抗单帧噪声）
+    private const double RedArrowStepGain = 0.2;     // 每度力度乘法趋近步长指数：单步放大/缩小限制在 ±38%（Math.Pow(factor, 步长)）
     private const double RedArrowKeepDownRatio = 0.2; // 每步下压比例：下压 = 0.2 × 水平步进（参考恰斯卡 0.194 辅助比）
+    private const double RedArrowLogIntervalMs = 500; // 红箭头索敌日志节流间隔（每 0.5 秒至多输出一条）
 
     /// <summary>
     /// 当前操作的角色名（私有状态，不污染全局 CurrentAvatarName）
@@ -625,22 +626,26 @@ public class AutoFightJsonTask : ISoloTask
     }
 
     /// <summary>
-    /// 红箭头对准循环：动作执行期间持续旋转视角，使最接近屏幕正上方的红色箭头尽量对准屏幕正上方。
-    /// 旋转逻辑参考恰斯卡特化：独立异步旋转环（每 100ms 一步），力度初始保守，按红箭头收敛效果乘法自适应调节，
-    /// 整体仍偏保守防止过度旋转震荡；每步水平旋转均按比例附带向下下压，保持视角最低。
-    /// 反馈指标为红箭头角度（不使用视角朝向）：
-    ///   1. 相邻帧箭头角度差 ≈ 本次水平旋转的实际旋转角，与使用力度作比值入滑动窗口，取中位数作"每像素角度"比例；
-    ///   2. 用该比例预测当前力度单步旋转角度，与期望单步收敛量比较，做乘法自适应（偏小加大、偏大缩小，均带 clamp 上限保守）；
-    ///   3. 旋转方向由箭头相对正上方（-90°）的偏差符号决定；偏差越小步进越收敛（按偏差换算上限），避免越轴震荡。
+    /// 红箭头对准循环：动作执行期间持续旋转视角，使顶部（-90°）对准红箭头。
+    /// 旋转逻辑参考恰斯卡特化：独立异步旋转环（每 100ms 一步）。
+    /// 反馈指标为红箭头与顶部的夹角（不使用视角朝向）：
+    ///   1. 每帧识别红箭头，始终以最接近顶部（-90°）的箭头作为目标；
+    ///   2. 单次旋转目标角度 = 当前夹角的 33%（每次吃掉 33% 差异，剩 67% 下一帧继续，指数收敛逼近顶部）；
+    ///   3. 单次旋转力度（px）= 目标角度 × 每度像素系数 stepX（自适应力度，随收敛效果乘法调节）；
+    ///   4. 自适应用 EMA 逐步调节（参考恰斯卡平滑转动，不依赖最近一次、不跳变）：
+    ///      a) 相邻帧箭头夹角差（≈本次实际旋转角）做指数移动平均平滑，抗单帧识别噪声；
+    ///      b) 用 平滑后实际角 与 目标角（夹角的 33%）求比例因子 factor，
+    ///         力度按 current×factor^步长 逐步趋近（单步受限）而非一次性跳变，向目标收敛；
+    ///   5. 每步均附带按比例向下下压，保持视角最低。
     /// 注意：方向符号需真机标定（原神视角旋转方向与图像角度符号的关系无法静态确定）。
     /// </summary>
     private async Task RedArrowAimLoopAsync(CancellationToken ct)
     {
-        // 水平旋转力度（像素/步）：初始保守小值，之后按红箭头收敛效果自适应调节
+        // 每度像素系数（自适应力度）：初始保守，之后按红箭头收敛效果用 EMA 逐步调节
         double stepX = RedArrowInitialStepX;
-        // 实测比例窗口：相邻帧箭头角度差 ÷ 使用力度（每像素产生的角度），取中位数抗噪
-        List<double> angleRatios = new();
-        double? lastAngle = null;
+        double? lastAngle = null; // 上一帧目标箭头角度，用于估算本次实际旋转角
+        double emaActual = 0;     // 本次实际旋转角的指数移动平均（EMA 平滑，抗单帧识别噪声）
+        var lastLogTime = DateTime.MinValue; // 日志节流：每 0.5 秒至多输出一条
 
         while (!ct.IsCancellationRequested)
         {
@@ -649,7 +654,7 @@ public class AutoFightJsonTask : ISoloTask
                 var angles = AvatarRecognition.FindRedArrowAngles(capture);
                 if (angles.Count > 0)
                 {
-                    // 最接近屏幕正上方（-90°）的箭头
+                    // 始终以最接近屏幕顶部（-90°）的箭头作为目标
                     double bestAngle = 0, bestDiff = double.MaxValue;
                     foreach (var a in angles)
                     {
@@ -661,39 +666,42 @@ public class AutoFightJsonTask : ISoloTask
                         }
                     }
 
-                    // 自适应力度调节：利用相邻帧箭头角度变化 ≈ 本次旋转角，与使用力度求比例
-                    if (lastAngle.HasValue)
+                    // 当前夹角（红箭头与顶部的角度差）
+                    double deviation = AngleDiffDeg(bestAngle, -90);
+                    double absDev = Math.Abs(deviation);
+
+                    // EMA 自适应调节（参考恰斯卡平滑转动）：逐步、平滑地调节每度力度，不依赖最近一次、不跳变
+                    if (lastAngle.HasValue && absDev > 0.5)
                     {
+                        // 本次实际旋转角（相邻帧目标箭头角差，≈相机旋转给箭头带来的角度变化）
                         double actual = Math.Abs(AngleDiffDeg(bestAngle, lastAngle.Value));
-                        if (actual > 1 && stepX > RedArrowMinStepX) // 忽略噪声级变化、空转
+                        if (actual > 0.5 && stepX > RedArrowMinStepX)
                         {
-                            angleRatios.Add(actual / stepX);
-                            if (angleRatios.Count > RedArrowRatioWindowSize)
+                            // a) 对实际旋转角做指数移动平均平滑（新值权重 RedArrowEmaNewWeight）
+                            emaActual = emaActual > 0 ? emaActual * (1 - RedArrowEmaNewWeight) + actual * RedArrowEmaNewWeight : actual;
+                            // b) 目标角 = 当前夹角的 33%
+                            double targetDeg = absDev * RedArrowTargetRatio;
+                            //    因子 = 目标角 / 平滑后实际角：实际角大于目标 → factor<1 → 逐步调小力度；反之逐步调大
+                            double factor = Math.Clamp(targetDeg / Math.Max(emaActual, 0.01), 0.2, 5.0);
+                            if (Math.Abs(factor - 1) > 0.1)
                             {
-                                angleRatios.RemoveAt(0);
-                            }
-                            var sorted = angleRatios.OrderBy(r => r).ToArray();
-                            double medianRatio = sorted[sorted.Length / 2];
-                            // 预测当前力度的单步旋转角度，向期望值收敛（乘法，clamp 偏保守）
-                            double predicted = medianRatio * stepX;
-                            if (predicted < RedArrowExpectedStepDeg)
-                            {
-                                // 偏小：放大，但上限 MaxStepX 兜底（整体保守）
-                                stepX = Math.Min(stepX * Math.Clamp(RedArrowExpectedStepDeg / Math.Max(predicted, 0.01), 1.0, 1.5), RedArrowMaxStepX);
-                            }
-                            else if (predicted > RedArrowExpectedStepDeg * 1.3)
-                            {
-                                // 偏大：缩小，防过度旋转
-                                stepX = Math.Max(stepX * 0.8, RedArrowMinStepX);
+                                //    力度按 current×factor^步长 逐步趋近（单步受限，防跳变/震荡）
+                                stepX = Math.Clamp(stepX * Math.Pow(factor, RedArrowStepGain), RedArrowMinStepX, RedArrowMaxStepX);
                             }
                         }
                     }
 
-                    // 偏差角度及水平旋转方向：箭头在正上方右侧（deviation>0）需右移视角使其回归正上方
-                    double deviation = AngleDiffDeg(bestAngle, -90);
-                    int dir = deviation > 0 ? 1 : -1;
-                    // 偏差越小步进越收敛（按偏差换算上限，配合 MaxStepX 双重保守），防越过目标造成震荡
-                    double appliedStep = Math.Min(stepX, Math.Abs(deviation) * RedArrowAngleToPx);
+                    // 单次旋转力度（px）= 目标角度（夹角的 33%）× 每度像素系数
+                    double appliedStep = absDev * RedArrowTargetRatio * stepX;
+                    int dir = deviation >= 0 ? 1 : -1; // 顶部右侧（deviation>0）→ 右移视角使其回归顶部
+                    // 日志节流：每 0.5 秒至多输出一条，列出全部红箭头位置、角度差值、当前自适应旋转力度
+                    if ((DateTime.Now - lastLogTime).TotalMilliseconds >= RedArrowLogIntervalMs)
+                    {
+                        lastLogTime = DateTime.Now;
+                        var posStr = string.Join("，", angles.Select(a => a.ToString("F1")));
+                        Logger.LogInformation("红箭头位置：{Pos}，角度差值 {Diff:F1}°，当前自适应旋转力度 {Adaptive:F0}",
+                            posStr, absDev, stepX);
+                    }
                     Simulation.SendInput.Mouse.MoveMouseBy(
                         (int)(appliedStep * dir * _dpi),
                         (int)(RedArrowKeepDownRatio * appliedStep * _dpi));
@@ -701,9 +709,17 @@ public class AutoFightJsonTask : ISoloTask
                 }
                 else
                 {
-                    // 未识别到红箭头：重置反馈基准，仅向下下压保持视角最低
+                    // 未识别到红箭头：仅重置角度反馈基准（lastAngle/emaActual），
+                    // 力度 stepX 是整场战斗的自适应状态，需全程保留（dpi 等不中途变），不在此重置；
+                    // 期间仅向下下压保持视角最低
                     lastAngle = null;
-                    Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(RedArrowInitialStepX * RedArrowKeepDownRatio * _dpi));
+                    emaActual = 0;
+                    if ((DateTime.Now - lastLogTime).TotalMilliseconds >= RedArrowLogIntervalMs)
+                    {
+                        lastLogTime = DateTime.Now;
+                        Logger.LogInformation("红箭头位置：无，角度差值 -，当前自适应旋转力度 {Adaptive:F0}", stepX);
+                    }
+                    Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(RedArrowInitialStepX * RedArrowTargetRatio * RedArrowKeepDownRatio * _dpi));
                 }
             }
             await Task.Delay(RedArrowStepIntervalMs, ct);
