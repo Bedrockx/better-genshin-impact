@@ -556,7 +556,7 @@ public class AutoFightJsonTask : ISoloTask
                 // 前一个动作未开启（含开战首动作）→ 动作开始前单次大位移把视角拉到最低俯视
                 if (!_lastRedArrowAim)
                 {
-                    Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(RedArrowLookDownPixels * _dpi));
+                    InputHub.Foreground.Mouse.MoveMouseBy(0, (int)(RedArrowLookDownPixels * _dpi));
                     await Delay(RedArrowPauseMs, _ct);
                 }
 
@@ -567,7 +567,7 @@ public class AutoFightJsonTask : ISoloTask
             else if (_lastRedArrowAim)
             {
                 // 前一个动作开启、当前未开启 → 点按一次鼠标中键回正视角
-                Simulation.SendInput.Mouse.MiddleButtonClick();
+                InputHub.Foreground.Mouse.MiddleButtonClick();
                 await Delay(RedArrowPauseMs, _ct);
             }
             _lastRedArrowAim = action.RedArrowAim;
@@ -706,7 +706,7 @@ public class AutoFightJsonTask : ISoloTask
                         Logger.LogInformation("红箭头位置：{Pos}，角度差值 {Diff:F1}°，当前自适应旋转力度 {Adaptive:F0}",
                             posStr, absDev, stepX);
                     }
-                    Simulation.SendInput.Mouse.MoveMouseBy(
+                    InputHub.Foreground.Mouse.MoveMouseBy(
                         (int)(appliedStep * dir * _dpi),
                         (int)(RedArrowKeepDownRatio * appliedStep * _dpi));
                     lastAngle = bestAngle;
@@ -723,7 +723,7 @@ public class AutoFightJsonTask : ISoloTask
                         lastLogTime = DateTime.Now;
                         Logger.LogInformation("红箭头位置：无，角度差值 -，当前自适应旋转力度 {Adaptive:F0}", stepX);
                     }
-                    Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(RedArrowInitialStepX * RedArrowTargetRatio * RedArrowKeepDownRatio * _dpi));
+                    InputHub.Foreground.Mouse.MoveMouseBy(0, (int)(RedArrowInitialStepX * RedArrowTargetRatio * RedArrowKeepDownRatio * _dpi));
                 }
             }
             await Task.Delay(RedArrowStepIntervalMs, ct);
@@ -921,7 +921,15 @@ public class AutoFightJsonTask : ISoloTask
                             await SimulateHoldElementalSkillAsync(800, _ct);
                             await SimulateMouseLeftClickLoopAsync(6, _ct);
                             await Delay(1500, _ct);
-                            picker.AfterUseSkill();
+                            var cd = picker.AfterUseSkill();
+
+                            // 如果技能就绪（冷却时间为0），说明拾取动作失败，等待500ms后重试一次（同步 AutoFightTask 的 PR19 逻辑）
+                            if (cd <= 0)
+                            {
+                                await Delay(500, _ct);
+                                await SimulateHoldElementalSkillAsync(800, _ct);
+                                await SimulateMouseLeftClickLoopAsync(6, _ct);
+                            }
                         }
                     }
                     else
