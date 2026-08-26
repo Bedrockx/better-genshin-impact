@@ -9,6 +9,7 @@ using OpenCvSharp;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
@@ -537,5 +538,277 @@ public static class AvatarRecognition
             Simulation.SendInput.Mouse.MiddleButtonClick();
             VisionContext.Instance().DrawContent.RemoveRect("ContinuousTargeting");
         }
+    }
+    /// <summary>
+    /// 识别屏幕中所有红色箭头，返回每个箭头到屏幕中心连线的角度（度）。
+    /// 识别到几个箭头返回几个角度，未识别到返回空列表。
+    /// 角度约定：右方为 0°，逆时针为正，范围 (-180, 180]。
+    /// 算法流水线（1080p 基准，自动按截图宽高缩放）：
+    ///   1. 颜色分类：血条 (255,90,90)±5 显式排除；箭头色带 r>240、G∈[40,115]、B∈[70,138]、B-G≥-15、r-g/r-b≥110
+    ///      （半透明混合后随背景色变化，G 上限 115/B 上限 138 覆盖暗背景与偏蓝背景）
+    ///   2. 环带过滤：像素距环心距离与傅里叶4阶拟合环 r(φ)（42 个确认箭头，avg 残差 0.6px）之差 ≤50px
+    ///   3. 3×3 闭运算合并箭头的两部分（内尖菱形 + 外包箭头）
+    ///   4. 连通域（面积 ≥10）
+    ///   5. 内尖/外尖判定：MinD∈[Ring-18,Ring-4] / MaxD∈[Ring+6,Ring+20] 且腰宽 MaxW≥18（排除固定方块/横条等非箭头）
+    ///   6. 箭头组合：内尖外尖同域（both）、角度差≤6° 的 innerOnly+outerOnly 配对、
+    ///      血条遮挡分支（对应环带内血条像素 ≥5 时仅一侧尖也可判为箭头）
+    /// </summary>
+    /// <param name="existingCapture">已有截图（避免二次截图）</param>
+    /// <param name="arrowRects">可选：非 null 时填充每个箭头的外接矩形（供绘制）</param>
+    public static List<double> FindRedArrowAngles(ImageRegion? existingCapture = null, List<Rect>? arrowRects = null)
+    {
+        var selfCapture = existingCapture == null ? CaptureToRectArea() : null;
+        using (selfCapture)
+        {
+            var image = existingCapture ?? selfCapture!;
+            return AnalyzeRedArrows(image.SrcMat, arrowRects);
+        }
+    }
+
+    /// <summary>
+    /// 红色箭头连通域（识别中间结构）
+    /// </summary>
+    private sealed class RedArrowComp
+    {
+        public List<int> Pix = new();
+        public double MinD = double.MaxValue, MaxD = 0;
+        public double Phi, Ring;
+        public double MaxW;
+        public bool HasInner, HasOuter;
+        public int MinX = int.MaxValue, MaxX = -1, MinY = int.MaxValue, MaxY = -1;
+    }
+
+    /// <summary>
+    /// 红色箭头核心识别算法（见 <see cref="FindRedArrowAngles"/> 说明）。
+    /// </summary>
+    private static List<double> AnalyzeRedArrows(Mat src, List<Rect>? arrowRects)
+    {
+        int w = src.Width, h = src.Height;
+        double scale = w / 1920.0; // 1080p 基准，自动适配非 1080p 截图
+        double cx = w * 0.5, cy = h * 0.5;
+
+        // 傅里叶4阶环拟合系数（1080p 基准，环心相对屏幕中心 (960,540) 偏移约 26px）
+        // r(φ) = a0 + Σ(a_k·cos(kφ) + b_k·sin(kφ))
+        static double RingR(double phi, double sc)
+        {
+            double v = 462.60;
+            v += -0.72 * Math.Cos(phi) + -26.55 * Math.Sin(phi);
+            v += 41.49 * Math.Cos(2 * phi) + 0.10 * Math.Sin(2 * phi);
+            v += 0.17 * Math.Cos(3 * phi) + -2.63 * Math.Sin(3 * phi);
+            v += 4.09 * Math.Cos(4 * phi) + -0.27 * Math.Sin(4 * phi);
+            return v * sc;
+        }
+
+        // 1. 颜色分类 + 环带过滤
+        var bytes = new byte[src.Total() * src.ElemSize()];
+        Marshal.Copy(src.Data, bytes, 0, bytes.Length);
+        int step = (int)src.Step();
+        var cls = new byte[w * h]; // 0=无, 1=箭头候选, 2=血条
+        var hpPts = new List<int>();
+        for (int y = 0; y < h; y++)
+        {
+            int row = y * step;
+            for (int x = 0; x < w; x++)
+            {
+                int i = row + x * 3;
+                byte b = bytes[i], g = bytes[i + 1], r = bytes[i + 2];
+                if (Math.Abs(r - 255) <= 5 && Math.Abs(g - 90) <= 5 && Math.Abs(b - 90) <= 5)
+                {
+                    cls[y * w + x] = 2;
+                    hpPts.Add(y * w + x);
+                }
+                else if (r > 240 && g >= 40 && g <= 115 && b >= 70 && b <= 138
+                    && (b - g) >= -15 && (r - g) >= 110 && (r - b) >= 110)
+                {
+                    double dx = x - cx, dy = y - cy;
+                    double d = Math.Sqrt(dx * dx + dy * dy);
+                    double phi = Math.Atan2(dy, dx);
+                    if (Math.Abs(d - RingR(phi, scale)) <= 50 * scale) cls[y * w + x] = 1;
+                }
+            }
+        }
+
+        // 2. 3×3 闭运算：合并箭头两部分（内尖菱形 + 外包箭头）为一个连通域
+        using (var maskMat = new Mat(h, w, MatType.CV_8UC1))
+        using (var closed = new Mat())
+        {
+            Marshal.Copy(cls, 0, maskMat.Data, cls.Length);
+            Cv2.MorphologyEx(maskMat, closed, MorphTypes.Close,
+                Cv2.GetStructuringElement(MorphShapes.Rect, new Size(3, 3)));
+            var closedBytes = new byte[w * h];
+            Marshal.Copy(closed.Data, closedBytes, 0, w * h);
+            cls = closedBytes;
+        }
+
+        // 3. 连通域（8 邻域，面积 ≥10）
+        var visited = new bool[w * h];
+        var stack = new Stack<int>();
+        var comps = new List<RedArrowComp>();
+        for (int idx = 0; idx < w * h; idx++)
+        {
+            if (cls[idx] != 1 || visited[idx]) continue;
+            var c = new RedArrowComp();
+            stack.Push(idx);
+            while (stack.Count > 0)
+            {
+                int p = stack.Pop();
+                if (visited[p] || cls[p] != 1) continue;
+                visited[p] = true;
+                c.Pix.Add(p);
+                int px = p % w, py = p / w;
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        int nx = px + dx, ny = py + dy;
+                        if (nx >= 0 && nx < w && ny >= 0 && ny < h && !visited[ny * w + nx])
+                            stack.Push(ny * w + nx);
+                    }
+            }
+            if (c.Pix.Count >= 10) comps.Add(c);
+        }
+
+        // 4. 每域统计：内外端点、质心角、腰宽
+        foreach (var c in comps)
+        {
+            double sx = 0, sy = 0;
+            var ds = new List<double>(c.Pix.Count);
+            var phis = new List<double>(c.Pix.Count);
+            foreach (var p in c.Pix)
+            {
+                int px = p % w, py = p / w;
+                double dx = px - cx, dy = py - cy;
+                double d = Math.Sqrt(dx * dx + dy * dy);
+                ds.Add(d);
+                phis.Add(Math.Atan2(dy, dx));
+                if (d < c.MinD) c.MinD = d;
+                if (d > c.MaxD) c.MaxD = d;
+                sx += px;
+                sy += py;
+                if (px < c.MinX) c.MinX = px;
+                if (px > c.MaxX) c.MaxX = px;
+                if (py < c.MinY) c.MinY = py;
+                if (py > c.MaxY) c.MaxY = py;
+            }
+            c.Phi = Math.Atan2(sy / c.Pix.Count - cy, sx / c.Pix.Count - cx);
+            c.Ring = RingR(c.Phi, scale);
+
+            // 腰宽 MaxW：按径向距离 2px 分箱，箱内角度跨度 × 该箱半径 的最大值
+            var bMin = new Dictionary<int, double>();
+            var bMax = new Dictionary<int, double>();
+            var bCent = new Dictionary<int, double>();
+            for (int i = 0; i < ds.Count; i++)
+            {
+                double dphi = phis[i] - c.Phi;
+                while (dphi > Math.PI) dphi -= 2 * Math.PI;
+                while (dphi < -Math.PI) dphi += 2 * Math.PI;
+                int bin = (int)(ds[i] / 2);
+                if (!bMin.TryGetValue(bin, out _))
+                {
+                    bMin[bin] = dphi;
+                    bMax[bin] = dphi;
+                    bCent[bin] = ds[i];
+                }
+                else
+                {
+                    if (dphi < bMin[bin]) bMin[bin] = dphi;
+                    if (dphi > bMax[bin]) bMax[bin] = dphi;
+                }
+            }
+            foreach (var kv in bMin)
+            {
+                double bw = (bMax[kv.Key] - bMin[kv.Key]) * bCent[kv.Key];
+                if (bw > c.MaxW) c.MaxW = bw;
+            }
+
+            c.HasInner = c.MinD >= c.Ring - 18 * scale && c.MinD <= c.Ring - 4 * scale && c.MaxW >= 18 * scale;
+            c.HasOuter = c.MaxD >= c.Ring + 6 * scale && c.MaxD <= c.Ring + 20 * scale && c.MaxW >= 18 * scale;
+        }
+
+        // 5. 箭头组合：both / 配对 / 血条遮挡分支
+        var both = new List<RedArrowComp>();
+        var innerOnly = new List<RedArrowComp>();
+        var outerOnly = new List<RedArrowComp>();
+        foreach (var c in comps)
+        {
+            if (c.HasInner && c.HasOuter) both.Add(c);
+            else if (c.HasInner) innerOnly.Add(c);
+            else if (c.HasOuter) outerOnly.Add(c);
+        }
+
+        var arrows = new List<(RedArrowComp? Inner, RedArrowComp? Outer)>();
+        foreach (var c in both) arrows.Add((c, c));
+
+        var usedI = new bool[innerOnly.Count];
+        var usedO = new bool[outerOnly.Count];
+        for (int i = 0; i < innerOnly.Count; i++)
+        {
+            if (usedI[i]) continue;
+            for (int j = 0; j < outerOnly.Count; j++)
+            {
+                if (usedO[j]) continue;
+                if (Math.Abs(AngleDiff(innerOnly[i].Phi, outerOnly[j].Phi)) <= 0.105)
+                {
+                    arrows.Add((innerOnly[i], outerOnly[j]));
+                    usedI[i] = true;
+                    usedO[j] = true;
+                    break;
+                }
+            }
+        }
+        for (int i = 0; i < innerOnly.Count; i++)
+        {
+            if (usedI[i]) continue;
+            if (HasHpInBand(hpPts, w, cx, cy, innerOnly[i], innerOnly[i].Ring + 2 * scale, innerOnly[i].Ring + 50 * scale))
+                arrows.Add((innerOnly[i], null));
+        }
+        for (int j = 0; j < outerOnly.Count; j++)
+        {
+            if (usedO[j]) continue;
+            if (HasHpInBand(hpPts, w, cx, cy, outerOnly[j], outerOnly[j].Ring - 50 * scale, outerOnly[j].Ring - 2 * scale))
+                arrows.Add((null, outerOnly[j]));
+        }
+
+        // 6. 产出：角度（质心角）+ 可选外接矩形（内外尖部件合并）
+        var result = new List<double>(arrows.Count);
+        foreach (var a in arrows)
+        {
+            var comp = a.Inner ?? a.Outer!;
+            result.Add(comp.Phi * 180.0 / Math.PI);
+            arrowRects?.Add(new Rect(
+                Math.Min(a.Inner?.MinX ?? int.MaxValue, a.Outer?.MinX ?? int.MaxValue),
+                Math.Min(a.Inner?.MinY ?? int.MaxValue, a.Outer?.MinY ?? int.MaxValue),
+                Math.Max(a.Inner?.MaxX ?? int.MinValue, a.Outer?.MaxX ?? int.MinValue) - Math.Min(a.Inner?.MinX ?? int.MaxValue, a.Outer?.MinX ?? int.MaxValue) + 1,
+                Math.Max(a.Inner?.MaxY ?? int.MinValue, a.Outer?.MaxY ?? int.MinValue) - Math.Min(a.Inner?.MinY ?? int.MaxValue, a.Outer?.MinY ?? int.MaxValue) + 1));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 判断血条像素是否覆盖指定连通域方向上的 [dMin, dMax] 环带（±0.07 rad 角度窗内血条像素 ≥5）。
+    /// 用于遮挡分支：被血条遮挡一侧尖的箭头，另一侧尖 + 血条覆盖即判为箭头。
+    /// </summary>
+    private static bool HasHpInBand(List<int> hpPts, int w, double cx, double cy, RedArrowComp c, double dMin, double dMax)
+    {
+        int cnt = 0;
+        foreach (var p in hpPts)
+        {
+            int x = p % w, y = p / w;
+            double dx = x - cx, dy = y - cy;
+            double d = Math.Sqrt(dx * dx + dy * dy);
+            if (d < dMin || d > dMax) continue;
+            if (Math.Abs(AngleDiff(Math.Atan2(dy, dx), c.Phi)) <= 0.07) cnt++;
+        }
+        return cnt >= 5;
+    }
+
+    /// <summary>
+    /// 角度差归一化到 (-π, π]
+    /// </summary>
+    private static double AngleDiff(double a, double b)
+    {
+        double d = a - b;
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d < -Math.PI) d += 2 * Math.PI;
+        return d;
     }
 }
