@@ -897,6 +897,14 @@ public class AutoFightTask : ISoloTask
                         Logger.LogInformation("敌人可见，跳过战斗结束检查（已连续跳过{Count}次）", _skipCheckCounter);
                         return false;
                     }
+                    // 血条未命中时补充红箭头识别：红箭头可见同样视为敌人可见（复用同一连续跳过计数，
+                    // 保留原有连续 N 次后强制触发一次的逻辑）。识别较耗时，仅无血条时执行。
+                    else if (AvatarRecognition.FindRedArrowAngles(quickCapture).Count > 0)
+                    {
+                        _skipCheckCounter++;
+                        Logger.LogInformation("红箭头可见，跳过战斗结束检查（已连续跳过{Count}次）", _skipCheckCounter);
+                        return false;
+                    }
                 }
                 _skipCheckCounter = 0;
             }

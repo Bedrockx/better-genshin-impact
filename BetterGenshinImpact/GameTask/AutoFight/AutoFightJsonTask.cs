@@ -61,6 +61,29 @@ public class AutoFightJsonTask : ISoloTask
     private DateTime _lastLogTime = DateTime.MinValue;
 
     /// <summary>
+    /// 上一次执行动作的红箭头对准开关（用于动作间状态转移：
+    /// 前一个动作未开启 → 本动作开启时低头；前一个动作开启 → 本动作关闭时中键回正）。
+    /// 初始 false，开战首个动作为 true 时自然触发低头。
+    /// </summary>
+    private bool _lastRedArrowAim;
+
+    // 红箭头对准相关常量（真机标定后可调整，均未乘 dpi）
+    private const int RedArrowLookDownPixels = 3000; // 动作开始前单次大位移把视角拉向最低俯视
+    private const int RedArrowPauseMs = 50;          // 低头 / 回正操作后的等待时间
+
+    // 旋转循环参考恰斯卡特化：独立异步旋转环，步进间隔 100ms 一次，
+    // 每步水平旋转均按比例附带向下下压（见下压比例常量）；力度初始保守，
+    // 之后按红箭头收敛效果乘法自适应调节（见 RedArrowAimLoopAsync），整体仍偏保守防越轴震荡
+    private const int RedArrowStepIntervalMs = 100;   // 旋转环步进间隔（100ms 一次）
+    private const double RedArrowInitialStepX = 20;  // 初始水平旋转力度（像素/步，保守小值）
+    private const double RedArrowMinStepX = 5;       // 水平用力下限（防过小空转）
+    private const double RedArrowMaxStepX = 120;     // 水平用力上限（整体偏保守，防过度旋转）
+    private const double RedArrowAngleToPx = 30;     // 偏差角度→步进上限换算（每度像素，方向符号需真机标定）
+    private const int RedArrowRatioWindowSize = 5;   // 实测比例滑动窗口（取中位数抗噪，同恰斯卡）
+    private const double RedArrowExpectedStepDeg = 2; // 期望每步旋转角度（保守收敛量，度）
+    private const double RedArrowKeepDownRatio = 0.2; // 每步下压比例：下压 = 0.2 × 水平步进（参考恰斯卡 0.194 辅助比）
+
+    /// <summary>
     /// 当前操作的角色名（私有状态，不污染全局 CurrentAvatarName）
     /// </summary>
     private string _currentAvatarName = "";
@@ -408,6 +431,18 @@ public class AutoFightJsonTask : ISoloTask
                 finally
                 {
                     Simulation.ReleaseAllKey();
+                    // 红箭头对准收尾：最后执行的动作仍开启对准（视角处于低头状态）→ 补一次中键回正，
+                    // 避免拾取等后续流程在低头视角下进行；使用 CancellationToken.None 避免 token 已取消时 Delay 抛异常
+                    if (_lastRedArrowAim)
+                    {
+                        try
+                        {
+                            Simulation.SendInput.Mouse.MiddleButtonClick();
+                            await Delay(RedArrowPauseMs, CancellationToken.None);
+                        }
+                        catch (OperationCanceledException) { }
+                        _lastRedArrowAim = false;
+                    }
                     AutoFightTask.FightStatusFlag = false;
                 }
             }, cts2.Token);
@@ -503,11 +538,39 @@ public class AutoFightJsonTask : ISoloTask
     /// <summary>执行单个 JSON 动作节点</summary>
     private async Task ExecuteAction(CombatScenes combatScenes, JsonAction action)
     {
+        AvatarRecognition.SkipSeekScope? redArrowScope = null;
+        CancellationTokenSource? redArrowCts = null;
+        Task? redArrowTask = null;
         try
         {
             var character = string.IsNullOrEmpty(action.Character)
                 ? _currentAvatarName
                 : action.Character;
+
+            // 红箭头索敌对准状态机
+            if (action.RedArrowAim)
+            {
+                // 整个动作期间独占视角：关闭持续索敌循环（参考恰斯卡特化 BeginExclusiveOperation 用法）
+                redArrowScope = AvatarRecognition.BeginExclusiveOperation();
+
+                // 前一个动作未开启（含开战首动作）→ 动作开始前单次大位移把视角拉到最低俯视
+                if (!_lastRedArrowAim)
+                {
+                    Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(RedArrowLookDownPixels * _dpi));
+                    await Delay(RedArrowPauseMs, _ct);
+                }
+
+                // 动作进行期间启动异步旋转循环
+                redArrowCts = CancellationTokenSource.CreateLinkedTokenSource(_ct);
+                redArrowTask = Task.Run(() => RedArrowAimLoopAsync(redArrowCts.Token), redArrowCts.Token);
+            }
+            else if (_lastRedArrowAim)
+            {
+                // 前一个动作开启、当前未开启 → 点按一次鼠标中键回正视角
+                Simulation.SendInput.Mouse.MiddleButtonClick();
+                await Delay(RedArrowPauseMs, _ct);
+            }
+            _lastRedArrowAim = action.RedArrowAim;
 
             var commands = CombatScriptParser.ParseLinePart(action.Action, character);
 
@@ -546,8 +609,116 @@ public class AutoFightJsonTask : ISoloTask
         }
         finally
         {
+            // 停止并等待红箭头对准循环，释放排他作用域
+            if (redArrowCts != null)
+            {
+                redArrowCts.Cancel();
+                if (redArrowTask != null)
+                {
+                    try { await redArrowTask; } catch (OperationCanceledException) { }
+                }
+                redArrowCts.Dispose();
+            }
+            redArrowScope?.Dispose();
             Simulation.ReleaseAllKey();
         }
+    }
+
+    /// <summary>
+    /// 红箭头对准循环：动作执行期间持续旋转视角，使最接近屏幕正上方的红色箭头尽量对准屏幕正上方。
+    /// 旋转逻辑参考恰斯卡特化：独立异步旋转环（每 100ms 一步），力度初始保守，按红箭头收敛效果乘法自适应调节，
+    /// 整体仍偏保守防止过度旋转震荡；每步水平旋转均按比例附带向下下压，保持视角最低。
+    /// 反馈指标为红箭头角度（不使用视角朝向）：
+    ///   1. 相邻帧箭头角度差 ≈ 本次水平旋转的实际旋转角，与使用力度作比值入滑动窗口，取中位数作"每像素角度"比例；
+    ///   2. 用该比例预测当前力度单步旋转角度，与期望单步收敛量比较，做乘法自适应（偏小加大、偏大缩小，均带 clamp 上限保守）；
+    ///   3. 旋转方向由箭头相对正上方（-90°）的偏差符号决定；偏差越小步进越收敛（按偏差换算上限），避免越轴震荡。
+    /// 注意：方向符号需真机标定（原神视角旋转方向与图像角度符号的关系无法静态确定）。
+    /// </summary>
+    private async Task RedArrowAimLoopAsync(CancellationToken ct)
+    {
+        // 水平旋转力度（像素/步）：初始保守小值，之后按红箭头收敛效果自适应调节
+        double stepX = RedArrowInitialStepX;
+        // 实测比例窗口：相邻帧箭头角度差 ÷ 使用力度（每像素产生的角度），取中位数抗噪
+        List<double> angleRatios = new();
+        double? lastAngle = null;
+
+        while (!ct.IsCancellationRequested)
+        {
+            using (var capture = CaptureToRectArea())
+            {
+                var angles = AvatarRecognition.FindRedArrowAngles(capture);
+                if (angles.Count > 0)
+                {
+                    // 最接近屏幕正上方（-90°）的箭头
+                    double bestAngle = 0, bestDiff = double.MaxValue;
+                    foreach (var a in angles)
+                    {
+                        double diff = Math.Abs(AngleDiffDeg(a, -90));
+                        if (diff < bestDiff)
+                        {
+                            bestDiff = diff;
+                            bestAngle = a;
+                        }
+                    }
+
+                    // 自适应力度调节：利用相邻帧箭头角度变化 ≈ 本次旋转角，与使用力度求比例
+                    if (lastAngle.HasValue)
+                    {
+                        double actual = Math.Abs(AngleDiffDeg(bestAngle, lastAngle.Value));
+                        if (actual > 1 && stepX > RedArrowMinStepX) // 忽略噪声级变化、空转
+                        {
+                            angleRatios.Add(actual / stepX);
+                            if (angleRatios.Count > RedArrowRatioWindowSize)
+                            {
+                                angleRatios.RemoveAt(0);
+                            }
+                            var sorted = angleRatios.OrderBy(r => r).ToArray();
+                            double medianRatio = sorted[sorted.Length / 2];
+                            // 预测当前力度的单步旋转角度，向期望值收敛（乘法，clamp 偏保守）
+                            double predicted = medianRatio * stepX;
+                            if (predicted < RedArrowExpectedStepDeg)
+                            {
+                                // 偏小：放大，但上限 MaxStepX 兜底（整体保守）
+                                stepX = Math.Min(stepX * Math.Clamp(RedArrowExpectedStepDeg / Math.Max(predicted, 0.01), 1.0, 1.5), RedArrowMaxStepX);
+                            }
+                            else if (predicted > RedArrowExpectedStepDeg * 1.3)
+                            {
+                                // 偏大：缩小，防过度旋转
+                                stepX = Math.Max(stepX * 0.8, RedArrowMinStepX);
+                            }
+                        }
+                    }
+
+                    // 偏差角度及水平旋转方向：箭头在正上方右侧（deviation>0）需右移视角使其回归正上方
+                    double deviation = AngleDiffDeg(bestAngle, -90);
+                    int dir = deviation > 0 ? 1 : -1;
+                    // 偏差越小步进越收敛（按偏差换算上限，配合 MaxStepX 双重保守），防越过目标造成震荡
+                    double appliedStep = Math.Min(stepX, Math.Abs(deviation) * RedArrowAngleToPx);
+                    Simulation.SendInput.Mouse.MoveMouseBy(
+                        (int)(appliedStep * dir * _dpi),
+                        (int)(RedArrowKeepDownRatio * appliedStep * _dpi));
+                    lastAngle = bestAngle;
+                }
+                else
+                {
+                    // 未识别到红箭头：重置反馈基准，仅向下下压保持视角最低
+                    lastAngle = null;
+                    Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(RedArrowInitialStepX * RedArrowKeepDownRatio * _dpi));
+                }
+            }
+            await Task.Delay(RedArrowStepIntervalMs, ct);
+        }
+    }
+
+    /// <summary>
+    /// 角度差归一化到 (-180, 180]（度）
+    /// </summary>
+    private static double AngleDiffDeg(double a, double b)
+    {
+        double d = a - b;
+        while (d > 180) d -= 360;
+        while (d <= -180) d += 360;
+        return d;
     }
 
     /// <summary>日志防刷：同一动作名在1秒内至多输出一次日志</summary>
