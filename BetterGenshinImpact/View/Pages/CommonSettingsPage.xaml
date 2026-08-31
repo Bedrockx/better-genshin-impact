@@ -1671,6 +1671,66 @@
                     <ui:TextBlock Grid.Row="0"
                                   Grid.Column="0"
                                   FontTypography="Body"
+                                  Text="网络健康监控"
+                                  TextWrapping="Wrap" />
+                    <ui:TextBlock Grid.Row="1"
+                                  Grid.Column="0"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="连续探测失败后暂停任务，网络恢复并完成登录恢复后继续当前任务"
+                                  TextWrapping="Wrap" />
+                    <ui:ToggleSwitch Grid.Row="0"
+                                     Grid.RowSpan="2"
+                                     Grid.Column="1"
+                                     Margin="0,0,36,0"
+                                  IsChecked="{Binding Config.OtherConfig.NetworkHealthMonitoringEnabled, Mode=TwoWay}" />
+                </Grid>
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Row="0"
+                                  Grid.Column="0"
+                                  FontTypography="Body"
+                                  Text="网络探测地址 / 间隔 / 失败阈值 / 超时"
+                                  TextWrapping="Wrap" />
+                    <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal">
+                        <ui:TextBox Width="180"
+                                    Margin="0,8,8,0"
+                                    Text="{Binding Config.OtherConfig.NetworkProbeTarget, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <ui:TextBox Width="70"
+                                    Margin="0,8,8,0"
+                                    Text="{Binding Config.OtherConfig.NetworkProbeIntervalSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <ui:TextBox Width="70"
+                                    Margin="0,8,8,0"
+                                    Text="{Binding Config.OtherConfig.NetworkFailureThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <ui:TextBox Width="70"
+                                    Margin="0,8,0,0"
+                                    Text="{Binding Config.OtherConfig.NetworkProbeTimeoutMilliseconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <ui:TextBlock Grid.Row="0"
+                                  Grid.Column="1"
+                                  Margin="0,0,36,0"
+                                  Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
+                                  Text="主机名或 IP / 秒 / 次 / 毫秒"
+                                  VerticalAlignment="Center" />
+                </Grid>
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBlock Grid.Row="0"
+                                  Grid.Column="0"
+                                  FontTypography="Body"
                                   Text="{i18n:T 禁用键鼠监听}"
                                   TextWrapping="Wrap" />
                     <ui:TextBlock Grid.Row="1"
