@@ -192,6 +192,8 @@ public class AutoFightJsonTask : ISoloTask
             // 新的取消token
             var cts2 = new CancellationTokenSource();
             ct.Register(cts2.Cancel);
+
+            AutoFightTask.BeginFightRecoveryState();
     
             combatScenes.BeforeTask(cts2.Token);
             // 设置初始当前角色名（用于无 Character 字段的通用 action 回退）
@@ -510,6 +512,7 @@ public class AutoFightJsonTask : ISoloTask
         finally
         {
             AvatarRecognition.ClearCurrentAutoFightParam();
+            AutoFightTask.ClearFightRecoveryState();
         }
     }
 

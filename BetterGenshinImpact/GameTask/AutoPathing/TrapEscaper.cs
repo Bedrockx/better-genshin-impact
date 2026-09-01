@@ -43,23 +43,27 @@ public class TrapEscaper(CancellationToken ct)
         var targetOrientation = Navigation.GetTargetOrientation(waypoint, position);
         await _rotateTask.WaitUntilRotatedTo(targetOrientation, 5);
 
-        // 按下w，一直走
-        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-        while (!ct.IsCancellationRequested)
+        var forwardHeld = false;
+        try
         {
-            var now = DateTime.UtcNow;
-            if ((now - LastActionTime).TotalSeconds > 5)
+            // 按下w，一直走
+            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+            forwardHeld = true;
+            while (!ct.IsCancellationRequested)
             {
-                break;
-            }
-            if ((now - startTime).TotalSeconds > 25)
-            {
-                Logger.LogError("卡死脱困超时！");
-                break;
-            }
+                var now = DateTime.UtcNow;
+                if ((now - LastActionTime).TotalSeconds > 5)
+                {
+                    break;
+                }
+                if ((now - startTime).TotalSeconds > 25)
+                {
+                    Logger.LogError("卡死脱困超时！");
+                    break;
+                }
 
-            using var screen = CaptureToRectArea();
-            position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
+                using var screen = CaptureToRectArea();
+                position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
 
             // 旋转视角
             /* 这里的角度增加了一个randomAngle角度，用来在原角度不适用的情况下修改角度以适应复杂环境
@@ -117,11 +121,21 @@ public class TrapEscaper(CancellationToken ct)
                     continue;
                 }
 
-            await Delay(100, ct);
+                await Delay(100, ct);
+            }
         }
+        finally
+        {
+            if (forwardHeld)
+            {
+                Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            }
 
-        // 抬起w键
-        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            // 取消或异常退出时，确保本类可能操作过的方向键不会遗留按下状态。
+            Simulation.SendInput.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
+            Simulation.SendInput.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
+            Simulation.SendInput.SimulateAction(GIActions.MoveRight, KeyType.KeyUp);
+        }
     }
 
     public async Task RotateAndMove()
