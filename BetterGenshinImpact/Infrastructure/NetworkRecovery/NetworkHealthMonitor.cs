@@ -46,7 +46,7 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
         }
     }
 
-    public void RequestCheck()
+    public void RequestCheck(CancellationToken cancellationToken = default)
     {
         if (!TaskContext.Instance().IsInitialized)
         {
@@ -65,13 +65,19 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
             return;
         }
 
-        _ = Task.Run(CheckAsync);
+        _ = Task.Run(() => CheckAsync(cancellationToken));
     }
 
-    private async Task CheckAsync()
+    private async Task CheckAsync(CancellationToken cancellationToken)
     {
+        CancellationTokenSource? linkedCancellation = null;
+
         try
         {
+            linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                CancellationContext.Instance.Cts.Token);
+            var effectiveCancellationToken = linkedCancellation.Token;
             var config = TaskContext.Instance().Config.OtherConfig;
             var interval = TimeSpan.FromSeconds(ProbeIntervalSeconds);
             var now = DateTimeOffset.UtcNow;
@@ -88,7 +94,7 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
             var probe = await _probe.ProbeAsync(
                 config.NetworkProbeTarget,
                 ProbeTimeoutMilliseconds,
-                CancellationToken.None);
+                effectiveCancellationToken);
 
             if (!config.NetworkHealthMonitoringEnabled)
             {
@@ -117,7 +123,7 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
 
                 if (_pauseGate.IsNetworkPaused)
                 {
-                    var result = await _recoveryStateMachine.RecoverAsync(CancellationToken.None);
+                    var result = await _recoveryStateMachine.RecoverAsync(effectiveCancellationToken);
                     if (!result.Succeeded)
                     {
                         _logger.LogWarning("网络已连通但恢复流程未完成：{Message}", result.Message);
@@ -144,6 +150,7 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
         }
         finally
         {
+            linkedCancellation?.Dispose();
             _checkGate.Release();
         }
     }

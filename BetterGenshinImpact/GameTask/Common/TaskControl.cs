@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Simulator;
+using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception;
 using BetterGenshinImpact.GameTask.Model.Area;
 using Fischless.GameCapture;
@@ -37,12 +38,15 @@ public class TaskControl
         Thread.Sleep(millisecondsTimeout);
     }
 
-    public static void TrySuspend()
+    public static void TrySuspend(CancellationToken cancellationToken = default)
     {
-        App.GetService<INetworkHealthMonitor>()?.RequestCheck();
+        var effectiveCancellationToken = cancellationToken.CanBeCanceled
+            ? cancellationToken
+            : CancellationContext.Instance.Cts.Token;
+        App.GetService<INetworkHealthMonitor>()?.RequestCheck(effectiveCancellationToken);
         if (App.GetService<IPauseCoordinator>() is { } pauseCoordinator)
         {
-            pauseCoordinator.WaitIfPaused();
+            pauseCoordinator.WaitIfPaused(effectiveCancellationToken);
             return;
         }
     }
@@ -99,7 +103,7 @@ public class TaskControl
                 throw new NormalEndException("取消自动任务");
             }
 
-            TrySuspend();
+            TrySuspend(ct);
             CheckAndActivateGameWindow();
         }, TimeSpan.FromSeconds(1), 100);
         Thread.Sleep(millisecondsTimeout);
@@ -128,7 +132,7 @@ public class TaskControl
                 throw new NormalEndException("取消自动任务");
             }
 
-            TrySuspend();
+            TrySuspend(ct);
             CheckAndActivateGameWindow();
         }, TimeSpan.FromSeconds(1), 100);
         await Task.Delay(millisecondsTimeout, ct);
