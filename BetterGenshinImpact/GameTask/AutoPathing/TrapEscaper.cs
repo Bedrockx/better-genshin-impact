@@ -103,20 +103,32 @@ public class TrapEscaper(CancellationToken ct)
     /// </summary>
     public async Task FirstTrial()
     {
-        // 松开w，等待100，点按x（drop），等待100，点按空格，等待100，点按普攻，等待100
-        InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-        await Delay(100, ct);
-        InputHub.Foreground.SimulateAction(GIActions.Drop);
-        await Delay(100, ct);
-        InputHub.Foreground.SimulateAction(GIActions.Jump);
-        await Delay(100, ct);
-        InputHub.Foreground.SimulateAction(GIActions.NormalAttack);
-        await Delay(100, ct);
-        // 按下w和d，保持300ms后松开d，只留w
-        InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-        InputHub.Foreground.SimulateAction(GIActions.MoveRight, KeyType.KeyDown);
-        await Delay(300, ct);
-        InputHub.Foreground.SimulateAction(GIActions.MoveRight, KeyType.KeyUp);
+        var keepForwardPressed = false;
+        try
+        {
+            // 松开w，等待100，点按x（drop），等待100，点按空格，等待100，点按普攻，等待100
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            await Delay(100, ct);
+            InputHub.Foreground.SimulateAction(GIActions.Drop);
+            await Delay(100, ct);
+            InputHub.Foreground.SimulateAction(GIActions.Jump);
+            await Delay(100, ct);
+            InputHub.Foreground.SimulateAction(GIActions.NormalAttack);
+            await Delay(100, ct);
+            // 按下w和d，保持300ms后松开d，只留w
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+            InputHub.Foreground.SimulateAction(GIActions.MoveRight, KeyType.KeyDown);
+            await Delay(300, ct);
+            keepForwardPressed = true;
+        }
+        finally
+        {
+            InputHub.Foreground.SimulateAction(GIActions.MoveRight, KeyType.KeyUp);
+            if (!keepForwardPressed)
+            {
+                InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            }
+        }
     }
 
     /// <summary>
@@ -128,62 +140,68 @@ public class TrapEscaper(CancellationToken ct)
     /// <returns>true=脱困成功（距离卡死点>10m或回到上一个点）；false=3秒超时</returns>
     public async Task<bool> SecondTrialAndRunBack(WaypointForTrack waypoint, WaypointForTrack? prevWaypoint, OpenCvSharp.Point2f stuckPosition)
     {
-        // 第二套动作：松开w，X下落+空格跳跃+普攻，按W+A斜向左上走300ms后松开A只留W
-        InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-        await Delay(100, ct);
-        InputHub.Foreground.SimulateAction(GIActions.Drop);
-        await Delay(100, ct);
-        InputHub.Foreground.SimulateAction(GIActions.Jump);
-        await Delay(100, ct);
-        InputHub.Foreground.SimulateAction(GIActions.NormalAttack);
-        await Delay(100, ct);
-        InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-        InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyDown);
-        await Delay(300, ct);
-        InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
-
-        // 朝上一个点（回头）跑；没有上一个点时按当前朝向直接跑
-        OpenCvSharp.Point2f position;
-        using (var initialScreen = CaptureToRectArea())
+        try
         {
-            position = Navigation.GetPosition(initialScreen, waypoint.MapName, waypoint.MapMatchMethod);
-        }
-        if (prevWaypoint != null)
-        {
-            var targetOrientation = Navigation.GetTargetOrientation(prevWaypoint, position);
-            await _rotateTask.WaitUntilRotatedTo(targetOrientation, 5);
-        }
-
-        // 按下w，一直跑
-        InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-        var startTime = DateTime.UtcNow;
-        while (!ct.IsCancellationRequested)
-        {
-            using var screen = CaptureToRectArea();
-            position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
-
-            // 出口1：距离卡死点>10m 或 回到上一个点（距离<4）→ 脱困成功
-            var movedFar = position != new OpenCvSharp.Point2f() &&
-                           Math.Abs(position.X - stuckPosition.X) + Math.Abs(position.Y - stuckPosition.Y) > 10;
-            var backToPrev = prevWaypoint != null && position != new OpenCvSharp.Point2f() &&
-                             Navigation.GetDistance(prevWaypoint, position) < 4;
-            if (movedFar || backToPrev)
-            {
-                break;
-            }
-
-            // 出口2：超过3秒 → 脱困失败
-            if ((DateTime.UtcNow - startTime).TotalSeconds > 3)
-            {
-                InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-                return false;
-            }
-
+            // 第二套动作：松开w，X下落+空格跳跃+普攻，按W+A斜向左上走300ms后松开A只留W
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
             await Delay(100, ct);
-        }
+            InputHub.Foreground.SimulateAction(GIActions.Drop);
+            await Delay(100, ct);
+            InputHub.Foreground.SimulateAction(GIActions.Jump);
+            await Delay(100, ct);
+            InputHub.Foreground.SimulateAction(GIActions.NormalAttack);
+            await Delay(100, ct);
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+            InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyDown);
+            await Delay(300, ct);
+            InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
 
-        // 抬起w键
-        InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-        return true;
+            // 朝上一个点（回头）跑；没有上一个点时按当前朝向直接跑
+            OpenCvSharp.Point2f position;
+            using (var initialScreen = CaptureToRectArea())
+            {
+                position = Navigation.GetPosition(initialScreen, waypoint.MapName, waypoint.MapMatchMethod);
+            }
+            if (prevWaypoint != null)
+            {
+                var targetOrientation = Navigation.GetTargetOrientation(prevWaypoint, position);
+                await _rotateTask.WaitUntilRotatedTo(targetOrientation, 5);
+            }
+
+            // 按下w，一直跑
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+            var startTime = DateTime.UtcNow;
+            while (!ct.IsCancellationRequested)
+            {
+                using var screen = CaptureToRectArea();
+                position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
+
+                // 出口1：距离卡死点>10m 或 回到上一个点（距离<4）→ 脱困成功
+                var movedFar = position != new OpenCvSharp.Point2f() &&
+                               Math.Abs(position.X - stuckPosition.X) + Math.Abs(position.Y - stuckPosition.Y) > 10;
+                var backToPrev = prevWaypoint != null && position != new OpenCvSharp.Point2f() &&
+                                 Navigation.GetDistance(prevWaypoint, position) < 4;
+                if (movedFar || backToPrev)
+                {
+                    return true;
+                }
+
+                // 出口2：超过3秒 → 脱困失败
+                if ((DateTime.UtcNow - startTime).TotalSeconds > 3)
+                {
+                    return false;
+                }
+
+                await Delay(100, ct);
+            }
+
+            ct.ThrowIfCancellationRequested();
+            return false;
+        }
+        finally
+        {
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
+        }
     }
 }
