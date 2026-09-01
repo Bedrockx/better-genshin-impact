@@ -42,25 +42,6 @@ public partial class OtherConfig : ObservableObject
     [ObservableProperty]
     private string _networkProbeTarget = "www.baidu.com";
 
-    /// <summary>
-    /// 网络健康探测间隔（秒）。
-    /// </summary>
-    [ObservableProperty]
-    private int _networkProbeIntervalSeconds = 5;
-
-    /// <summary>
-    /// 触发网络暂停前需要连续失败的次数。
-    /// </summary>
-    [ObservableProperty]
-    private int _networkFailureThreshold = 3;
-
-    /// <summary>
-    /// 单次网络探测超时（毫秒）。
-    /// </summary>
-    [ObservableProperty]
-    private int _networkProbeTimeoutMilliseconds = 1500;
-    
-
     public partial class AutoRestart : ObservableObject
     {
         [ObservableProperty]

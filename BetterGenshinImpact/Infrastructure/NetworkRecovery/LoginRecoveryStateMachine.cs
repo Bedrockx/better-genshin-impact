@@ -50,7 +50,12 @@ public sealed class LoginRecoveryStateMachine : ILoginRecoveryStateMachine
             if (screen == LoginScreenState.NetworkError)
             {
                 SetState(LoginRecoveryState.ConfirmingNetworkError);
-                await adapter.ConfirmNetworkErrorAsync(cancellationToken);
+                var confirmed = await adapter.ConfirmNetworkErrorAsync(cancellationToken);
+                if (!confirmed)
+                {
+                    return Fail("未能确认网络错误提示");
+                }
+
                 screen = await adapter.DetectAsync(cancellationToken);
             }
 
