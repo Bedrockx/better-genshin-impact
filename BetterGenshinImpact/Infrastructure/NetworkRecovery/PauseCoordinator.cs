@@ -13,16 +13,19 @@ namespace BetterGenshinImpact.Infrastructure.NetworkRecovery;
 public sealed class PauseCoordinator : IPauseCoordinator
 {
     private readonly INetworkPauseGate _networkPauseGate;
+    private readonly INetworkHealthMonitor _networkHealthMonitor;
     private readonly IRecoverySession _recoverySession;
     private readonly ILogger<PauseCoordinator> _logger;
     private int _pauseSideEffectsApplied;
 
     public PauseCoordinator(
         INetworkPauseGate networkPauseGate,
+        INetworkHealthMonitor networkHealthMonitor,
         IRecoverySession recoverySession,
         ILogger<PauseCoordinator> logger)
     {
         _networkPauseGate = networkPauseGate;
+        _networkHealthMonitor = networkHealthMonitor;
         _recoverySession = recoverySession;
         _logger = logger;
     }
@@ -46,6 +49,8 @@ public sealed class PauseCoordinator : IPauseCoordinator
             if (_networkPauseGate.IsNetworkPaused && !_recoverySession.IsCurrentRecoveryExecution)
             {
                 _logger.LogDebug("网络恢复中，任务暂停等待恢复结果");
+                // 暂停循环是网络探测的唯一持续执行点，必须在这里触发后续探测，否则首次失败后会永久等待。
+                _networkHealthMonitor.RequestCheck();
             }
 
             Thread.Sleep(1000);

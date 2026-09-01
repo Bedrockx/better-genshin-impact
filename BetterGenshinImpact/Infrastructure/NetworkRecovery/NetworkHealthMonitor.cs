@@ -9,6 +9,10 @@ namespace BetterGenshinImpact.Infrastructure.NetworkRecovery;
 
 public sealed class NetworkHealthMonitor : INetworkHealthMonitor
 {
+    private const int ProbeIntervalSeconds = 5;
+    private const int FailureThreshold = 3;
+    private const int ProbeTimeoutMilliseconds = 1500;
+
     private readonly INetworkHealthProbe _probe;
     private readonly INetworkPauseGate _pauseGate;
     private readonly ILoginRecoveryStateMachine _recoveryStateMachine;
@@ -69,7 +73,7 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
         try
         {
             var config = TaskContext.Instance().Config.OtherConfig;
-            var interval = TimeSpan.FromSeconds(Math.Clamp(config.NetworkProbeIntervalSeconds, 1, 3600));
+            var interval = TimeSpan.FromSeconds(ProbeIntervalSeconds);
             var now = DateTimeOffset.UtcNow;
             lock (_stateSync)
             {
@@ -83,7 +87,7 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
 
             var probe = await _probe.ProbeAsync(
                 config.NetworkProbeTarget,
-                config.NetworkProbeTimeoutMilliseconds,
+                ProbeTimeoutMilliseconds,
                 CancellationToken.None);
 
             if (!config.NetworkHealthMonitoringEnabled)
@@ -123,7 +127,7 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
                 return;
             }
 
-            if (NetworkHealthDecisions.ShouldPause(snapshot, config.NetworkFailureThreshold))
+            if (NetworkHealthDecisions.ShouldPause(snapshot, FailureThreshold))
             {
                 _pauseGate.EnterNetworkPause(snapshot);
                 _logger.LogWarning("网络探测失败，任务已暂停：{Status}，连续失败 {Count} 次", snapshot.Status,
