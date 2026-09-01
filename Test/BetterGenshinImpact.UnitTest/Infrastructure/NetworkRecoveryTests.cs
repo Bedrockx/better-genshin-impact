@@ -1,5 +1,7 @@
 using System;
 using System.Threading;
+using BetterGenshinImpact.GameTask;
+using BetterGenshinImpact.GameTask.Common;
 using Microsoft.Extensions.Logging.Abstractions;
 using BetterGenshinImpact.Infrastructure.NetworkRecovery;
 
@@ -129,6 +131,30 @@ public class NetworkRecoveryTests
         Assert.False(gate.IsNetworkPaused);
     }
 
+    [Fact]
+    public void PauseCoordinator_ShouldHonorCancellationBeforeWaiting()
+    {
+        var gate = new NetworkPauseGate();
+        gate.EnterNetworkPause(new NetworkHealthSnapshot(
+            DateTimeOffset.UtcNow,
+            "example.invalid",
+            NetworkHealthStatus.Unreachable,
+            3,
+            TimeSpan.Zero));
+        var coordinator = new PauseCoordinator(
+            gate,
+            new StubNetworkHealthMonitor(),
+            new RecoverySession(),
+            NullLogger<PauseCoordinator>.Instance);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        RunnerContext.Instance.IsSuspend = false;
+        Assert.Throws<OperationCanceledException>(() => coordinator.WaitIfPaused(cancellation.Token));
+        gate.ClearNetworkPause();
+        RunnerContext.Instance.IsSuspend = false;
+    }
+
     private sealed class StubLoginAdapter(params LoginScreenState[] screens) : ILoginAdapter
     {
         private readonly Queue<LoginScreenState> _screens = new(screens);
@@ -167,6 +193,15 @@ public class NetworkRecoveryTests
             cancellationToken.ThrowIfCancellationRequested();
             ReloginCount++;
             return Task.FromResult(ReloginResult);
+        }
+    }
+
+    private sealed class StubNetworkHealthMonitor : INetworkHealthMonitor
+    {
+        public NetworkHealthSnapshot? LastSnapshot => null;
+
+        public void RequestCheck(CancellationToken cancellationToken = default)
+        {
         }
     }
 }

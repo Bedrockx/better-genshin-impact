@@ -252,6 +252,7 @@ public partial class App : Application
                 services.AddSingleton<ILoginAdapter, GenshinLoginAdapter>();
                 services.AddSingleton<ILoginRecoveryStateMachine, LoginRecoveryStateMachine>();
                 services.AddSingleton<INetworkHealthMonitor, NetworkHealthMonitor>();
+                services.AddHostedService<NetworkHealthMonitorHostedService>();
                 services.AddSingleton<IScriptService, ScriptService>();
                 services.AddSingleton<IMusicScoreParser, MusicScoreParser>();
                 services.AddSingleton<IMusicStateStore, MusicStateStore>();

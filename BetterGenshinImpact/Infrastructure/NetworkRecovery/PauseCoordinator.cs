@@ -39,26 +39,35 @@ public sealed class PauseCoordinator : IPauseCoordinator
         RunnerContext.Instance.IsSuspend = !RunnerContext.Instance.IsSuspend;
     }
 
-    public void WaitIfPaused()
+    public void WaitIfPaused(CancellationToken cancellationToken = default)
     {
         var wasPaused = IsPaused;
-        while (IsPaused)
-        {
-            ApplyPauseSideEffects();
+        var effectiveCancellationToken = cancellationToken.CanBeCanceled
+            ? cancellationToken
+            : CancellationContext.Instance.Cts.Token;
 
-            if (_networkPauseGate.IsNetworkPaused && !_recoverySession.IsCurrentRecoveryExecution)
+        try
+        {
+            while (IsPaused)
             {
-                _logger.LogDebug("网络恢复中，任务暂停等待恢复结果");
-                // 暂停循环是网络探测的唯一持续执行点，必须在这里触发后续探测，否则首次失败后会永久等待。
-                _networkHealthMonitor.RequestCheck();
+                effectiveCancellationToken.ThrowIfCancellationRequested();
+                ApplyPauseSideEffects();
+
+                if (_networkPauseGate.IsNetworkPaused && !_recoverySession.IsCurrentRecoveryExecution)
+                {
+                    _logger.LogDebug("网络恢复中，任务暂停等待恢复结果");
+                    _networkHealthMonitor.RequestCheck(effectiveCancellationToken);
+                }
+
+                Thread.Sleep(1000);
             }
-
-            Thread.Sleep(1000);
         }
-
-        if (wasPaused)
+        finally
         {
-            ReleasePauseSideEffects();
+            if (wasPaused)
+            {
+                ReleasePauseSideEffects();
+            }
         }
     }
 
