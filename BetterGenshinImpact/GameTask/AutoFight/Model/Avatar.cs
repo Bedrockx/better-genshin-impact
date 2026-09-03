@@ -494,6 +494,8 @@ public class Avatar
     /// <param name="ms">攻击时长，建议是200的倍数</param>
     public void Attack(int ms = 0)
     {
+        if (AvatarSpecialAction.ExecuteSpecializedAction(this, "Attack", Name, new ActionArgs(Ms: ms))) return;
+
         while (ms >= 0)
         {
             if (Ct is { IsCancellationRequested: true })
