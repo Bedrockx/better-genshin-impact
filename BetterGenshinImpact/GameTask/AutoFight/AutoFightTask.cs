@@ -563,8 +563,9 @@ public class AutoFightTask : ISoloTask
 
                 if (!shouldPickup)
                 {
-                    // 经验值检测未通过，跳过拾取（但仍执行扫描拾取逻辑）
-                    if (_taskParam is { PickDropsAfterFightEnabled: true })
+                    // 经验值检测未通过，跳过拾取（仅在队伍无万叶/琴或开关关闭时才执行扫描拾取逻辑）
+                    var hasKazuhaOrQin = combatScenes.SelectAvatar("枫原万叶") != null || combatScenes.SelectAvatar("琴") != null;
+                    if (_taskParam is { PickDropsAfterFightEnabled: true } && (!_taskParam.KazuhaPickupEnabled || !hasKazuhaOrQin))
                     {
                         await new ScanPickTask().Start(ct, _taskParam.PickDropsAfterFightSeconds);
                     }
@@ -587,6 +588,9 @@ public class AutoFightTask : ISoloTask
             Logger.LogInformation($"战斗人次（{countFight}）低于配置人次（{_taskParam.BattleThresholdForLoot}），跳过此次拾取！");
             return;
         }
+        
+        // 是否选中了万叶/琴（用于控制光柱扫描：仅当队伍无万叶/琴或开关关闭时才扫描）
+        bool kazuhaOrQinSelected = false;
         
         if (_taskParam.KazuhaPickupEnabled)
         {
@@ -704,6 +708,7 @@ public class AutoFightTask : ISoloTask
             
             if (picker != null)
             {
+                kazuhaOrQinSelected = true;
                 Simulation.ReleaseAllKey();
 
                 if (picker.Name == "枫原万叶")
@@ -839,7 +844,7 @@ public class AutoFightTask : ISoloTask
             }
         }
 
-        if (_taskParam is { PickDropsAfterFightEnabled: true } )
+        if (_taskParam is { PickDropsAfterFightEnabled: true } && !kazuhaOrQinSelected)
         {
             // 执行扫描掉落物光柱并靠近的功能
             await new ScanPickTask().Start(ct, _taskParam.PickDropsAfterFightSeconds);
