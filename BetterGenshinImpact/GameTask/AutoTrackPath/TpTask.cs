@@ -274,6 +274,75 @@ public class TpTask
         return RecognitionAssets.Get("QuickTeleport", objectName, region);
     }
 
+    internal bool IsExperimentalTeleportDetails(ImageRegion imageRegion)
+    {
+        using var teleportButton = imageRegion.Find(
+            GetQuickTeleportRecognitionObject("TeleportButton", imageRegion));
+        return teleportButton.IsExist();
+    }
+
+    internal bool IsExperimentalMapMain(ImageRegion imageRegion)
+    {
+        if (!Bv.IsInBigMapUi(imageRegion))
+        {
+            return false;
+        }
+
+        return HasExperimentalMapMainControls(imageRegion);
+    }
+
+    internal bool HasExperimentalMapMainControls(ImageRegion imageRegion)
+    {
+        using var mapCloseButton = imageRegion.Find(
+            GetQuickTeleportRecognitionObject("MapCloseButton", imageRegion));
+        if (mapCloseButton.IsExist())
+        {
+            return true;
+        }
+
+        using var mapChooseButton = imageRegion.Find(
+            GetQuickTeleportRecognitionObject("MapChoose", imageRegion));
+        return mapChooseButton.IsExist();
+    }
+
+    internal bool HasExperimentalMapChooseCandidate(ImageRegion imageRegion, GiTpPosition? targetTp)
+    {
+        return GetPreferredMapChooseCandidate(imageRegion, targetTp) != null;
+    }
+
+    internal async Task<bool> TryClickExperimentalMapChooseCandidate(GiTpPosition? targetTp)
+    {
+        using (var imageRegion = CaptureToRectArea())
+        {
+            var candidate = GetPreferredMapChooseCandidate(imageRegion, targetTp);
+            if (candidate == null)
+            {
+                return false;
+            }
+
+            ClickMapChooseCandidate(imageRegion, candidate);
+        }
+
+        await Delay(MapChooseCandidateClickDelayMs, ct);
+        return true;
+    }
+
+    internal void OpenExperimentalAreaList()
+    {
+        GameCaptureRegion.GameRegionClick((rect, scale) =>
+            (rect.Width - 160 * scale, rect.Height - 60 * scale));
+    }
+
+    internal async Task PressExperimentalTeleportConfirmKey()
+    {
+        await PressTeleportConfirmKey();
+    }
+
+    internal async Task HandleExperimentalLoadingInterruption()
+    {
+        await _blessingOfTheWelkinMoonTask.Start(ct);
+    }
+
     /// <summary>
     /// 传送到七天神像
     /// </summary>
@@ -444,7 +513,8 @@ public class TpTask
         string mapName,
         bool force,
         double finalZoomLevel,
-        Func<double, double, Task> zoomAdjuster)
+        Func<double, double, Task> zoomAdjuster,
+        ExperimentalTeleportUiStateMachine uiStateMachine)
     {
         _experimentalZoomAdjuster = zoomAdjuster;
         _allowExperimentalRawMapClickFallback = true;
@@ -460,15 +530,12 @@ public class TpTask
                 target.Y,
                 finalZoomLevel);
             var fallbackCandidate = ClickTeleportTargetMapPoint(target, clickView);
-            try
-            {
-                await ClickTpPointAfterMapPointSelected(target, fallbackCandidate);
-            }
-            catch (TeleportPanelNotOpenedException ex) when (_allowExperimentalRawMapClickFallback)
-            {
-                throw new TeleportTargetLocalizationException(ex.Message, ex);
-            }
-            await WaitForTeleportCompletion(throwOnTimeout: true);
+            await uiStateMachine.ConfirmTeleportAsync(
+                target.MapName,
+                target.TargetTp,
+                fallbackCandidate is { } candidate
+                    ? () => ClickAbsoluteMapCandidate(candidate)
+                    : null);
             s_lastSuccessfulTeleportMapName = target.MapName;
             Navigation.SetPrevPosition((float)target.X, (float)target.Y);
             return (target.X, target.Y);
@@ -2612,24 +2679,43 @@ public class TpTask
     {
         GameCaptureRegion.GameRegionClick((rect, scale) => (rect.Width - 160 * scale, rect.Height - 60 * scale));
         await Delay(50, ct);
+        return await TrySelectExperimentalArea(areaName);
+    }
+
+    internal async Task<bool> TrySelectExperimentalArea(string areaName)
+    {
         var minCountryLocalized = this.stringLocalizer.WithCultureGet(this.cultureInfo, areaName);
         var candidatesText = "";
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.ElapsedMilliseconds < SwitchAreaCandidateTimeoutMs)
         {
             ct.ThrowIfCancellationRequested();
-            using var ra = CaptureToRectArea();
-            var list = FindSwitchAreaCandidates(ra);
-            candidatesText = FormatSwitchAreaCandidateTexts(list);
-            var matchRect = list
-                .OrderByDescending(r => r.Y)
-                .FirstOrDefault(r => IsSwitchAreaCandidateMatch(r.Text, minCountryLocalized, areaName));
-            if (matchRect != null)
+            Rect? clickedCandidateRect = null;
+            using (var ra = CaptureToRectArea())
             {
-                var clickedCandidateRect = new Rect(matchRect.X, matchRect.Y, matchRect.Width, matchRect.Height);
-                matchRect.Click();
+                var list = FindSwitchAreaCandidates(ra);
+                try
+                {
+                    candidatesText = FormatSwitchAreaCandidateTexts(list);
+                    var matchRect = list
+                        .OrderByDescending(r => r.Y)
+                        .FirstOrDefault(r => IsSwitchAreaCandidateMatch(r.Text, minCountryLocalized, areaName));
+                    if (matchRect != null)
+                    {
+                        clickedCandidateRect = new Rect(matchRect.X, matchRect.Y, matchRect.Width, matchRect.Height);
+                        matchRect.Click();
+                    }
+                }
+                finally
+                {
+                    list.ForEach(candidate => candidate.Dispose());
+                }
+            }
+
+            if (clickedCandidateRect is { } clickedRect)
+            {
                 await Delay(50, ct);
-                await WaitForAreaSelectionApplied(areaName, minCountryLocalized, clickedCandidateRect);
+                await WaitForAreaSelectionApplied(areaName, minCountryLocalized, clickedRect);
                 RememberAreaSwitchCenterPoint(areaName);
                 Logger.LogInformation("切换到区域：{Country}", areaName);
                 return true;
@@ -2655,10 +2741,21 @@ public class TpTask
         while (stopwatch.ElapsedMilliseconds < SwitchAreaSelectionTimeoutMs)
         {
             ct.ThrowIfCancellationRequested();
-            using var capture = CaptureToRectArea();
-            var clickedCandidateStillVisible = FindSwitchAreaCandidates(capture).Any(candidate =>
-                IsSwitchAreaCandidateMatch(candidate.Text, localizedAreaName, areaName) &&
-                IsSameSwitchAreaCandidatePosition(clickedCandidateRect, candidate));
+            bool clickedCandidateStillVisible;
+            using (var capture = CaptureToRectArea())
+            {
+                var candidates = FindSwitchAreaCandidates(capture);
+                try
+                {
+                    clickedCandidateStillVisible = candidates.Any(candidate =>
+                        IsSwitchAreaCandidateMatch(candidate.Text, localizedAreaName, areaName) &&
+                        IsSameSwitchAreaCandidatePosition(clickedCandidateRect, candidate));
+                }
+                finally
+                {
+                    candidates.ForEach(candidate => candidate.Dispose());
+                }
+            }
 
             if (!clickedCandidateStillVisible &&
                 stopwatch.ElapsedMilliseconds >= SwitchAreaSelectionMinimumWaitMs)
@@ -3399,7 +3496,8 @@ public class TpTask
             return null;
         }
 
-        await ClickMapChooseCandidate(imageRegion, candidate);
+        ClickMapChooseCandidate(imageRegion, candidate);
+        await Delay(MapChooseCandidateClickDelayMs, ct);
         return candidate;
     }
 
@@ -3664,11 +3762,10 @@ public class TpTask
             Math.Abs(candidate.IconRect.Y - iconRect.Y) <= 6);
     }
 
-    private async Task ClickMapChooseCandidate(ImageRegion imageRegion, MapChooseCandidate candidate)
+    private static void ClickMapChooseCandidate(ImageRegion imageRegion, MapChooseCandidate candidate)
     {
         Logger.LogInformation("点击候选列表：{Text}", candidate.Text);
         imageRegion.ClickTo(candidate.ClickRect.X, candidate.ClickRect.Y, candidate.ClickRect.Width, candidate.ClickRect.Height);
-        await Delay(MapChooseCandidateClickDelayMs, ct);
     }
 
     private static double GetDistance(double x1, double y1, double x2, double y2)
