@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.GameTask;
 using Microsoft.Extensions.Logging;
 
@@ -70,14 +69,9 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
 
     private async Task CheckAsync(CancellationToken cancellationToken)
     {
-        CancellationTokenSource? linkedCancellation = null;
-
         try
         {
-            linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
-                CancellationContext.Instance.Cts.Token);
-            var effectiveCancellationToken = linkedCancellation.Token;
+            var effectiveCancellationToken = cancellationToken;
             var config = TaskContext.Instance().Config.OtherConfig;
             var interval = TimeSpan.FromSeconds(ProbeIntervalSeconds);
             var now = DateTimeOffset.UtcNow;
@@ -142,7 +136,7 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
         }
         catch (OperationCanceledException)
         {
-            // 探测调用方目前使用非取消令牌，保留此分支以便测试替换实现。
+            // 调用方取消任务时，忽略本次后台探测。
         }
         catch (Exception e)
         {
@@ -150,7 +144,6 @@ public sealed class NetworkHealthMonitor : INetworkHealthMonitor
         }
         finally
         {
-            linkedCancellation?.Dispose();
             _checkGate.Release();
         }
     }
