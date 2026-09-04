@@ -12,6 +12,178 @@ public partial class TpConfig : ObservableValidator
     public const int MaxTeleportOperationDelayMilliseconds = 100;
     public const int DefaultTeleportOperationDelayMilliseconds = 20;
 
+    public const int MinExperimentalTeleportDragStepIntervalMilliseconds = 2;
+    public const int MaxExperimentalTeleportDragStepIntervalMilliseconds = 100;
+    public const int DefaultExperimentalTeleportDragStepIntervalMilliseconds = 3;
+    public const double MinExperimentalTeleportDragDistanceCorrection = 0.1d;
+    public const double MaxExperimentalTeleportDragDistanceCorrection = 1d;
+    public const double DefaultExperimentalTeleportDragDistanceCorrection = 1d;
+    public const int MinExperimentalTeleportStateRecognitionIntervalMilliseconds = 10;
+    public const int MaxExperimentalTeleportStateRecognitionIntervalMilliseconds = 500;
+    public const int DefaultExperimentalTeleportStateRecognitionIntervalMilliseconds = 50;
+    public const int MinExperimentalTeleportStateTransitionTimeoutMilliseconds = 500;
+    public const int MaxExperimentalTeleportStateTransitionTimeoutMilliseconds = 5000;
+    public const int DefaultExperimentalTeleportStateTransitionTimeoutMilliseconds = 500;
+    public const int MinExperimentalTeleportMapOpenTimeoutMilliseconds = 1000;
+    public const int MaxExperimentalTeleportMapOpenTimeoutMilliseconds = 10000;
+    public const int DefaultExperimentalTeleportMapOpenTimeoutMilliseconds = 5000;
+    public const int MinExperimentalTeleportMapOpenRepressIntervalMilliseconds = 500;
+    public const int MaxExperimentalTeleportMapOpenRepressIntervalMilliseconds = 5000;
+    public const int DefaultExperimentalTeleportMapOpenRepressIntervalMilliseconds = 1000;
+    public const int MinExperimentalTeleportDragStartDelayMilliseconds = 10;
+    public const int MaxExperimentalTeleportDragStartDelayMilliseconds = 500;
+    public const int DefaultExperimentalTeleportDragStartDelayMilliseconds = 25;
+    public const int MinExperimentalTeleportDragReleaseDelayMilliseconds = 10;
+    public const int MaxExperimentalTeleportDragReleaseDelayMilliseconds = 500;
+    public const int DefaultExperimentalTeleportDragReleaseDelayMilliseconds = 75;
+    public const int MinExperimentalTeleportMaxSingleStepDistancePixels = 16;
+    public const int MaxExperimentalTeleportMaxSingleStepDistancePixels = 200;
+    public const int DefaultExperimentalTeleportMaxSingleStepDistancePixels = 150;
+
+    [ObservableProperty]
+    private bool _useExperimentalTeleport;
+
+    [ObservableProperty]
+    private bool _experimentalTeleportDetailedLogs = false;
+
+    [ObservableProperty]
+    [property: JsonConverter(typeof(JsonStringEnumConverter<ExperimentalTeleportDragSafetyLevel>))]
+    private ExperimentalTeleportDragSafetyLevel _experimentalTeleportDragSafetyLevel = ExperimentalTeleportDragSafetyLevel.Balanced;
+
+    partial void OnExperimentalTeleportDragSafetyLevelChanged(ExperimentalTeleportDragSafetyLevel value)
+    {
+        if (!Enum.IsDefined(value))
+        {
+            ExperimentalTeleportDragSafetyLevel = ExperimentalTeleportDragSafetyLevel.Balanced;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportDragDistanceCorrection, MaxExperimentalTeleportDragDistanceCorrection,
+        ErrorMessage = "实验传送理论拖动距离修正：0.1-1.0")]
+    private double _experimentalTeleportDragDistanceCorrection = DefaultExperimentalTeleportDragDistanceCorrection;
+
+    partial void OnExperimentalTeleportDragDistanceCorrectionChanged(double value)
+    {
+        if (!double.IsFinite(value) || value is < MinExperimentalTeleportDragDistanceCorrection or > MaxExperimentalTeleportDragDistanceCorrection)
+        {
+            ExperimentalTeleportDragDistanceCorrection = DefaultExperimentalTeleportDragDistanceCorrection;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportDragStepIntervalMilliseconds, MaxExperimentalTeleportDragStepIntervalMilliseconds,
+        ErrorMessage = "实验传送拖动步进间隔：2-100 ms")]
+    private int _experimentalTeleportDragStepIntervalMilliseconds = DefaultExperimentalTeleportDragStepIntervalMilliseconds;
+
+    partial void OnExperimentalTeleportDragStepIntervalMillisecondsChanged(int value)
+    {
+        if (value is < MinExperimentalTeleportDragStepIntervalMilliseconds or > MaxExperimentalTeleportDragStepIntervalMilliseconds)
+        {
+            ExperimentalTeleportDragStepIntervalMilliseconds = DefaultExperimentalTeleportDragStepIntervalMilliseconds;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportStateRecognitionIntervalMilliseconds, MaxExperimentalTeleportStateRecognitionIntervalMilliseconds,
+        ErrorMessage = "实验传送状态识别轮询间隔：10-500 ms")]
+    private int _experimentalTeleportStateRecognitionIntervalMilliseconds = DefaultExperimentalTeleportStateRecognitionIntervalMilliseconds;
+
+    partial void OnExperimentalTeleportStateRecognitionIntervalMillisecondsChanged(int value)
+    {
+        if (value is < MinExperimentalTeleportStateRecognitionIntervalMilliseconds or > MaxExperimentalTeleportStateRecognitionIntervalMilliseconds)
+        {
+            ExperimentalTeleportStateRecognitionIntervalMilliseconds = DefaultExperimentalTeleportStateRecognitionIntervalMilliseconds;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportStateTransitionTimeoutMilliseconds, MaxExperimentalTeleportStateTransitionTimeoutMilliseconds,
+        ErrorMessage = "实验传送状态切换等待上限：500-5000 ms")]
+    private int _experimentalTeleportStateTransitionTimeoutMilliseconds = DefaultExperimentalTeleportStateTransitionTimeoutMilliseconds;
+
+    partial void OnExperimentalTeleportStateTransitionTimeoutMillisecondsChanged(int value)
+    {
+        if (value is < MinExperimentalTeleportStateTransitionTimeoutMilliseconds or > MaxExperimentalTeleportStateTransitionTimeoutMilliseconds)
+        {
+            ExperimentalTeleportStateTransitionTimeoutMilliseconds = DefaultExperimentalTeleportStateTransitionTimeoutMilliseconds;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportMapOpenTimeoutMilliseconds, MaxExperimentalTeleportMapOpenTimeoutMilliseconds,
+        ErrorMessage = "实验传送打开地图总超时：1000-10000 ms")]
+    private int _experimentalTeleportMapOpenTimeoutMilliseconds = DefaultExperimentalTeleportMapOpenTimeoutMilliseconds;
+
+    partial void OnExperimentalTeleportMapOpenTimeoutMillisecondsChanged(int value)
+    {
+        if (value is < MinExperimentalTeleportMapOpenTimeoutMilliseconds or > MaxExperimentalTeleportMapOpenTimeoutMilliseconds)
+        {
+            ExperimentalTeleportMapOpenTimeoutMilliseconds = DefaultExperimentalTeleportMapOpenTimeoutMilliseconds;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportMapOpenRepressIntervalMilliseconds, MaxExperimentalTeleportMapOpenRepressIntervalMilliseconds,
+        ErrorMessage = "实验传送打开地图补按 M 间隔：500-5000 ms")]
+    private int _experimentalTeleportMapOpenRepressIntervalMilliseconds = DefaultExperimentalTeleportMapOpenRepressIntervalMilliseconds;
+
+    partial void OnExperimentalTeleportMapOpenRepressIntervalMillisecondsChanged(int value)
+    {
+        if (value is < MinExperimentalTeleportMapOpenRepressIntervalMilliseconds or > MaxExperimentalTeleportMapOpenRepressIntervalMilliseconds)
+        {
+            ExperimentalTeleportMapOpenRepressIntervalMilliseconds = DefaultExperimentalTeleportMapOpenRepressIntervalMilliseconds;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportDragStartDelayMilliseconds, MaxExperimentalTeleportDragStartDelayMilliseconds,
+        ErrorMessage = "实验传送按下左键后开始拖动延迟：10-500 ms")]
+    private int _experimentalTeleportDragStartDelayMilliseconds = DefaultExperimentalTeleportDragStartDelayMilliseconds;
+
+    partial void OnExperimentalTeleportDragStartDelayMillisecondsChanged(int value)
+    {
+        if (value is < MinExperimentalTeleportDragStartDelayMilliseconds or > MaxExperimentalTeleportDragStartDelayMilliseconds)
+        {
+            ExperimentalTeleportDragStartDelayMilliseconds = DefaultExperimentalTeleportDragStartDelayMilliseconds;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportDragReleaseDelayMilliseconds, MaxExperimentalTeleportDragReleaseDelayMilliseconds,
+        ErrorMessage = "实验传送拖动结束后松开左键延迟：10-500 ms")]
+    private int _experimentalTeleportDragReleaseDelayMilliseconds = DefaultExperimentalTeleportDragReleaseDelayMilliseconds;
+
+    partial void OnExperimentalTeleportDragReleaseDelayMillisecondsChanged(int value)
+    {
+        if (value is < MinExperimentalTeleportDragReleaseDelayMilliseconds or > MaxExperimentalTeleportDragReleaseDelayMilliseconds)
+        {
+            ExperimentalTeleportDragReleaseDelayMilliseconds = DefaultExperimentalTeleportDragReleaseDelayMilliseconds;
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [Range(MinExperimentalTeleportMaxSingleStepDistancePixels, MaxExperimentalTeleportMaxSingleStepDistancePixels,
+        ErrorMessage = "实验传送单步最大输入距离：16-200 px")]
+    private int _experimentalTeleportMaxSingleStepDistancePixels = DefaultExperimentalTeleportMaxSingleStepDistancePixels;
+
+    partial void OnExperimentalTeleportMaxSingleStepDistancePixelsChanged(int value)
+    {
+        if (value is < MinExperimentalTeleportMaxSingleStepDistancePixels or > MaxExperimentalTeleportMaxSingleStepDistancePixels)
+        {
+            ExperimentalTeleportMaxSingleStepDistancePixels = DefaultExperimentalTeleportMaxSingleStepDistancePixels;
+        }
+    }
+
     [ObservableProperty]
     private bool _mapZoomEnabled = true; // 地图缩放开关
 
