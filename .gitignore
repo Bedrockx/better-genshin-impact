@@ -66,3 +66,14 @@ BetterGenshinImpact/GameTask/AutoPick/Assets/模板/
 
 # Claude
 .claude/*
+
+# 莫版模板源素材（本地保留，不入库；修改图片后运行 generate_templates.py / pack_to_bin.py 重新生成莫版模板.bin）
+BetterGenshinImpact/GameTask/AutoPick/Assets/原图/*
+!BetterGenshinImpact/GameTask/AutoPick/Assets/原图/README.md
+BetterGenshinImpact/GameTask/AutoPick/Assets/原图备份/*
+!BetterGenshinImpact/GameTask/AutoPick/Assets/原图备份/README.md
+BetterGenshinImpact/GameTask/AutoPick/Assets/莫版模板/**/*.png
+BetterGenshinImpact/GameTask/AutoPick/Assets/莫版模板/templates.json
+
+# 用户额外莫版模板（仅 readme.md 入库，PNG 由用户自备）
+BetterGenshinImpact/User/mojang_templates/**/*.png
