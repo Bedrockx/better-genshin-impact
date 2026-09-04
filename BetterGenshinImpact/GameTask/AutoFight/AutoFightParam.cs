@@ -67,6 +67,8 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
+        BackToFightDistance = autoFightConfig.BackToFightDistance;
+        BackToFightTimeoutMs = autoFightConfig.BackToFightTimeoutMs;
     }
 
     public FightFinishDetectConfig FinishDetectConfig { get; set; } = new();
@@ -94,6 +96,14 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     
     public bool QinDoublePickUp { get; set; } = false;
     public static bool SwimmingEnabled  { get; set; } = false;
+    /// <summary>
+    /// 战斗中回点触发距离（游戏内距离，默认-1禁用；大于0时战斗中与战斗点距离超过该值则回点），仅 JSON 策略生效
+    /// </summary>
+    public double BackToFightDistance { get; set; } = -1;
+    /// <summary>
+    /// 单次回点超时（毫秒），整段回点动作（转向+移动）的总预算，默认2000，仅 JSON 策略生效
+    /// </summary>
+    public int BackToFightTimeoutMs { get; set; } = 2000;
     public bool EnableCombatTargeting { get; set; } = false;
     public int TargetingDetectionInterval { get; set; } = 50;
     public bool DrawRecognitionResults { get; set; } = true;
@@ -196,5 +206,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
+        BackToFightDistance = autoFightConfig.BackToFightDistance;
+        BackToFightTimeoutMs = autoFightConfig.BackToFightTimeoutMs;
     }
 }
