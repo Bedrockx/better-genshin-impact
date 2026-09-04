@@ -63,9 +63,29 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         TargetingDetectionInterval = autoFightConfig.TargetingDetectionInterval;
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
-        // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 赋值后）插入 4 行 Chasca 赋值，
-        // 若与本行 EndFightWhenNoTargetSeconds 冲突，保留两侧新增行即可
         EndFightWhenNoTargetSeconds = autoFightConfig.EndFightWhenNoTargetSeconds;
+        ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaAutoSaveScreenshot = autoFightConfig.ChascaAutoSaveScreenshot;
+        ChascaNoRotateBeforeSeconds = autoFightConfig.ChascaNoRotateBeforeSeconds;
+        ChascaPressStrength = autoFightConfig.ChascaPressStrength;
+        ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
+        ChascaBulletThreshold = autoFightConfig.ChascaBulletThreshold;
+        ChascaSequenceSlotCount = autoFightConfig.ChascaSequenceSlotCount;
+        ChascaSmoothRotateEnabled = autoFightConfig.ChascaSmoothRotateEnabled;
+        ChascaSmoothRotateSpeed = autoFightConfig.ChascaSmoothRotateSpeed;
+        ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
+        ChascaAimForceX = autoFightConfig.ChascaAimForceX;
+        ChascaAimForceY = autoFightConfig.ChascaAimForceY;
+        ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
+        ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
+        ChascaDownArrowPressThreshold = autoFightConfig.ChascaDownArrowPressThreshold;
+        ArlecchinoC2Enabled = autoFightConfig.ArlecchinoC2Enabled;
+        ArlecchinoRefreshEBondThreshold = autoFightConfig.ArlecchinoRefreshEBondThreshold;
+        ArlecchinoRefreshEMinCd = autoFightConfig.ArlecchinoRefreshEMinCd;
+        ArlecchinoBondChargeThreshold = autoFightConfig.ArlecchinoBondChargeThreshold;
+        ArlecchinoNormalAttackLoop = autoFightConfig.ArlecchinoNormalAttackLoop;
+        ArlecchinoDebugLogEnabled = autoFightConfig.ArlecchinoDebugLogEnabled;
+        ArlecchinoFightEndCheckRound = autoFightConfig.ArlecchinoFightEndCheckRound;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
@@ -111,9 +131,64 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public int TargetingDetectionInterval { get; set; } = 50;
     public bool DrawRecognitionResults { get; set; } = true;
     public double LockLostWaitTime { get; set; } = 0.5;
-    // 合并冲突提示：恰斯卡特化 PR (#11) 同样在 LockLostWaitTime 之后插入 ChascaStableTime 等 4 个属性，
-    // 若与本行 EndFightWhenNoTargetSeconds 发生冲突，保留两侧新增行即可（本行 + 恰斯卡 4 行，顺序无关）
     public double EndFightWhenNoTargetSeconds { get; set; } = 0;
+    public double ChascaStableTime { get; set; } = 0.5;
+    public bool ChascaAutoSaveScreenshot { get; set; } = false;
+    public double ChascaNoRotateBeforeSeconds { get; set; } = 1;
+    public double ChascaPressStrength { get; set; } = 1;
+    public double ChascaInitialRotateX { get; set; } = 1000;
+    public double ChascaBulletThreshold { get; set; } = 0.8;
+    public int ChascaSequenceSlotCount { get; set; } = 2;
+    public bool ChascaSmoothRotateEnabled { get; set; } = false;
+    public double ChascaSmoothRotateSpeed { get; set; } = 80;
+    public double ChascaRotateStepAngle { get; set; } = 50;
+    public double ChascaAimForceX { get; set; } = 0.2625;
+    public double ChascaAimForceY { get; set; } = 0.1875;
+    public double ChascaSprayPressForce { get; set; } = 100;
+    public double ChascaRollbackAngle { get; set; } = 15;
+    public int ChascaDownArrowPressThreshold { get; set; } = 20;
+    public bool ArlecchinoC2Enabled { get; set; } = true;
+    public double ArlecchinoRefreshEBondThreshold { get; set; } = 40;
+    public double ArlecchinoRefreshEMinCd { get; set; } = 8;
+    public int ArlecchinoBondChargeThreshold { get; set; } = 55;
+    /// <summary>
+    /// 阿蕾奇诺：最近一次放 E 的时刻（战斗内跨多次 attack 调用保留，
+    /// 用于 2 命以下重击收契的 5 秒等待判断）。由契量状态机更新读取。
+    /// </summary>
+    public System.DateTime ArlecchinoLastETime { get; set; } = System.DateTime.MinValue;
+    /// <summary>
+    /// 阿蕾奇诺：最近一次放 Q 的时刻（战斗内跨多次 attack 调用保留）。
+    /// 用于 Q 释放后 5 秒内置冷却判断：5 秒内 Q 视为不可用，防止契空/红血时连续放 Q。由契量状态机更新读取。
+    /// </summary>
+    public System.DateTime ArlecchinoLastBurstTime { get; set; } = System.DateTime.MinValue;
+    /// <summary>
+    /// 阿蕾奇诺：最近一次重击收契/清印记的时刻（战斗内跨多次 attack 调用保留）。
+    /// 用于重击内置 3 秒冷却（重击后 3 秒内不再重击）以及契空放 Q 需距重击超过 3 秒。由契量状态机更新读取。
+    /// </summary>
+    public System.DateTime ArlecchinoLastChargeTime { get; set; } = System.DateTime.MinValue;
+    /// <summary>
+    /// 阿蕾奇诺：E 的 5 秒强制冷却是否已被放 Q 刷新（战斗内跨多次 attack 调用保留）。
+    /// 放 E 置 false；放 Q（含红血放 Q）置 true。true 时 E 强制冷却视为已清除、立即可放。
+    /// </summary>
+    public bool ArlecchinoECdRefreshedByQ { get; set; } = false;
+    /// <summary>
+    /// 阿蕾奇诺：E 挂印记后是否有印记可收取（战斗内跨多次 attack 调用保留）。
+    /// true=当前 E 挂的印记尚未被收取（可由重击或 Q 消费一次）；false=无印记可收。
+    /// 放 E 置 true；重击收契或放 Q 后置 false。由契量状态机更新读取。
+    /// </summary>
+    public bool ArlecchinoHasBondToCollect { get; set; } = false;
+    /// <summary>
+    /// 阿蕾奇诺：普攻动作循环（战斗策略语言，多个序列用 | 分隔）
+    /// </summary>
+    public string ArlecchinoNormalAttackLoop { get; set; } = "";
+    /// <summary>
+    /// 阿蕾奇诺：调试日志开关（每 500ms 输出一次契量状态 info 日志）
+    /// </summary>
+    public bool ArlecchinoDebugLogEnabled { get; set; } = false;
+    /// <summary>
+    /// 阿蕾奇诺：战斗结束检查轮次（每 N 轮检查一次；0 不检查）
+    /// </summary>
+    public int ArlecchinoFightEndCheckRound { get; set; } = 0;
     public DamageNumberRecognitionMode DamageNumberRecognitionMode { get; set; } = DamageNumberRecognitionMode.Color;
 
     /// <summary>
@@ -210,9 +285,29 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         TargetingDetectionInterval = autoFightConfig.TargetingDetectionInterval;
         DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
-        // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 赋值后）插入 4 行 Chasca 赋值，
-        // 若与本行 EndFightWhenNoTargetSeconds 冲突，保留两侧新增行即可
         EndFightWhenNoTargetSeconds = autoFightConfig.EndFightWhenNoTargetSeconds;
+        ChascaStableTime = autoFightConfig.ChascaStableTime;
+        ChascaAutoSaveScreenshot = autoFightConfig.ChascaAutoSaveScreenshot;
+        ChascaNoRotateBeforeSeconds = autoFightConfig.ChascaNoRotateBeforeSeconds;
+        ChascaPressStrength = autoFightConfig.ChascaPressStrength;
+        ChascaInitialRotateX = autoFightConfig.ChascaInitialRotateX;
+        ChascaBulletThreshold = autoFightConfig.ChascaBulletThreshold;
+        ChascaSequenceSlotCount = autoFightConfig.ChascaSequenceSlotCount;
+        ChascaSmoothRotateEnabled = autoFightConfig.ChascaSmoothRotateEnabled;
+        ChascaSmoothRotateSpeed = autoFightConfig.ChascaSmoothRotateSpeed;
+        ChascaRotateStepAngle = autoFightConfig.ChascaRotateStepAngle;
+        ChascaAimForceX = autoFightConfig.ChascaAimForceX;
+        ChascaAimForceY = autoFightConfig.ChascaAimForceY;
+        ChascaSprayPressForce = autoFightConfig.ChascaSprayPressForce;
+        ChascaRollbackAngle = autoFightConfig.ChascaRollbackAngle;
+        ChascaDownArrowPressThreshold = autoFightConfig.ChascaDownArrowPressThreshold;
+        ArlecchinoC2Enabled = autoFightConfig.ArlecchinoC2Enabled;
+        ArlecchinoRefreshEBondThreshold = autoFightConfig.ArlecchinoRefreshEBondThreshold;
+        ArlecchinoRefreshEMinCd = autoFightConfig.ArlecchinoRefreshEMinCd;
+        ArlecchinoBondChargeThreshold = autoFightConfig.ArlecchinoBondChargeThreshold;
+        ArlecchinoNormalAttackLoop = autoFightConfig.ArlecchinoNormalAttackLoop;
+        ArlecchinoDebugLogEnabled = autoFightConfig.ArlecchinoDebugLogEnabled;
+        ArlecchinoFightEndCheckRound = autoFightConfig.ArlecchinoFightEndCheckRound;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
         BackToFightDistance = autoFightConfig.BackToFightDistance;
