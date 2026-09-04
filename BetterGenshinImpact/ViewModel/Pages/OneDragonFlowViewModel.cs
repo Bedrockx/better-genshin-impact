@@ -14,7 +14,8 @@ using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.Core.Script.Group;
 using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
-using BetterGenshinImpact.GameTask.Common.Job;
+// 合并冲突提示：本 PR 移除了 using BetterGenshinImpact.GameTask.Common.Job;（开书检查每日奖励逻辑）。
+// 若与 PR #3（断点续跑+链式执行一条龙）冲突，合并策略：保留 #3 的其余改动，仅确认不保留 Job 命名空间引用。
 using BetterGenshinImpact.Helpers;
 using BetterGenshinImpact.Helpers.Ui;
 using BetterGenshinImpact.Service;
