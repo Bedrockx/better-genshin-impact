@@ -786,7 +786,15 @@ public class AutoFightTask : ISoloTask
                             // 等待下落攻击和聚怪拾取动作彻底结束
                             await Delay(1500, ct);
                             // 截图并更新技能最新冷却时间
-                            picker.AfterUseSkill();
+                            var cd = picker.AfterUseSkill();
+
+                            // 如果技能就绪（冷却时间为0），说明拾取动作失败，等待500ms后重试一次
+                            if (cd <= 0)
+                            {
+                                await Delay(500, ct);
+                                await SimulateHoldElementalSkillAsync(800, ct);
+                                await SimulateMouseLeftClickLoopAsync(6, ct);
+                            }
                         }
                     }
                     else

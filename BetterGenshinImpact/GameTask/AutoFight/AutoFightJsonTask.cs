@@ -760,7 +760,15 @@ public class AutoFightJsonTask : ISoloTask
                             await SimulateHoldElementalSkillAsync(800, _ct);
                             await SimulateMouseLeftClickLoopAsync(6, _ct);
                             await Delay(1500, _ct);
-                            picker.AfterUseSkill();
+                            var cd = picker.AfterUseSkill();
+
+                            // 如果技能就绪（冷却时间为0），说明拾取动作失败，等待500ms后重试一次（同步 AutoFightTask 的 PR19 逻辑）
+                            if (cd <= 0)
+                            {
+                                await Delay(500, _ct);
+                                await SimulateHoldElementalSkillAsync(800, _ct);
+                                await SimulateMouseLeftClickLoopAsync(6, _ct);
+                            }
                         }
                     }
                     else
