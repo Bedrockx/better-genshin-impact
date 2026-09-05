@@ -4,6 +4,7 @@ using BetterGenshinImpact.GameTask.AutoTrackPath.Model;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
 using BetterGenshinImpact.GameTask.Common.Exceptions;
 using BetterGenshinImpact.GameTask.Common.Job;
+using OpenCvSharp;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Diagnostics;
@@ -65,6 +66,14 @@ internal sealed class ExperimentalTeleportUiStateMachine
     private const int MaximumStateIterations = 1000;
     private const int TeleportMinimumCompletionMilliseconds = 1000;
     private const int TeleportLoadingFallbackMilliseconds = 5000;
+    private const double LoadingSaturationStdThreshold = 25d;
+    private const double LoadingExtremeGrayRatioThreshold = 0.85d;
+    private const int LoadingDarkGrayUpperBound = 70;
+    private const int LoadingLightGrayLowerBound = 220;
+    private const int LoadingRoiX1080P = 480;
+    private const int LoadingRoiY1080P = 80;
+    private const int LoadingRoiWidth1080P = 960;
+    private const int LoadingRoiHeight1080P = 540;
 
     private readonly TpTask _host;
     private readonly TpConfig _config;
@@ -315,6 +324,14 @@ internal sealed class ExperimentalTeleportUiStateMachine
     {
         var timeout = GetStateTransitionTimeout();
         var interval = GetStateRecognitionInterval();
+        var initialDelay = GetStateRecognitionInitialDelay();
+        // 首次识别前等待界面完成渲染；该等待不计入状态切换超时。
+        if (initialDelay > 0)
+        {
+            await Delay(initialDelay, _cancellationToken);
+        }
+
+        // 首轮识别立即执行，后续识别按配置间隔轮询；超时从首轮识别开始计时。
         var stopwatch = Stopwatch.StartNew();
         var detectedState = ExperimentalTeleportUiState.Unknown1;
         var pollCount = 0;
@@ -322,9 +339,7 @@ internal sealed class ExperimentalTeleportUiStateMachine
         while (stopwatch.ElapsedMilliseconds < timeout)
         {
             _cancellationToken.ThrowIfCancellationRequested();
-            var remaining = timeout - (int)stopwatch.ElapsedMilliseconds;
-            await Delay(Math.Min(interval, remaining), _cancellationToken);
-            detectedState = DetectCurrentState(context);
+            detectedState = DetectCurrentState(context, expectedState);
             pollCount++;
             if (detectedState == expectedState)
             {
@@ -336,6 +351,14 @@ internal sealed class ExperimentalTeleportUiStateMachine
                     pollCount);
                 return detectedState;
             }
+
+            var remaining = timeout - (int)stopwatch.ElapsedMilliseconds;
+            if (remaining <= 0)
+            {
+                break;
+            }
+
+            await Delay(Math.Min(interval, remaining), _cancellationToken);
         }
 
         LogDetailed(
@@ -347,7 +370,9 @@ internal sealed class ExperimentalTeleportUiStateMachine
         return detectedState;
     }
 
-    private ExperimentalTeleportUiState DetectCurrentState(ExperimentalTeleportUiContext context)
+    private ExperimentalTeleportUiState DetectCurrentState(
+        ExperimentalTeleportUiContext context,
+        ExperimentalTeleportUiState? expectedState = null)
     {
         using var capture = CaptureToRectArea();
         if (_host.IsExperimentalTeleportDetails(capture))
@@ -355,18 +380,34 @@ internal sealed class ExperimentalTeleportUiStateMachine
             return AcceptKnownState(context, ExperimentalTeleportUiState.TeleportDetails);
         }
 
-        if (_host.HasExperimentalMapChooseCandidate(capture, context.TargetTp))
-        {
-            return AcceptKnownState(context, ExperimentalTeleportUiState.TeleportCandidateList);
-        }
-
         if (Bv.IsInBigMapUi(capture))
         {
+            // 候选列表识别包含图标模板匹配和 OCR，仅在确认传送流程中执行，
+            // 避免等待地图/区域状态时每轮都扫描候选列表。
+            if (context.Operation == ExperimentalTeleportUiOperation.ConfirmTeleport &&
+                (expectedState is null ||
+                 expectedState == ExperimentalTeleportUiState.TeleportCandidateList ||
+                 expectedState == ExperimentalTeleportUiState.TeleportDetails) &&
+                _host.HasExperimentalMapChooseCandidate(capture, context.TargetTp))
+            {
+                return AcceptKnownState(context, ExperimentalTeleportUiState.TeleportCandidateList);
+            }
+
             return AcceptKnownState(
                 context,
                 _host.HasExperimentalMapMainControls(capture)
                     ? ExperimentalTeleportUiState.MapMain
                     : ExperimentalTeleportUiState.AreaList);
+        }
+
+        // Loading 画面只需要检查固定 ROI；确认传送完成阶段优先执行该检查，
+        // 不必先做候选列表或地图状态识别。
+        if (context.Operation == ExperimentalTeleportUiOperation.ConfirmTeleport &&
+            context.ConfirmIssuedAt > 0 &&
+            IsLoadingScreen(capture.SrcMat))
+        {
+            context.LoadingObserved = true;
+            return AcceptKnownState(context, ExperimentalTeleportUiState.Loading);
         }
 
         var isInMainUi = Bv.IsInMainUi(capture);
@@ -393,8 +434,9 @@ internal sealed class ExperimentalTeleportUiStateMachine
             }
             else
             {
-                context.LoadingObserved = true;
-                return AcceptKnownState(context, ExperimentalTeleportUiState.Loading);
+                return context.LoadingObserved
+                    ? ExperimentalTeleportUiState.Loading
+                    : ResolveUnknownState(context);
             }
 
             return ResolveUnknownState(context);
@@ -403,6 +445,72 @@ internal sealed class ExperimentalTeleportUiStateMachine
         return context.Operation != ExperimentalTeleportUiOperation.ConfirmTeleport && isInMainUi
             ? AcceptKnownState(context, ExperimentalTeleportUiState.MainWorld)
             : ResolveUnknownState(context);
+    }
+
+    private static bool IsLoadingScreen(Mat bgr)
+    {
+        if (bgr.Empty())
+        {
+            return false;
+        }
+
+        var scale = TaskContext.Instance().SystemInfo.ScaleTo1080PRatio;
+        var roiX = Math.Clamp((int)Math.Round(LoadingRoiX1080P * scale), 0, bgr.Width);
+        var roiY = Math.Clamp((int)Math.Round(LoadingRoiY1080P * scale), 0, bgr.Height);
+        var roiWidth = Math.Min(
+            (int)Math.Round(LoadingRoiWidth1080P * scale),
+            bgr.Width - roiX);
+        var roiHeight = Math.Min(
+            (int)Math.Round(LoadingRoiHeight1080P * scale),
+            bgr.Height - roiY);
+        if (roiWidth <= 0 || roiHeight <= 0)
+        {
+            return false;
+        }
+
+        using var roi = new Mat(bgr, new Rect(roiX, roiY, roiWidth, roiHeight));
+        using var gray = new Mat();
+        using var darkMask = new Mat();
+        using var lightMask = new Mat();
+        Mat? hsv = null;
+        try
+        {
+            if (roi.Channels() == 1)
+            {
+                roi.CopyTo(gray);
+            }
+            else
+            {
+                hsv = new Mat();
+                Cv2.CvtColor(roi, hsv, ColorConversionCodes.BGR2HSV);
+                Cv2.CvtColor(roi, gray, ColorConversionCodes.BGR2GRAY);
+            }
+
+            var saturationStd = 0d;
+            if (hsv is not null)
+            {
+                Cv2.MeanStdDev(hsv, out _, out var stdDev);
+                saturationStd = stdDev.Val1;
+            }
+
+            var total = gray.Rows * gray.Cols;
+            if (total <= 0)
+            {
+                return false;
+            }
+
+            Cv2.Threshold(gray, darkMask, LoadingDarkGrayUpperBound, 255, ThresholdTypes.BinaryInv);
+            Cv2.Threshold(gray, lightMask, LoadingLightGrayLowerBound, 255, ThresholdTypes.Binary);
+            var darkRatio = (double)Cv2.CountNonZero(darkMask) / total;
+            var lightRatio = (double)Cv2.CountNonZero(lightMask) / total;
+            return saturationStd < LoadingSaturationStdThreshold &&
+                   (darkRatio >= LoadingExtremeGrayRatioThreshold ||
+                    lightRatio >= LoadingExtremeGrayRatioThreshold);
+        }
+        finally
+        {
+            hsv?.Dispose();
+        }
     }
 
     private static ExperimentalTeleportUiState AcceptKnownState(
@@ -445,6 +553,11 @@ internal sealed class ExperimentalTeleportUiStateMachine
         _config.ExperimentalTeleportStateRecognitionIntervalMilliseconds,
         TpConfig.MinExperimentalTeleportStateRecognitionIntervalMilliseconds,
         TpConfig.MaxExperimentalTeleportStateRecognitionIntervalMilliseconds);
+
+    private int GetStateRecognitionInitialDelay() => Math.Clamp(
+        _config.ExperimentalTeleportStateRecognitionInitialDelayMilliseconds,
+        TpConfig.MinExperimentalTeleportStateRecognitionInitialDelayMilliseconds,
+        TpConfig.MaxExperimentalTeleportStateRecognitionInitialDelayMilliseconds);
 
     private int GetStateTransitionTimeout() => Math.Clamp(
         _config.ExperimentalTeleportStateTransitionTimeoutMilliseconds,
