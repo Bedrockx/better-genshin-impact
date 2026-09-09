@@ -1445,4 +1445,73 @@ public partial class PathExecutor
             throw new HandledException("达成结束条件，结束地图追踪");
         }
     }
+
+    /// <summary>
+    /// 轻量级移动到目标点：循环截图 → 判断坐标 → 朝向目标点 → 按住 W 前进，直到到达目标点附近或超时
+    /// 供战斗中回点等场景使用，不依赖 PathExecutor 实例状态（无切人/疾跑/赶路/卡死脱困/异常界面处理等重逻辑）
+    /// </summary>
+    /// <param name="waypoint">目标点</param>
+    /// <param name="timeoutMs">整段动作（转向+移动）的总超时预算，毫秒</param>
+    /// <param name="ct">取消令牌</param>
+    /// <returns>是否成功到达目标点附近</returns>
+    public static async Task<bool> MoveToTargetLightweight(WaypointForTrack waypoint, int timeoutMs, CancellationToken ct)
+    {
+        var rotateTask = new CameraRotateTask(ct);
+        var startTime = DateTime.UtcNow;
+
+        // 先获取当前位置并转向目标点
+        Point2f position;
+        using (var screen = CaptureToRectArea())
+        {
+            position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
+        }
+        if (position != new Point2f())
+        {
+            var targetOrientation = Navigation.GetTargetOrientation(waypoint, position);
+            await rotateTask.WaitUntilRotatedTo(targetOrientation, 2);
+        }
+
+        // 按住 W 前进
+        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                if ((DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMs)
+                {
+                    Logger.LogWarning("回点移动：总时长超过 {TimeoutMs} 毫秒，超时结束", timeoutMs);
+                    return false;
+                }
+
+                using var screen = CaptureToRectArea();
+                position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
+                if (position == new Point2f())
+                {
+                    // 坐标识别失败，下一帧重试
+                    await Delay(100, ct);
+                    continue;
+                }
+
+                var distance = Navigation.GetDistance(waypoint, position);
+                if (distance < 4)
+                {
+                    Logger.LogDebug("回点移动：到达目标点附近");
+                    return true;
+                }
+
+                // 边走边转向目标点
+                var currentOrientation = Navigation.GetTargetOrientation(waypoint, position);
+                rotateTask.RotateToApproach(currentOrientation, screen);
+
+                await Delay(50, ct);
+            }
+        }
+        finally
+        {
+            // 松开 W
+            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+        }
+
+        return false;
+    }
 }
