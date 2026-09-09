@@ -30,6 +30,7 @@ public class ActionEnum(string code, string msg, ActionUseWaypointTypeEnum useWa
     public static readonly ActionEnum SetTime = new("set_time", "设置时间", ActionUseWaypointTypeEnum.Custom);
     public static readonly ActionEnum UseGadget = new("use_gadget", "使用小道具", ActionUseWaypointTypeEnum.Custom);
     public static readonly ActionEnum PickUpCollect = new("pick_up_collect", "聚集材料", ActionUseWaypointTypeEnum.Custom);
+    public static readonly ActionEnum ScanPick = new("scan_pick", "扫描拾取", ActionUseWaypointTypeEnum.Custom);
 
     // 还有要加入的其他动作
     // 滚轮F
@@ -40,7 +41,11 @@ public class ActionEnum(string code, string msg, ActionUseWaypointTypeEnum useWa
 
     public static IEnumerable<ActionEnum> Values
     {
-        get { yield return StopFlying; }
+        get
+        {
+            yield return StopFlying;
+            yield return ScanPick;
+        }
     }
 
     public string Code { get; private set; } = code;
