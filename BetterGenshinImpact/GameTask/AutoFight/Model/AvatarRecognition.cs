@@ -5,6 +5,7 @@ using BetterGenshinImpact.Core.Simulator;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
 using BetterGenshinImpact.GameTask.Model.Area;
 using BetterGenshinImpact.View.Drawable;
+using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 using System;
 using System.Collections.Generic;
@@ -23,6 +24,9 @@ public sealed record VisualRecognitionConfig(
     int TargetingDetectionInterval = 50,
     bool DrawRecognitionResults = true,
     double LockLostWaitTime = 0.5,
+    // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此 record 的 LockLostWaitTime 后插入 ChascaStableTime 等 4 个参数，
+    // 若与本参数 EndFightWhenNoTargetSeconds 冲突，保留两侧新增参数即可（本参数 + 恰斯卡 4 参数，顺序无关）
+    double EndFightWhenNoTargetSeconds = 0,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
@@ -229,6 +233,9 @@ public static class AvatarRecognition
                 Math.Clamp(param.TargetingDetectionInterval, 1, 200),
                 param.DrawRecognitionResults,
                 param.LockLostWaitTime,
+                // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 参数后）插入 4 个 Chasca 参数，
+                // 若与本参数 EndFightWhenNoTargetSeconds 冲突，保留两侧新增参数即可
+                param.EndFightWhenNoTargetSeconds,
                 param.DamageNumberRecognitionMode);
         }
 
@@ -237,6 +244,9 @@ public static class AvatarRecognition
             Math.Clamp(config.TargetingDetectionInterval, 1, 200),
             config.DrawRecognitionResults,
             config.LockLostWaitTime,
+            // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 参数后）插入 4 个 Chasca 参数，
+            // 若与本参数 EndFightWhenNoTargetSeconds 冲突，保留两侧新增参数即可
+            config.EndFightWhenNoTargetSeconds,
             config.DamageNumberRecognitionMode);
     }
 
@@ -410,7 +420,8 @@ public static class AvatarRecognition
         var frameIntervalMs = visConfig.TargetingDetectionInterval;
         var drawResults = visConfig.DrawRecognitionResults;
         var lockLostWaitTime = visConfig.LockLostWaitTime;
-        DateTime? lastSeenTargetTime = null;  // 最后找到目标的时间（null = 从未找到）
+        var endFightWhenNoTargetSeconds = visConfig.EndFightWhenNoTargetSeconds;  // 无目标自动结束战斗（秒），0 不生效
+        DateTime? lastSeenTargetTime = null;  // 最后找到目标（血条或伤害数字）的时间（null = 从未找到）
 
         try
         {
@@ -442,6 +453,10 @@ public static class AvatarRecognition
                     var drawList = new List<RectDrawable>();
 
                     bool hasLegendaryBar = valid.Any(b => IsLegendaryBar(b.x, b.y));
+
+                    // 传奇血条（固定位置大血条）存在视为战斗进行中，刷新"目标最后可见时间"，
+                    // 避免"无目标自动结束战斗"在传奇血条仍可见时误触发
+                    if (hasLegendaryBar) lastSeenTargetTime = DateTime.UtcNow;
 
                     // 2. 血条追踪：存在有效普通血条且无传奇时，朝最近血条方向移动鼠标
                     if (valid.Count > 0 && !hasLegendaryBar)
@@ -516,6 +531,20 @@ public static class AvatarRecognition
                                 }
                             }
                         }
+                    }
+
+                    // 5. 无目标自动结束战斗：连续 endFightWhenNoTargetSeconds 秒未检测到敌人血条或伤害数字时主动结束
+                    // 仅在曾识别到目标后开始计时（lastSeenTargetTime.HasValue），避免战斗刚开打、尚未识别到目标时误结束
+                    if (endFightWhenNoTargetSeconds > 0 && lastSeenTargetTime.HasValue &&
+                        (DateTime.UtcNow - lastSeenTargetTime.Value).TotalSeconds >= endFightWhenNoTargetSeconds)
+                    {
+                        if (!AutoFightTask.NoTargetEndRequested)
+                        {
+                            Logger.LogInformation("持续索敌：连续{Seconds}秒未检测到敌人血条或伤害数字，主动结束战斗",
+                                endFightWhenNoTargetSeconds);
+                        }
+                        AutoFightTask.NoTargetEndRequested = true;
+                        break;
                     }
 
                     // 提交叠加层
