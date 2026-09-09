@@ -45,6 +45,11 @@ github_actions_cache/
 
 __pycache__/
 
+# AutoPick 素材与脚本（本地生成，不入库）
+BetterGenshinImpact/GameTask/AutoPick/Assets/原图/
+BetterGenshinImpact/GameTask/AutoPick/Assets/原图备份/
+BetterGenshinImpact/GameTask/AutoPick/Assets/模板/
+
 
 # Trae
 .trae/*
