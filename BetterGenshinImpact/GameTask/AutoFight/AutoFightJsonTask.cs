@@ -509,7 +509,9 @@ public class AutoFightJsonTask : ISoloTask
     
                     if (!shouldPickup)
                     {
-                        if (_taskParam is { PickDropsAfterFightEnabled: true })
+                        // 经验值检测未通过，跳过拾取（仅在队伍无万叶/琴或开关关闭时才执行扫描拾取逻辑）
+                        var hasKazuhaOrQin = combatScenes.SelectAvatar("枫原万叶") != null || combatScenes.SelectAvatar("琴") != null;
+                        if (_taskParam is { PickDropsAfterFightEnabled: true } && (!_taskParam.KazuhaPickupEnabled || !hasKazuhaOrQin))
                         {
                             await new ScanPickTask().Start(_ct);
                         }
@@ -667,6 +669,9 @@ public class AutoFightJsonTask : ISoloTask
     /// <summary>战后拾取</summary>
     private async Task PostFightPickup(CombatScenes combatScenes, bool timeOutFlag, string lastFightName)
     {
+        // 是否选中了万叶/琴（用于控制光柱扫描：仅当队伍无万叶/琴或开关关闭时才扫描）
+        bool kazuhaOrQinSelected = false;
+
         if (_taskParam.KazuhaPickupEnabled)
         {
             var picker = combatScenes.SelectAvatar("枫原万叶") ?? combatScenes.SelectAvatar("琴");
@@ -773,6 +778,7 @@ public class AutoFightJsonTask : ISoloTask
 
             if (picker != null)
             {
+                kazuhaOrQinSelected = true;
                 Simulation.ReleaseAllKey();
 
                 if (picker.Name == "枫原万叶")
@@ -892,7 +898,7 @@ public class AutoFightJsonTask : ISoloTask
             }
         }
 
-        if (_taskParam is { PickDropsAfterFightEnabled: true })
+        if (_taskParam is { PickDropsAfterFightEnabled: true } && !kazuhaOrQinSelected)
         {
             await new ScanPickTask().Start(_ct);
         }
