@@ -1129,7 +1129,7 @@ public static class AvatarSpecialAction
                         // 战斗结束检查：每 N 轮触发一次（N>0 才检查）
                         if (fightEndCheckRound > 0 && loopRound % fightEndCheckRound == 0)
                         {
-                            var finishConfig = new AutoFightTask.TaskFightFinishDetectConfig(fightParam.FinishDetectConfig);
+                            var finishConfig = new AutoFightTask.TaskFightFinishDetectConfig(fightParam);
                             if (AutoFightTask.CheckFightFinish(finishConfig, avatar.Ct).Result)
                             {
                                 Logger.LogInformation("阿蕾奇诺普攻特化：检测到战斗结束，提前退出");
