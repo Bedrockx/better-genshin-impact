@@ -20,6 +20,7 @@ using BetterGenshinImpact.Service.ChildSession;
 using BetterGenshinImpact.Service.Instance;
 using BetterGenshinImpact.Service.I18n;
 using BetterGenshinImpact.Service.Interface;
+using BetterGenshinImpact.Core.Script.Group.Preset;
 using BetterGenshinImpact.Service.Notification;
 using BetterGenshinImpact.Service.Notifier;
 using BetterGenshinImpact.View;
@@ -139,6 +140,8 @@ public partial class App : Application
                 services.AddSingleton<ChildSessionService>();
                 services.AddTransient<ChildSessionWindowViewModel>();
                 services.AddTransient<ChildSessionWindow>();
+                services.AddTransient<ConfigGroupPresetWindowViewModel>();
+                services.AddTransient<ConfigGroupPresetWindow>();
 
                 // Views
                 services.AddView<HomePage, HomePageViewModel>();
@@ -192,6 +195,7 @@ public partial class App : Application
                 services.AddSingleton<INetworkHealthMonitor, NetworkHealthMonitor>();
                 services.AddHostedService<NetworkHealthMonitorHostedService>();
                 services.AddSingleton<IScriptService, ScriptService>();
+                services.AddSingleton<ConfigGroupPresetService>();
                 services.AddSingleton<IMusicScoreParser, MusicScoreParser>();
                 services.AddSingleton<IMusicStateStore, MusicStateStore>();
                 services.AddSingleton<IInstrumentProfileService, InstrumentProfileService>();
