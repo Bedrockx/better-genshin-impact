@@ -71,6 +71,15 @@ public class JsonAction
     public bool EnsureCast { get; set; } = false;
 
     /// <summary>
+    /// 红箭头索敌对准：为 true 时动作开始前用 moveby 单次大位移将视角拉到最低俯视，
+    /// 动作执行期间启动异步任务持续用 moveby 左右旋转视角（每次附带向下下压保持最低），
+    /// 使最接近屏幕正上方的红色箭头尽量对准屏幕正上方；动作期间持续索敌循环被排他关闭。
+    /// 该动作结束后，若下一动作未开启本字段，则在下一动作开始时点按一次鼠标中键回正视角；
+    /// 战斗结束（最后执行的动作仍开启本字段）时同样回正一次。
+    /// </summary>
+    public bool RedArrowAim { get; set; } = false;
+
+    /// <summary>
     /// 额外优先级条目：同一动作在不同条件下有不同的优先级位置
     /// 主循环会将这些条目与原动作一起展开，按 priority 排序后依次检查
     /// </summary>
