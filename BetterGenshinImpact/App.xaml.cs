@@ -12,6 +12,7 @@ using BetterGenshinImpact.Core.Recognition.ONNX;
 using BetterGenshinImpact.Core.Monitor;
 using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.GameTask.AutoSkip.Audio;
+using BetterGenshinImpact.GameTask.AutoPick;
 using BetterGenshinImpact.GameTask.Music.Service;
 using BetterGenshinImpact.GameTask.Runtime;
 using BetterGenshinImpact.GameTask.Runtime.Win32;
@@ -327,6 +328,9 @@ public partial class App : Application
             {
                 await UrlProtocolHelper.RegisterAsync();
             }
+
+            // 后台预加载莫版匹配模板（bin 优先），避免阻塞启动 UI；加载日志随启动输出
+            await Task.Run(MojangMatch.Preload);
         }
         catch (Exception ex)
         {

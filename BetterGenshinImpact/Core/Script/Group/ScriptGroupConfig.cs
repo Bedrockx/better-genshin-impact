@@ -1,4 +1,4 @@
-﻿using BetterGenshinImpact.Core.Config;
+using BetterGenshinImpact.Core.Config;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 
@@ -21,4 +21,10 @@ public partial class ScriptGroupConfig : ObservableObject
     /// </summary>
     [ObservableProperty]
     private bool _enableShellConfig;
+
+    /// <summary>
+    /// 莫版拾取名单配置（配置组级白名单/黑名单，随配置组保存）
+    /// </summary>
+    [ObservableProperty]
+    private AutoPickGroupConfig _autoPickConfig = new();
 }
