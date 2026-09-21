@@ -204,6 +204,7 @@
 		<None Update="GameTask\UseRedeemCode\Assets\1920x1080\**">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
+		<None Remove="User\AutoFight\**" />
 		<None Update="User\**">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
