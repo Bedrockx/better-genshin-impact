@@ -285,7 +285,7 @@ public class GameLoadingTrigger : ITaskTrigger
             return;
         }
         // 非联动启动且已尝试过返回主界面（失败）：后续循环走原有逻辑（主界面判断、适龄提示、进入游戏等）
-        
+
         // 成功进入游戏判断    
         if (Bv.IsInMainUi(content.CaptureRectArea) || Bv.IsInAnyClosableUi(content.CaptureRectArea) || Bv.IsInDomain(content.CaptureRectArea))
         {

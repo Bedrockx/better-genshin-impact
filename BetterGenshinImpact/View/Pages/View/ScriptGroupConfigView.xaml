@@ -1873,7 +1873,7 @@
                             </StackPanel>
                         </ui:CardExpander>
                     </Grid>
-                    
+
                     <Grid Margin="16,10,52,0">
                     <!-- 战斗中视觉识别配置 -->
                     <ui:CardExpander Margin="0,0,0,12"
@@ -2726,7 +2726,7 @@
                                           TextWrapping="Wrap" />
                         </Grid>
                     </ui:CardExpander.Header>
-                        
+
                     <Grid Margin="16">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />

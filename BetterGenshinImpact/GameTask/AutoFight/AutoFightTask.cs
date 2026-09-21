@@ -621,7 +621,7 @@ public class AutoFightTask : ISoloTask
         
         // 是否选中了万叶/琴（用于控制光柱扫描：仅当队伍无万叶/琴或开关关闭时才扫描）
         bool kazuhaOrQinSelected = false;
-        
+
         if (_taskParam.KazuhaPickupEnabled)
         {
             // 队伍中存在万叶的时候使用一次长E
