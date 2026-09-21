@@ -303,6 +303,7 @@ public partial class AllConfig : ObservableObject
         GenshinStartConfig.PropertyChanged += OnAnyPropertyChanged;
         NotificationConfig.PropertyChanged += OnAnyPropertyChanged;
         NotificationConfig.PropertyChanged += OnNotificationPropertyChanged;
+        OtherConfig.PropertyChanged += OnAnyPropertyChanged;
         KeyBindingsConfig.PropertyChanged += OnAnyPropertyChanged;
         AutoPickConfig.PropertyChanged += OnAnyPropertyChanged;
         AutoSkipConfig.PropertyChanged += OnAnyPropertyChanged;

@@ -28,6 +28,7 @@ using BetterGenshinImpact.Core.Script.Project;
 using BetterGenshinImpact.Service.Interface;
 using System.Collections.Specialized;
 using Wpf.Ui.Violeta.Controls;
+using BetterGenshinImpact.Infrastructure.NetworkRecovery;
 
 namespace BetterGenshinImpact.ViewModel.Pages;
 
@@ -615,14 +616,21 @@ public partial class OneDragonFlowViewModel : ViewModel
         {
             if (task is { IsEnabled: true, Action: not null })
             {
+                // 与 mno-version 合并时可能与一条龙执行状态机、断点续跑和收尾逻辑冲突。
+                // 合并策略：保留目标分支的任务筛选、取消处理和完成后操作，仅移植本 PR 的恢复上下文。
                 if (ScriptGroupsdefault.Any(defaultSg => defaultSg.Name == task.Name))
                 {
+                    // 默认任务使用 TaskRunner 传递恢复上下文；不要用本 PR 整段循环替换目标分支逻辑。
                     _logger.LogInformation($"一条龙任务执行: {finishOneTaskcount++}/{enabledoneTaskCount}");
                     await new TaskRunner().RunThreadAsync(async () =>
                     {
                         await task.Action();
                         await Task.Delay(1000);
-                    });
+                    }, new TaskExecutionContext(
+                        SelectedConfig.Name,
+                        task.Id,
+                        task.Name,
+                        taskListCopy.IndexOf(task)));
                 }
                 else
                 {
@@ -642,9 +650,24 @@ public partial class OneDragonFlowViewModel : ViewModel
                             await Task.Delay(500);
                             string filePath = Path.Combine(_basePath, _scriptGroupPath, $"{task.Name}.json");
                             var group = ScriptGroup.FromJson(await File.ReadAllTextAsync(filePath));
-                            IScriptService? scriptService = App.GetService<IScriptService>();
-                            await scriptService!.RunMulti(ScriptControlViewModel.GetNextProjects(group), group.Name);
-                            await Task.Delay(1000);
+                            // 配置组任务需在 RunMulti 前后成对记录 BeginTask/CompleteTask；不要恢复已移除的每日奖励检查。
+                            var recoverySession = App.GetService<IRecoverySession>();
+                            recoverySession?.BeginTask(new TaskExecutionContext(
+                                SelectedConfig.Name,
+                                task.Id,
+                                task.Name,
+                                taskListCopy.IndexOf(task),
+                                group.Name));
+                            try
+                            {
+                                IScriptService? scriptService = App.GetService<IScriptService>();
+                                await scriptService!.RunMulti(ScriptControlViewModel.GetNextProjects(group), group.Name);
+                                await Task.Delay(1000);
+                            }
+                            finally
+                            {
+                                recoverySession?.CompleteTask(task.Id);
+                            }
                         }
                     }
                     catch (Exception e)
