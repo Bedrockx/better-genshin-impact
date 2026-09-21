@@ -1,11 +1,13 @@
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Recognition;
+using BetterGenshinImpact.Core.Script;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BetterGenshinImpact.GameTask.Common;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
+using BetterGenshinImpact.GameTask.Common.Job;
 using BetterGenshinImpact.GameTask.Model.Area;
 using Microsoft.Extensions.Logging;
 using System.IO;
@@ -58,6 +60,11 @@ public class GameLoadingTrigger : ITaskTrigger
     private DateTime _prevAgePromptOcrTime = DateTime.MinValue;
     private bool _agePromptTextMatched = false;
     private List<Region> _latestLoadingOcrRegions = [];
+    /// <summary>
+    /// 非联动启动时是否已尝试过返回主界面（首次尝试失败后，后续循环走原有逻辑）
+    /// 使用 static：任务结束后 LoadInitialTriggers 会重建本触发器实例，static 可避免标志丢失导致重复尝试
+    /// </summary>
+    private static bool _linkedStartReturnMainUiTried = false;
 
     public GameLoadingTrigger()
     {
@@ -247,6 +254,37 @@ public class GameLoadingTrigger : ITaskTrigger
             InnerSetEnabled(false);
             return;
         }
+        
+        // 联动启动时重置"非联动已尝试返回主界面"标志，避免下次非联动启动时残留
+        if ((DateTime.Now - TaskContext.Instance().LinkedStartGenshinTime).TotalMinutes < 5)
+        {
+            _linkedStartReturnMainUiTried = false;
+        }
+        else if (!_linkedStartReturnMainUiTried)
+        {
+            // 非联动启动原神：第一次循环尝试返回主界面（跳过自动进入游戏过程：自动开门、点击进入游戏、领月卡等）
+            _logger.LogInformation("非联动启动原神，尝试返回主界面");
+            try
+            {
+                new ReturnMainUiTask().Start(CancellationContext.Instance.Cts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                // 任务已终止等场景下 Cts 处于取消状态，Delay 会立即抛异常，视为本次尝试未生效
+                _logger.LogInformation("非联动启动返回主界面被取消");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "非联动启动返回主界面失败");
+            }
+            finally
+            {
+                // 无论成功失败都标记为已尝试，避免任务结束后触发器每 2 秒重复执行并持续输出日志
+                _linkedStartReturnMainUiTried = true;
+            }
+            return;
+        }
+        // 非联动启动且已尝试过返回主界面（失败）：后续循环走原有逻辑（主界面判断、适龄提示、进入游戏等）
         
         // 成功进入游戏判断    
         if (Bv.IsInMainUi(content.CaptureRectArea) || Bv.IsInAnyClosableUi(content.CaptureRectArea) || Bv.IsInDomain(content.CaptureRectArea))
