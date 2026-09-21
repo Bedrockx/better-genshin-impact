@@ -204,7 +204,7 @@ public partial class PathExecutor
                                 }
                                 else
                                 {
-                                    await Delay(1000, ct);
+                                    await Delay(PartyConfig.TeleportBeforeDelayMs, ct);
                                 }
                             }
                             await HandleTeleportWaypoint(waypoint);
@@ -812,7 +812,7 @@ public partial class PathExecutor
              }
             var distance = Navigation.GetDistance(waypoint, position);
             Debug.WriteLine($"接近目标点中，距离为{distance}");
-            if (distance < 4)
+            if (distance < PartyConfig.WaypointArriveDistance)
             {
                 Logger.LogDebug("到达路径点附近");
                 break;
@@ -963,7 +963,7 @@ public partial class PathExecutor
             // 只有设置为run才会一直疾跑
             if (waypoint.MoveMode == MoveModeEnum.Run.Code)
             {
-                if (distance > 20 != fastMode) // 距离大于20时可以使用疾跑/自由泳
+                if (distance > PartyConfig.RunDashSwitchWalkDistance != fastMode) // 距离大于阈值时可以使用疾跑/自由泳
                 {
                     if (fastMode)
                     {
@@ -979,7 +979,7 @@ public partial class PathExecutor
             }
             else if (waypoint.MoveMode == MoveModeEnum.Dash.Code)
             {
-                if (distance > 20) // 距离大于25时可以使用疾跑
+                if (distance > PartyConfig.RunDashSwitchWalkDistance) // 距离大于阈值时可以使用疾跑
                 {
                     if (Math.Abs((fastModeColdTime - DateTime.UtcNow).TotalMilliseconds) > 1000) //冷却一会
                     {
@@ -1017,7 +1017,7 @@ public partial class PathExecutor
                 }
 
                 // 自动疾跑
-                if (distance > 20 && PartyConfig.AutoRunEnabled)
+                if (distance > PartyConfig.WalkSprintDistance && PartyConfig.AutoRunEnabled)
                 {
                     if (Math.Abs((fastModeColdTime - DateTime.UtcNow).TotalMilliseconds) > 2500) //冷却时间2.5s，回复体力用
                     {
@@ -1100,7 +1100,7 @@ public partial class PathExecutor
             EndJudgment(screen);
 
             position = await GetPosition(screen, waypoint);
-            if (Navigation.GetDistance(waypoint, position) < 2)
+            if (Navigation.GetDistance(waypoint, position) < PartyConfig.TargetArriveDistance)
             {
                 Logger.LogDebug("已到达路径点");
                 break;
@@ -1118,8 +1118,8 @@ public partial class PathExecutor
 
         Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
 
-        // 到达目的地后停顿一秒
-        await Delay(1000, ct);
+        // 到达目的地后停顿
+        await Delay(PartyConfig.ArriveTargetDelayMs, ct);
     }
 
     private async Task BeforeMoveCloseToTarget(WaypointForTrack waypoint)
@@ -1176,7 +1176,7 @@ public partial class PathExecutor
             {
                 SuccessFight++;
             }
-            await Delay(1000, ct);
+            await Delay(PartyConfig.ActionFinishedDelayMs, ct);
         }
     }
 
