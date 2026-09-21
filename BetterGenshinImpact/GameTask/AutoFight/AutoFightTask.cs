@@ -60,6 +60,40 @@ public class AutoFightTask : ISoloTask
     /// CheckFightFinish 消费该标志后返回战斗结束（消费后复位，仅触发一次）。
     /// </summary>
     public static bool NoTargetEndRequested { get; set; } = false;
+    private sealed class FightRecoveryState
+    {
+        public bool FightEndRequested { get; set; }
+        public bool SwimBackToFightPerformed { get; set; }
+    }
+
+    // 按异步战斗上下文隔离，避免并发/异常退出时把上一场战斗状态带入下一场。
+    private static readonly AsyncLocal<FightRecoveryState?> FightRecoveryStateLocal = new();
+
+    private static FightRecoveryState CurrentFightRecoveryState =>
+        FightRecoveryStateLocal.Value ??= new FightRecoveryState();
+
+    internal static void BeginFightRecoveryState() => FightRecoveryStateLocal.Value = new FightRecoveryState();
+
+    internal static void ClearFightRecoveryState() => FightRecoveryStateLocal.Value = null;
+
+    /// <summary>
+    /// 请求结束当前战斗（游泳检测单次战斗第二次触发回点时置位，JSON 战斗循环检查后正常结束战斗）。
+    /// 状态只在当前异步战斗上下文中有效。
+    /// </summary>
+    public static bool FightEndRequested
+    {
+        get => CurrentFightRecoveryState.FightEndRequested;
+        set => CurrentFightRecoveryState.FightEndRequested = value;
+    }
+
+    /// <summary>
+    /// 本场战斗游泳回点是否已执行过（状态只在当前异步战斗上下文中有效）。
+    /// </summary>
+    public static bool SwimBackToFightPerformed
+    {
+        get => CurrentFightRecoveryState.SwimBackToFightPerformed;
+        set => CurrentFightRecoveryState.SwimBackToFightPerformed = value;
+    }
     
     private static readonly object PickLock = new object(); 
     
@@ -217,9 +251,13 @@ public class AutoFightTask : ISoloTask
     {
         _ct = ct;
         AvatarRecognition.SetCurrentAutoFightParam(_taskParam);
+        BeginFightRecoveryState();
         AvatarRecognition.ClearLegendaryBarTracker();
         // 每场新战斗重置"敌人可见时跳过战斗结束检查"的连续跳过计数，保证拥有完整的跳过次数
         ResetSkipCheckCounter();
+        // 每场新战斗重置游泳回点与结束请求标志，避免跨战斗残留
+        FightEndRequested = false;
+        SwimBackToFightPerformed = false;
         try
         {
             LogScreenResolution();
@@ -853,6 +891,7 @@ public class AutoFightTask : ISoloTask
         finally
         {
             AvatarRecognition.ClearCurrentAutoFightParam();
+            ClearFightRecoveryState();
         }
     }
 
