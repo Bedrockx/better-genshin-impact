@@ -96,6 +96,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
+        ApplyConfig(autoFightConfig);
     }
 
     public FightFinishDetectConfig FinishDetectConfig { get; set; } = new();
@@ -258,7 +259,11 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
 
     public void SetDefault()
     {
-        var autoFightConfig = TaskContext.Instance().Config.AutoFightConfig;
+        ApplyConfig(TaskContext.Instance().Config.AutoFightConfig);
+    }
+
+    private void ApplyConfig(AutoFightConfig autoFightConfig)
+    {
         Timeout = autoFightConfig.Timeout;
         FightFinishDetectEnabled = autoFightConfig.FightFinishDetectEnabled;
         PickDropsAfterFightEnabled = autoFightConfig.PickDropsAfterFightEnabled;
@@ -284,6 +289,10 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         GuardianAvatar = autoFightConfig.GuardianAvatar;
         GuardianCombatSkip = autoFightConfig.GuardianCombatSkip;
         GuardianAvatarHold = autoFightConfig.GuardianAvatarHold;
+        BurstEnabled = autoFightConfig.BurstEnabled;
+        CheckBeforeBurst = autoFightConfig.FinishDetectConfig.CheckBeforeBurst;
+        IsFirstCheck = autoFightConfig.FinishDetectConfig.IsFirstCheck;
+        RotaryFactor = autoFightConfig.FinishDetectConfig.RotaryFactor;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         EnableCombatTargeting = autoFightConfig.EnableCombatTargeting;
