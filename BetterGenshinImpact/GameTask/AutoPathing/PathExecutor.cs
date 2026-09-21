@@ -1157,7 +1157,8 @@ public partial class PathExecutor
             || waypoint.Action == ActionEnum.EnterAndExitWonderland.Code
             || waypoint.Action == ActionEnum.SetTime.Code
             || waypoint.Action == ActionEnum.UseGadget.Code
-            || waypoint.Action == ActionEnum.PickUpCollect.Code)
+            || waypoint.Action == ActionEnum.PickUpCollect.Code
+            || waypoint.Action == ActionEnum.ScanPick.Code)
         {
             var handler = ActionFactory.GetAfterHandler(waypoint.Action);
             //,PartyConfig
