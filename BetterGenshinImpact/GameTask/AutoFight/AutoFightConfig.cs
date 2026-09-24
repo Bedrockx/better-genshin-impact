@@ -438,5 +438,10 @@ public enum AvatarSpecializationType
     /// <summary>
     /// 阿蕾奇诺attack(10)：必须攻击 10 次才触发的特化
     /// </summary>
-    ArlecchinoAttack10
+    ArlecchinoAttack10,
+
+    /// <summary>
+    /// 梦见月瑞希E(hold)：长按 E 低头前进并红箭头索敌特化
+    /// </summary>
+    MizukiEHold
 }
