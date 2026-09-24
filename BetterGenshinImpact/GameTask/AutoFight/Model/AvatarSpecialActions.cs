@@ -6,13 +6,16 @@ using BetterGenshinImpact.Core.Simulator.Extensions;
 using BetterGenshinImpact.GameTask.AutoFight.Assets;
 using BetterGenshinImpact.GameTask.AutoFight.Config;
 using BetterGenshinImpact.GameTask.AutoFight.Script;
+using BetterGenshinImpact.GameTask.Common.BgiVision;
 using BetterGenshinImpact.GameTask.Common.Map;
 using BetterGenshinImpact.GameTask.Model.Area;
 using BetterGenshinImpact.Helpers;
+using BetterGenshinImpact.View.Drawable;
 using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -65,6 +68,10 @@ public static class AvatarSpecialAction
     /// 阿蕾奇诺红血检测区域（1080p 基准，血条中心 3x3）。
     /// </summary>
     private const int RedBloodX = 808, RedBloodY = 1009, RedBloodW = 3, RedBloodH = 3;
+
+    private const int MizukiFrameIntervalMs = 100;
+    private const int MizukiLookDownPixels = 3000;
+    private const int MizukiNoArrowRotatePixels = 300;
 
     /// <summary>
     /// 阿蕾奇诺契量调试叠加层画笔（仅勾选调试日志时绘制：契区域黄色粗框、红血区域橙色粗框）
@@ -955,19 +962,18 @@ public static class AvatarSpecialAction
     private static bool ExecuteMizukiUseSkillSpecialized(Avatar avatar)
     {
         const int maxDurationMs = 10_000;
-        const int frameIntervalMs = 100;
-        const int redArrowLookDownPixels = 3000;
-        const double initialStepX = 20;
+        // 与 PR20 RedArrowAimLoopAsync 保持同一套力度口径：每次只修正当前角度差的 33%。
+        const double initialStepX = 30;
         const double minStepX = 5;
-        const double maxStepX = 120;
-        const double angleToPixel = 30;
-        const int ratioWindowSize = 5;
-        const double expectedStepDegrees = 2;
-        const double keepDownRatio = 0.2;
+        const double maxStepX = 600;
+        const double targetRatio = 0.33;
+        const double emaNewWeight = 0.3;
+        const double stepGain = 0.2;
 
         using (AvatarRecognition.BeginExclusiveOperation())
         {
             var dpi = TaskContext.Instance().DpiScale;
+            var drawResults = AvatarRecognition.GetVisualRecognitionConfig().DrawRecognitionResults;
             var wDown = false;
 
             try
@@ -975,9 +981,12 @@ public static class AvatarSpecialAction
                 // 启动前先执行一次 OCR，并将本次特化的 E CD 按固定 15 秒登记。
                 InitializeMizukiESkillCd(avatar);
 
-                // 梦见月特化启动：无条件点按一次 E，随后大幅低头并持续前进。
+                // 梦见月特化启动：先大幅低头，再无条件点按一次 E，避免 E 的启动动画吞掉低头输入。
+                Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(MizukiLookDownPixels * dpi));
+                Logger.LogInformation("梦见月瑞希特化：已发送初始低头输入，幅度 {Pixels}",
+                    (int)(MizukiLookDownPixels * dpi));
+                Sleep(50, avatar.Ct);
                 Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                Simulation.SendInput.Mouse.MoveMouseBy(0, (int)(redArrowLookDownPixels * dpi));
                 Sleep(50, avatar.Ct);
                 Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
                 wDown = true;
@@ -986,205 +995,216 @@ public static class AvatarSpecialAction
                 var lastFightEndCheckTime = startTime;
                 var dashMissingCount = 0;
                 var stepX = initialStepX;
-                var angleRatios = new List<double>();
+                var emaActualDegrees = 0d;
                 double? lastAngle = null;
+                var lastArrowLogTime = DateTime.MinValue;
+                var lastDrawUpdateTime = DateTime.MinValue;
+                var skippedFinishChecks = 0;
+                var finishConfig = new AutoFightTask.TaskFightFinishDetectConfig(
+                    AvatarRecognition.CurrentAutoFightParam?.FinishDetectConfig ?? new AutoFightParam.FightFinishDetectConfig());
+                var frameStatsWindowStart = Stopwatch.GetTimestamp();
+                var frameStatsTotalMs = 0d;
+                var frameStatsCount = 0;
 
                 while (!avatar.Ct.IsCancellationRequested
                        && (DateTime.UtcNow - startTime).TotalMilliseconds < maxDurationMs)
                 {
-                    // 每轮只截取一次，状态、箭头和战斗结束检测共用当前帧。
-                    using var capture = CaptureToRectArea();
-                    var dashExists = MizukiDashAtSecondPlaceExist(capture);
-                    if (dashExists)
-                    {
-                        dashMissingCount = Math.Max(0, dashMissingCount - 1);
-                    }
-                    else
-                    {
-                        dashMissingCount++;
-                    }
+                    var frameStart = Stopwatch.GetTimestamp();
+                    var drawList = new List<RectDrawable>();
 
-                    if (dashMissingCount >= 3)
+                    // 每轮只截取一次，状态、箭头和战斗结束检测的可见目标判断共用当前帧；
+                    // using 保证正常结束、break 或异常退出当前帧时都能释放截图。
+                    using (var capture = CaptureToRectArea())
                     {
-                        Logger.LogInformation("梦见月瑞希特化退出：连续 3 帧未检测到上车状态");
-                        break;
-                    }
-
-                    if (dashExists)
-                    {
-                        var redArrows = AvatarRecognition.FindRedArrowAngles(capture);
-                        if (redArrows.Count > 0)
+                        var dashExists = MizukiDashAtSecondPlaceExist(capture);
+                        if (dashExists)
                         {
-                            // 选择最接近屏幕正上方（-90°）的红箭头，沿用 PR #20 的自适应步进。
-                            var bestAngle = redArrows
-                                .OrderBy(angle => Math.Abs(MizukiAngleDiffDeg(angle, -90)))
-                                .First();
-
-                            if (lastAngle.HasValue)
-                            {
-                                var actualDegrees = Math.Abs(MizukiAngleDiffDeg(bestAngle, lastAngle.Value));
-                                if (actualDegrees > 1 && stepX > minStepX)
-                                {
-                                    angleRatios.Add(actualDegrees / stepX);
-                                    if (angleRatios.Count > ratioWindowSize)
-                                    {
-                                        angleRatios.RemoveAt(0);
-                                    }
-
-                                    var sortedRatios = angleRatios.OrderBy(ratio => ratio).ToArray();
-                                    var medianRatio = sortedRatios[sortedRatios.Length / 2];
-                                    var predictedDegrees = medianRatio * stepX;
-                                    if (predictedDegrees < expectedStepDegrees)
-                                    {
-                                        stepX = Math.Min(
-                                            stepX * Math.Clamp(expectedStepDegrees / Math.Max(predictedDegrees, 0.01), 1.0, 1.5),
-                                            maxStepX);
-                                    }
-                                    else if (predictedDegrees > expectedStepDegrees * 1.3)
-                                    {
-                                        stepX = Math.Max(stepX * 0.8, minStepX);
-                                    }
-                                }
-                            }
-
-                            var deviation = MizukiAngleDiffDeg(bestAngle, -90);
-                            if (Math.Abs(deviation) > 0.01)
-                            {
-                                var direction = deviation > 0 ? 1 : -1;
-                                var appliedStep = Math.Min(stepX, Math.Abs(deviation) * angleToPixel);
-                                Simulation.SendInput.Mouse.MoveMouseBy(
-                                    (int)(appliedStep * direction * dpi),
-                                    (int)(keepDownRatio * appliedStep * dpi));
-                            }
-
-                            lastAngle = bestAngle;
+                            dashMissingCount = Math.Max(0, dashMissingCount - 1);
                         }
                         else
                         {
-                            // 无红箭头时重置反馈基准，并向右旋转 500 单位，保持当前俯视角度。
-                            lastAngle = null;
-                            angleRatios.Clear();
-                            Simulation.SendInput.Mouse.MoveMouseBy((int)(500 * dpi), 0);
+                            dashMissingCount++;
                         }
-                    }
 
-                    // 距上次检查超过 1 秒时，复用正常战斗结束检测逻辑检查一次。
-                    if ((DateTime.UtcNow - lastFightEndCheckTime).TotalSeconds >= 1)
-                    {
-                        lastFightEndCheckTime = DateTime.UtcNow;
-                        var fightParam = AvatarRecognition.CurrentAutoFightParam;
-                        if (fightParam != null)
+                        if (dashMissingCount >= 3)
                         {
-                            var finishConfig = new AutoFightTask.TaskFightFinishDetectConfig(fightParam.FinishDetectConfig);
-                            if (AutoFightTask.CheckFightFinish(finishConfig, avatar.Ct).Result)
+                            Logger.LogInformation("梦见月瑞希特化退出：连续 3 帧未检测到上车状态");
+                            break;
+                        }
+
+                        if (dashExists)
+                        {
+                            var arrowRects = new List<OpenCvSharp.Rect>();
+                            var redArrows = AvatarRecognition.FindRedArrowAngles(capture, arrowRects);
+                            if ((DateTime.UtcNow - lastArrowLogTime).TotalMilliseconds >= 500)
                             {
-                                Logger.LogInformation("梦见月瑞希特化：检测到战斗结束，提前退出");
-                                break;
+                                lastArrowLogTime = DateTime.UtcNow;
+                                Logger.LogDebug("梦见月瑞希特化：上车={DashExists}，红箭头数量={ArrowCount}",
+                                    dashExists, redArrows.Count);
+                            }
+
+                            if (drawResults)
+                            {
+                                foreach (var rect in arrowRects)
+                                {
+                                    drawList.Add(capture.ToRectDrawable(rect, "mizuki_arrow", _targetPen));
+                                }
+                            }
+
+                            if (redArrows.Count > 0)
+                            {
+                                // 选择最接近屏幕正上方（-90°）的红箭头，沿用 PR #20 的自适应步进。
+                                var bestAngle = redArrows
+                                    .OrderBy(angle => Math.Abs(MizukiAngleDiffDeg(angle, -90)))
+                                    .First();
+                                var deviation = MizukiAngleDiffDeg(bestAngle, -90);
+                                var absDeviation = Math.Abs(deviation);
+
+                                // 沿用原红箭头索敌的自适应逻辑：每帧目标消除当前角度差的 33%，
+                                // 而不是将每帧实际转角固定限制到约 2°。
+                                if (lastAngle.HasValue && absDeviation > 0.5)
+                                {
+                                    var actualDegrees = Math.Abs(MizukiAngleDiffDeg(bestAngle, lastAngle.Value));
+                                    if (actualDegrees > 0.5 && stepX > minStepX)
+                                    {
+                                        emaActualDegrees = emaActualDegrees > 0
+                                            ? emaActualDegrees * (1 - emaNewWeight) + actualDegrees * emaNewWeight
+                                            : actualDegrees;
+                                        var targetDegrees = absDeviation * targetRatio;
+                                        var factor = Math.Clamp(
+                                            targetDegrees / Math.Max(emaActualDegrees, 0.01), 0.2, 5.0);
+                                        if (Math.Abs(factor - 1) > 0.1)
+                                        {
+                                            stepX = Math.Clamp(
+                                                stepX * Math.Pow(factor, stepGain), minStepX, maxStepX);
+                                        }
+                                    }
+                                }
+
+                                var horizontalStep = 0;
+                                if (absDeviation > 0.01)
+                                {
+                                    var direction = deviation > 0 ? 1 : -1;
+                                    // PR20 的实际步进公式：当前角度差 × 目标比例 × 每度力度。
+                                    // 原实现使用 Math.Min(stepX, deviation * 30)，会把大角度误差
+                                    // 几乎全部压成固定小步，且与 PR20 注释所称算法不一致。
+                                    var appliedStep = absDeviation * targetRatio * stepX;
+                                    horizontalStep = (int)(appliedStep * direction * dpi);
+                                }
+
+                                // 红箭头存在时，每帧都使用与启动阶段相同的大力度下压，确保持续保持低头。
+                                Simulation.SendInput.Mouse.MoveMouseBy(
+                                    horizontalStep, (int)(MizukiLookDownPixels * dpi));
+
+                                lastAngle = bestAngle;
+                            }
+                            else
+                            {
+                                // 无红箭头时重置反馈基准，并向右旋转 300 单位，同时保持初始力度持续低头。
+                                lastAngle = null;
+                                emaActualDegrees = 0;
+                                Simulation.SendInput.Mouse.MoveMouseBy(
+                                    (int)(MizukiNoArrowRotatePixels * dpi),
+                                    (int)(MizukiLookDownPixels * dpi));
+                            }
+                        }
+
+                        // DrawContent.Refresh 使用同步 Dispatcher.Invoke；识别仍保持 100ms 一帧，
+                        // 但叠加层最多每 200ms 刷新一次，避免 UI 刷新阻塞索敌循环。
+                        if (drawResults && (DateTime.UtcNow - lastDrawUpdateTime).TotalMilliseconds >= 200)
+                        {
+                            lastDrawUpdateTime = DateTime.UtcNow;
+                            View.Drawable.VisionContext.Instance().DrawContent.PutOrRemoveRectList(
+                                "MizukiSpecialized", drawList);
+                        }
+
+                        // 距上次检查超过 1 秒时，执行一次梦见月特化的本地战斗结束检查。
+                        if ((DateTime.UtcNow - lastFightEndCheckTime).TotalSeconds >= 1)
+                        {
+                            lastFightEndCheckTime = DateTime.UtcNow;
+                            var fightParam = AvatarRecognition.CurrentAutoFightParam;
+                            if (fightParam != null)
+                            {
+                                // 战斗结束检测必须阻断式执行：先松开 W，避免检测期间角色继续前进；
+                                // 检测确认未结束后再补按 W，继续当前特化动作。
+                                if (wDown)
+                                {
+                                    Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+                                    wDown = false;
+                                }
+
+                                var fightFinished = CheckMizukiFightFinish(
+                                    finishConfig, capture, avatar.Ct, ref skippedFinishChecks);
+                                if (fightFinished)
+                                {
+                                    Logger.LogInformation("梦见月瑞希特化：检测到战斗结束，提前退出");
+                                    break;
+                                }
+
+                                if (!avatar.Ct.IsCancellationRequested)
+                                {
+                                    Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+                                    wDown = true;
+                                }
                             }
                         }
                     }
 
-                    Sleep(frameIntervalMs, avatar.Ct);
+                    Sleep(MizukiFrameIntervalMs, avatar.Ct);
+
+                    frameStatsTotalMs += (Stopwatch.GetTimestamp() - frameStart) * 1000d / Stopwatch.Frequency;
+                    frameStatsCount++;
+                    var statsWindowElapsedMs = (Stopwatch.GetTimestamp() - frameStatsWindowStart) * 1000d /
+                                               Stopwatch.Frequency;
+                    if (statsWindowElapsedMs >= 1000 && frameStatsCount > 0)
+                    {
+                        Logger.LogInformation(
+                            "梦见月瑞希特化：过去 {WindowMs:F0} ms 完成 {FrameCount} 帧，平均帧耗时 {AverageFrameMs:F1} ms",
+                            statsWindowElapsedMs, frameStatsCount, frameStatsTotalMs / frameStatsCount);
+                        frameStatsWindowStart = Stopwatch.GetTimestamp();
+                        frameStatsTotalMs = 0;
+                        frameStatsCount = 0;
+                    }
                 }
             }
             finally
             {
+                View.Drawable.VisionContext.Instance().DrawContent.RemoveRect("MizukiSpecialized");
+
                 if (wDown)
                 {
                     Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
                 }
 
-                // 优先切换到万叶，其次切换到琴；两者都不存在时再尝试切换到
-                // 1~4 号位中第一个非梦见月瑞希角色。切人失败或队伍中没有可用
-                // 角色时，继续使用点按 E 直到黄色上车标识消失的兜底逻辑。
-                var exitAvatar = FindMizukiExitAvatar(avatar);
-                var switchedToExitAvatar = false;
-                if (exitAvatar != null)
+                // 始终使用点按 E 结束技能，直到黄色上车标识消失。
+                try
                 {
-                    // 切换后右下角技能图标属于新角色，因此必须在切换前记录梦见月瑞希 CD。
-                    RecordMizukiESkillCd(avatar);
-                    switchedToExitAvatar = TrySwitchMizukiExitAvatar(exitAvatar);
-                }
-
-                if (!switchedToExitAvatar)
-                {
-                    try
+                    while (!avatar.Ct.IsCancellationRequested)
                     {
-                        while (!avatar.Ct.IsCancellationRequested)
+                        using var capture = CaptureToRectArea();
+                        if (!MizukiDashAtSecondPlaceExist(capture))
                         {
-                            using var capture = CaptureToRectArea();
-                            if (!MizukiDashAtSecondPlaceExist(capture))
-                            {
-                                break;
-                            }
-
-                            Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
-                            Sleep(frameIntervalMs);
+                            break;
                         }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // 任务取消时优先退出清理流程，避免阻塞任务结束。
-                    }
 
-                    // 兜底点按 E 结束技能后，重新检测一次梦见月瑞希的 E CD。
-                    RecordMizukiESkillCd(avatar);
+                        Simulation.SendInput.SimulateAction(GIActions.ElementalSkill);
+                        Sleep(MizukiFrameIntervalMs);
+                    }
                 }
+                catch (OperationCanceledException)
+                {
+                    // 任务取消时优先退出清理流程，避免阻塞任务结束。
+                }
+
+                // 点按 E 退出技能后再额外点击一次中键，回正视角。
+                Simulation.SendInput.Mouse.MiddleButtonClick();
+
+                // 点按 E 结束技能后，重新检测一次梦见月瑞希的 E CD。
+                RecordMizukiESkillCd(avatar);
             }
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// 尝试通过切换角色结束梦见月瑞希的技能动作。
-    /// 优先级：枫原万叶、琴、1~4 号位中第一个非梦见月瑞希角色。
-    /// </summary>
-    private static Avatar? FindMizukiExitAvatar(Avatar mizuki)
-    {
-        var combatScenes = mizuki.CombatScenes;
-        // 联机等场景可能只识别到当前出战角色，此时不能发送切人键，直接走按 E 兜底。
-        if (combatScenes.AvatarCount <= 1)
-        {
-            Logger.LogDebug("梦见月瑞希特化退出：当前仅有一个可用角色，使用按 E 兜底");
-            return null;
-        }
-
-        var target = combatScenes.SelectAvatar("枫原万叶") ?? combatScenes.SelectAvatar("琴");
-        if (target == null)
-        {
-            target = combatScenes.GetAvatars()
-                .Where(candidate => candidate.Index is >= 1 and <= 4
-                                    && !candidate.Name.Equals("梦见月瑞希", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(candidate => candidate.Index)
-                .FirstOrDefault();
-        }
-
-        if (target == null)
-        {
-            Logger.LogDebug("梦见月瑞希特化退出：队伍中没有可用的切换角色，使用按 E 兜底");
-            return null;
-        }
-
-        return target;
-    }
-
-    private static bool TrySwitchMizukiExitAvatar(Avatar target)
-    {
-        try
-        {
-            Logger.LogInformation("梦见月瑞希特化退出：切换到 {Name} 结束技能动作", target.Name);
-            return target.TrySwitch(4);
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "梦见月瑞希特化退出：切换到 {Name} 失败，使用按 E 兜底", target.Name);
-            return false;
-        }
     }
 
     /// <summary>
@@ -1275,6 +1295,131 @@ public static class AvatarSpecialAction
         if (diff <= -180) diff += 360;
         else if (diff > 180) diff -= 360;
         return diff;
+    }
+
+    /// <summary>
+    /// 梦见月特化专用战斗结束检查：不调用 AutoFightTask 的完整流程，
+    /// 只保留敌人可见跳过、直接按 L、派蒙检测和编队色块确认。
+    /// 返回 true 只表示当前特化应退出，不改变全局战斗结束状态。
+    /// </summary>
+    private static bool CheckMizukiFightFinish(
+        AutoFightTask.TaskFightFinishDetectConfig config,
+        ImageRegion currentCapture,
+        CancellationToken ct,
+        ref int skippedChecks)
+    {
+        if (config.BlockCheckBeforeBattleSeconds > 0 &&
+            (DateTime.Now - AutoFightTask.FightStartTime).TotalSeconds < config.BlockCheckBeforeBattleSeconds)
+        {
+            return false;
+        }
+
+        // 沿用“敌人可见时跳过战斗结束检查”配置：血条、伤害数字或红箭头任一可见即跳过。
+        if (config.SkipFightEndCheckWhenEnemyVisible && skippedChecks < 5)
+        {
+            var bars = AvatarRecognition.FindBloodBars(currentCapture);
+            var hasEnemyBar = bars.Any(bar => bar.x > (int)(200 * AssetScale));
+            var hasDamageNumber = !hasEnemyBar && AvatarRecognition.FindDamageNumber(currentCapture).HasValue;
+            var hasRedArrow = !hasEnemyBar && !hasDamageNumber &&
+                              AvatarRecognition.FindRedArrowAngles(currentCapture).Count > 0;
+            if (hasEnemyBar || hasDamageNumber || hasRedArrow)
+            {
+                skippedChecks++;
+                Logger.LogDebug("梦见月瑞希特化：检测到战斗目标，跳过结束检查（连续跳过 {Count} 次）",
+                    skippedChecks);
+                return false;
+            }
+        }
+
+        skippedChecks = 0;
+
+        // 无红箭头时的持续旋转不会阻断战斗结束检查；检查期间保持旋转，避免主循环暂停后
+        // 重新按 W 前视角没有继续搜索而导致角色沿直线跑远。此任务只在真正进入检查时启动，
+        // 敌人可见而跳过检查时不会误触发兜底旋转。
+        using var noArrowRotationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var noArrowRotationTask = RunMizukiNoArrowRotationAsync(
+            TaskContext.Instance().DpiScale, noArrowRotationCts.Token);
+        try
+        {
+            // 不等待按 L 前的前置延时，直接打开编队界面。
+            Simulation.SendInput.SimulateAction(GIActions.OpenPartySetupScreen);
+
+            if (config.PaimonEndCheckEnabled)
+            {
+                Sleep(config.PaimonEndCheckDelayMs, ct);
+                using var paimonCapture = CaptureToRectArea();
+                if (Bv.IsInMainUi(paimonCapture))
+                {
+                    // L 未打开编队界面，按 X 取消本次检查。
+                    Simulation.SendInput.SimulateAction(GIActions.Drop);
+                    return false;
+                }
+
+                // 派蒙头像消失即表示编队界面已成功打开；按要求不再等待后续黄条检测，
+                // 直接结束梦见月当前特化动作。先关闭编队界面，避免 finally 中按 E 时仍停留在菜单内。
+                Simulation.SendInput.SimulateAction(GIActions.OpenPartySetupScreen);
+                Logger.LogInformation("梦见月瑞希特化：派蒙头像消失，直接退出当前特化");
+                return true;
+            }
+
+            Sleep(config.DetectDelayTime, ct);
+
+            using var finishCapture = CaptureToRectArea();
+            var progressColor = finishCapture.SrcMat.At<Vec3b>(50, 790);
+            var whiteTile = finishCapture.SrcMat.At<Vec3b>(50, 768);
+            Simulation.SendInput.SimulateAction(GIActions.Drop);
+
+            var fightFinished = IsMizukiWhite(whiteTile.Item2, whiteTile.Item1, whiteTile.Item0) &&
+                                IsMizukiYellow(progressColor.Item2, progressColor.Item1, progressColor.Item0);
+            if (fightFinished)
+            {
+                // 关闭编队界面，但只通知当前特化退出，不结束整个战斗任务。
+                Simulation.SendInput.SimulateAction(GIActions.OpenPartySetupScreen);
+                Logger.LogInformation("梦见月瑞希特化：本地检测到战斗结束，退出当前特化");
+            }
+
+            return fightFinished;
+        }
+        finally
+        {
+            noArrowRotationCts.Cancel();
+            try
+            {
+                noArrowRotationTask.GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                // 旋转任务随战斗结束检查正常停止。
+            }
+        }
+    }
+
+    private static async Task RunMizukiNoArrowRotationAsync(double dpi, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                Simulation.SendInput.Mouse.MoveMouseBy(
+                    (int)(MizukiNoArrowRotatePixels * dpi),
+                    (int)(MizukiLookDownPixels * dpi));
+                await Task.Delay(MizukiFrameIntervalMs, ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 检查结束后停止旋转任务。
+        }
+    }
+
+    private static bool IsMizukiYellow(int r, int g, int b)
+    {
+        return r is >= 200 and <= 255 && g is >= 200 and <= 255 && b is >= 0 and <= 100;
+    }
+
+    private static bool IsMizukiWhite(int r, int g, int b)
+    {
+        return r >= 240 && g >= 240 && b >= 240;
     }
 
     /// <summary>
