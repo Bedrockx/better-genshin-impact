@@ -1671,8 +1671,8 @@
                                 <ui:ToggleSwitch Grid.Column="1"
                                                  Margin="0,0,36,0"
                                                  IsChecked="{Binding PathingConfig.AutoFightConfig.EnableCombatTargeting, Mode=TwoWay}" />
-                            </Grid>
-                            <Grid Margin="16,4,16,16">
+                             </Grid>
+                             <Grid Margin="16,4,16,16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -1769,9 +1769,21 @@
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.None}">空白</ComboBoxItem>
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">恰斯卡E(hold)</ComboBoxItem>
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">阿蕾奇诺a(10)</ComboBoxItem>
-                                </ComboBox>
-                            </Grid>
-                            <Grid Margin="16,4,16,16">
+                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.MizukiEHold}">梦见月瑞希E(hold)</ComboBoxItem>
+                                 </ComboBox>
+                             </Grid>
+                             <StackPanel>
+                                 <StackPanel.Style>
+                                     <Style TargetType="StackPanel">
+                                         <Setter Property="Visibility" Value="Visible" />
+                                         <Style.Triggers>
+                                             <DataTrigger Binding="{Binding PathingConfig.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.MizukiEHold}">
+                                                 <Setter Property="Visibility" Value="Collapsed" />
+                                             </DataTrigger>
+                                         </Style.Triggers>
+                                     </Style>
+                                 </StackPanel.Style>
+                             <Grid Margin="16,4,16,16">
                                 <Grid.Style>
                                     <Style TargetType="Grid">
                                         <Setter Property="Visibility" Value="Visible" />
@@ -2431,8 +2443,9 @@
                                             Width="120"
                                             Margin="0,0,36,0"
                                             Text="{Binding PathingConfig.AutoFightConfig.ArlecchinoFightEndCheckRound}" />
-                            </Grid>
-                        </StackPanel>
+                             </Grid>
+                             </StackPanel>
+                         </StackPanel>
                     </ui:CardExpander>
                     </Grid>
                     

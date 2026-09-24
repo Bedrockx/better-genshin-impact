@@ -1040,8 +1040,20 @@
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.None}">空白</ComboBoxItem>
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ChascaEHold}">恰斯卡E(hold)</ComboBoxItem>
                                     <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.ArlecchinoAttack10}">阿蕾奇诺a(10)</ComboBoxItem>
+                                    <ComboBoxItem Tag="{x:Static autofight:AvatarSpecializationType.MizukiEHold}">梦见月瑞希E(hold)</ComboBoxItem>
                                 </ComboBox>
                             </Grid>
+                            <StackPanel>
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Config.AutoFightConfig.AvatarSpecialization}" Value="{x:Static autofight:AvatarSpecializationType.MizukiEHold}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
                             <Grid Margin="16,4,16,16">
                                 <Grid.Style>
                                     <Style TargetType="Grid">
@@ -1703,6 +1715,7 @@
                                             Margin="0,0,36,0"
                                             Text="{Binding Config.AutoFightConfig.ArlecchinoFightEndCheckRound}" />
                             </Grid>
+                            </StackPanel>
                         </StackPanel>
                     </ui:CardExpander>
                 </Grid>
