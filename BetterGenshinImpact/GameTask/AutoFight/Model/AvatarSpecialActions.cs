@@ -962,11 +962,11 @@ public static class AvatarSpecialAction
     private static bool ExecuteMizukiUseSkillSpecialized(Avatar avatar)
     {
         const int maxDurationMs = 10_000;
-        // 与 PR20 RedArrowAimLoopAsync 保持同一套力度口径：每次只修正当前角度差的 33%。
+        // 梦见月特化每帧修正当前角度差的 50%。
         const double initialStepX = 30;
         const double minStepX = 5;
         const double maxStepX = 600;
-        const double targetRatio = 0.33;
+        const double targetRatio = 0.50;
         const double emaNewWeight = 0.3;
         const double stepGain = 0.2;
 
@@ -1060,7 +1060,7 @@ public static class AvatarSpecialAction
                                 var deviation = MizukiAngleDiffDeg(bestAngle, -90);
                                 var absDeviation = Math.Abs(deviation);
 
-                                // 沿用原红箭头索敌的自适应逻辑：每帧目标消除当前角度差的 33%，
+                                // 梦见月特化每帧目标消除当前角度差的 50%，
                                 // 而不是将每帧实际转角固定限制到约 2°。
                                 if (lastAngle.HasValue && absDeviation > 0.5)
                                 {
