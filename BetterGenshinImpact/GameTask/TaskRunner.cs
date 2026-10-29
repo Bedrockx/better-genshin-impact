@@ -13,6 +13,8 @@ using static BetterGenshinImpact.GameTask.Common.TaskControl;
 using BetterGenshinImpact.Service;
 using BetterGenshinImpact.Service.Notification;
 using BetterGenshinImpact.Service.Notification.Model.Enum;
+using BetterGenshinImpact.ViewModel;
+using BetterGenshinImpact.Infrastructure.NetworkRecovery;
 
 namespace BetterGenshinImpact.GameTask;
 
@@ -43,7 +45,11 @@ public class TaskRunner
     /// <param name="resetCancellationContext">任务开始时是否重建 CancellationContext。</param>
     /// <param name="clearCancellationContextOnLockFailure">获取信号量锁失败时是否清理 CancellationContext。</param>
     /// <returns></returns>
-    public async Task RunCurrentAsync(Func<Task> action, bool resetCancellationContext = true, bool clearCancellationContextOnLockFailure = false)
+    public async Task RunCurrentAsync(
+        Func<Task> action,
+        bool resetCancellationContext = true,
+        bool clearCancellationContextOnLockFailure = false,
+        TaskExecutionContext? recoveryContext = null)
     {
         // 加锁
         var hasLock = await TaskSemaphore.WaitAsync(0);
@@ -67,6 +73,11 @@ public class TaskRunner
                 CancellationContext.Instance.Set();
             }
             RunnerContext.Instance.Clear();
+
+            if (recoveryContext is { } taskContext)
+            {
+                App.GetService<IRecoverySession>()?.BeginTask(taskContext);
+            }
 
             await action();
         }
@@ -103,6 +114,10 @@ public class TaskRunner
 
             CancellationContext.Instance.Clear();
             RunnerContext.Instance.Clear();
+            if (recoveryContext is { } completedTaskContext)
+            {
+                App.GetService<IRecoverySession>()?.CompleteTask(completedTaskContext.TaskId);
+            }
 
             // 释放锁
             if (hasLock)
@@ -117,9 +132,9 @@ public class TaskRunner
         Task.Run(() => RunCurrentAsync(action));
     }
 
-    public async Task RunThreadAsync(Func<Task> action)
+    public async Task RunThreadAsync(Func<Task> action, TaskExecutionContext? recoveryContext = null)
     {
-        await Task.Run(() => RunCurrentAsync(action));
+        await Task.Run(() => RunCurrentAsync(action, recoveryContext: recoveryContext));
     }
 
     public async Task RunSoloTaskAsync(ISoloTask soloTask)
