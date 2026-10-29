@@ -1,15 +1,16 @@
+using BetterGenshinImpact.Core.Input;
 using System;
-using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Simulator;
+using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception;
 using BetterGenshinImpact.GameTask.Model.Area;
 using Fischless.GameCapture;
 using Microsoft.Extensions.Logging;
 using OpenCvSharp;
-using Vanara.PInvoke;
 using BetterGenshinImpact.Core.Simulator.Extensions;
+using BetterGenshinImpact.Infrastructure.NetworkRecovery;
 
 namespace BetterGenshinImpact.GameTask.Common;
 
@@ -38,64 +39,35 @@ public class TaskControl
         Thread.Sleep(millisecondsTimeout);
     }
 
-    private static bool IsKeyPressed(User32.VK key)
+    public static void TrySuspend(CancellationToken cancellationToken = default)
     {
-        // 获取按键状态
-        var state = User32.GetAsyncKeyState((int)key);
-
-        // 检查高位是否为 1（表示按键被按下）
-        return (state & 0x8000) != 0;
-    }
-
-    public static void TrySuspend()
-    {
-        
-        var first = true;
-        //此处为了记录最开始的暂停状态
-        var isSuspend = RunnerContext.Instance.IsSuspend;
-        while (RunnerContext.Instance.IsSuspend)
+        var effectiveCancellationToken = cancellationToken.CanBeCanceled
+            ? cancellationToken
+            : CancellationContext.Instance.Cts.Token;
+        App.GetService<INetworkHealthMonitor>()?.RequestCheck(effectiveCancellationToken);
+        if (App.GetService<IPauseCoordinator>() is { } pauseCoordinator)
         {
-            if (first)
-            {
-                RunnerContext.Instance.StopAutoPick();
-                //使快捷键本身释放
-                Thread.Sleep(300);
-                foreach (User32.VK key in Enum.GetValues(typeof(User32.VK)))
-                {
-                    // 检查键是否被按下
-                    if (IsKeyPressed(key)) // 强制转换 VK 枚举为 int
-                    {
-                        Logger.LogWarning($"解除{key}的按下状态.");
-                        Simulation.SendInput.Keyboard.KeyUp(key);
-                    }
-                }
-
-                Logger.LogWarning("快捷键触发暂停，等待解除");
-                foreach (var item in RunnerContext.Instance.SuspendableDictionary)
-                {
-                    item.Value.Suspend();
-                }
-
-                first = false;
-            }
-
-            Thread.Sleep(1000);
-        }
-
-        //从暂停中解除
-        if (isSuspend)
-        {
-            Logger.LogWarning("暂停已经解除");
-            RunnerContext.Instance.ResumeAutoPick();
-            foreach (var item in RunnerContext.Instance.SuspendableDictionary)
-            {
-                item.Value.Resume();
-            }
+            pauseCoordinator.WaitIfPaused(effectiveCancellationToken);
+            return;
         }
     }
 
     private static void CheckAndActivateGameWindow()
     {
+        var window = TaskContext.Instance().Runtime?.Window;
+        if (window is { RequiresForeground: false })
+        {
+            // 输入不依赖前台的运行环境（网页版）不检查焦点、不抢前台，
+            // 只保证窗口没有最小化：最小化后截图器拿不到新帧
+            if (window.IsMinimized)
+            {
+                Logger.LogInformation("游戏窗口已最小化，尝试还原");
+                window.Activate();
+            }
+
+            return;
+        }
+
         if (!TaskContext.Instance().Config.OtherConfig.RestoreFocusOnLostEnabled)
         {
             if (!SystemControl.IsGenshinImpactActiveByProcess())
@@ -146,7 +118,7 @@ public class TaskControl
                 throw new NormalEndException("取消自动任务");
             }
 
-            TrySuspend();
+            TrySuspend(ct);
             CheckAndActivateGameWindow();
         }, TimeSpan.FromSeconds(1), 100);
         Thread.Sleep(millisecondsTimeout);
@@ -175,7 +147,7 @@ public class TaskControl
                 throw new NormalEndException("取消自动任务");
             }
 
-            TrySuspend();
+            TrySuspend(ct);
             CheckAndActivateGameWindow();
         }, TimeSpan.FromSeconds(1), 100);
         await Task.Delay(millisecondsTimeout, ct);
@@ -195,12 +167,12 @@ public class TaskControl
     {
         try
         {
-            Simulation.SendInput.SimulateAction(action, KeyType.KeyDown);
+            InputHub.Foreground.SimulateAction(action, KeyType.KeyDown);
             await Delay(holdMs, ct);
         }
         finally
         {
-            Simulation.SendInput.SimulateAction(action, KeyType.KeyUp);        
+            InputHub.Foreground.SimulateAction(action, KeyType.KeyUp);        
         }
     }
 
@@ -221,7 +193,7 @@ public class TaskControl
     {
         if (releaseLeftMouseBefore)
         {
-            Simulation.SendInput.Mouse.LeftButtonUp();
+            InputHub.Foreground.Mouse.LeftButtonUp();
             await Delay(releaseLeftMouseDelayMs, ct);
         }
 
@@ -248,16 +220,16 @@ public class TaskControl
         {
             for (var i = 0; i < repeatCount; i++)
             {
-                Simulation.SendInput.Mouse.LeftButtonUp();
+                InputHub.Foreground.Mouse.LeftButtonUp();
                 await Delay(preUpDelayMs, ct);
-                Simulation.SendInput.Mouse.LeftButtonDown();
+                InputHub.Foreground.Mouse.LeftButtonDown();
                 try
                 {
                     await Delay(downHoldMs, ct);
                 }
                 finally
                 {
-                    Simulation.SendInput.Mouse.LeftButtonUp();
+                    InputHub.Foreground.Mouse.LeftButtonUp();
                 }
 
                 await Delay(postUpDelayMs, ct);
@@ -265,7 +237,7 @@ public class TaskControl
         }
         finally
         {
-            Simulation.SendInput.Mouse.LeftButtonUp();
+            InputHub.Foreground.Mouse.LeftButtonUp();
         }
     }
 
@@ -310,7 +282,9 @@ public class TaskControl
     /// <returns></returns>
     public static ImageRegion CaptureToRectArea(bool forceNew = false)
     {
-        var image = CaptureGameImage(TaskTriggerDispatcher.GlobalGameCapture);
+        var capture = TaskContext.Instance().Runtime?.Capture
+                      ?? throw new InvalidOperationException("截图器未初始化!");
+        var image = CaptureGameImage(capture);
         var content = new CaptureContent(image, 0, 0);
         return content.CaptureRectArea;
     }

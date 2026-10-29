@@ -1,6 +1,7 @@
 using System;
 using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.Model;
+using BetterGenshinImpact.GameTask.Common.Job;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BetterGenshinImpact.Core.Config;
@@ -21,6 +22,9 @@ public partial class OtherConfig : ObservableObject
     //服务器时区偏移量
     [ObservableProperty]
     private TimeSpan _serverTimeZoneOffset = TimeSpan.FromHours(8);
+    //物品图标识别模型
+    [ObservableProperty]
+    private ItemIconRecognitionMode _itemIconRecognitionMode = ItemIconRecognitionMode.Item;
     [ObservableProperty]
     private AutoRestart _autoRestartConfig = new();
     //锄地规划
@@ -32,7 +36,18 @@ public partial class OtherConfig : ObservableObject
     //OCR配置
     [ObservableProperty]
     private Ocr _ocrConfig = new();
-    
+
+    /// <summary>
+    /// 按配置地址探测网络健康状态，并在连续失败后暂停任务。
+    /// </summary>
+    [ObservableProperty]
+    private bool _networkHealthMonitoringEnabled = false;
+
+    /// <summary>
+    /// 网络健康探测地址，支持主机名或 IP 地址。
+    /// </summary>
+    [ObservableProperty]
+    private string _networkProbeTarget = "www.baidu.com";
 
     public partial class AutoRestart : ObservableObject
     {

@@ -19,6 +19,18 @@ public partial class OneDragonFlowConfig : ObservableObject
     private string _nextTaskId = string.Empty;
 
     /// <summary>
+    /// 断点续跑模式：禁用断点续跑 / 每日刷新（凌晨4点后清除标记）/ 每次启动刷新（启动软件时清除标记）/ 永不刷新
+    /// </summary>
+    [ObservableProperty]
+    private string _autoResumeMode = "禁用断点续跑";
+
+    /// <summary>
+    /// 断点续跑标记时间戳（UTC），用于"每日刷新"模式判断是否跨越了凌晨4点
+    /// </summary>
+    [ObservableProperty]
+    private DateTime? _autoResumeTimestamp = null;
+
+    /// <summary>
     /// 所有任务的开关状态（键为任务 Id）
     /// </summary>
     public Dictionary<string, bool> TaskEnabledList { get; set; } = new();
@@ -69,6 +81,12 @@ public partial class OneDragonFlowConfig : ObservableObject
     private int _autoBossRunCount = 1;
 
     [ObservableProperty]
+    private int _autoBossTotalRunCountLimit = 0;
+
+    [ObservableProperty]
+    private int _autoBossCompletedRunCount = 0;
+
+    [ObservableProperty]
     private bool _autoBossUseTransientResin = false;
 
     [ObservableProperty]
@@ -101,6 +119,22 @@ public partial class OneDragonFlowConfig : ObservableObject
         if (value < 1)
         {
             AutoBossRunCount = 1;
+        }
+    }
+
+    partial void OnAutoBossTotalRunCountLimitChanged(int value)
+    {
+        if (value < 0)
+        {
+            AutoBossTotalRunCountLimit = 0;
+        }
+    }
+
+    partial void OnAutoBossCompletedRunCountChanged(int value)
+    {
+        if (value < 0)
+        {
+            AutoBossCompletedRunCount = 0;
         }
     }
 
@@ -294,7 +328,11 @@ public partial class OneDragonFlowConfig : ObservableObject
 
     // 完成后操作
     [ObservableProperty]
-    private string _completionAction = string.Empty;
+    private string _completionAction = "无";
+
+    // 完成后操作启动的一条龙配置名（空表示自身）
+    [ObservableProperty]
+    private string _restartOneDragonName = string.Empty;
     
     // 通过当天（4点起始）是哪一天来返回配置
     public (string partyName, string domainName, string sundaySelectedValue) GetDomainConfig()

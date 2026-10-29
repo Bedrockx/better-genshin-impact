@@ -1,13 +1,12 @@
-﻿using BetterGenshinImpact.Core.Script;
+using BetterGenshinImpact.Core.Input;
+using BetterGenshinImpact.Core.Script;
 using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception;
 
 using BetterGenshinImpact.View;
-using BetterGenshinImpact.View.Drawable;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using BetterGenshinImpact.Core.Simulator;
 using BetterGenshinImpact.Helpers;
 using Wpf.Ui.Violeta.Controls;
 using static BetterGenshinImpact.GameTask.Common.TaskControl;
@@ -15,6 +14,7 @@ using BetterGenshinImpact.Service;
 using BetterGenshinImpact.Service.Notification;
 using BetterGenshinImpact.Service.Notification.Model.Enum;
 using BetterGenshinImpact.ViewModel;
+using BetterGenshinImpact.Infrastructure.NetworkRecovery;
 
 namespace BetterGenshinImpact.GameTask;
 
@@ -45,7 +45,11 @@ public class TaskRunner
     /// <param name="resetCancellationContext">任务开始时是否重建 CancellationContext。</param>
     /// <param name="clearCancellationContextOnLockFailure">获取信号量锁失败时是否清理 CancellationContext。</param>
     /// <returns></returns>
-    public async Task RunCurrentAsync(Func<Task> action, bool resetCancellationContext = true, bool clearCancellationContextOnLockFailure = false)
+    public async Task RunCurrentAsync(
+        Func<Task> action,
+        bool resetCancellationContext = true,
+        bool clearCancellationContextOnLockFailure = false,
+        TaskExecutionContext? recoveryContext = null)
     {
         // 加锁
         var hasLock = await TaskSemaphore.WaitAsync(0);
@@ -69,6 +73,11 @@ public class TaskRunner
                 CancellationContext.Instance.Set();
             }
             RunnerContext.Instance.Clear();
+
+            if (recoveryContext is { } taskContext)
+            {
+                App.GetService<IRecoverySession>()?.BeginTask(taskContext);
+            }
 
             await action();
         }
@@ -105,6 +114,10 @@ public class TaskRunner
 
             CancellationContext.Instance.Clear();
             RunnerContext.Instance.Clear();
+            if (recoveryContext is { } completedTaskContext)
+            {
+                App.GetService<IRecoverySession>()?.CompleteTask(completedTaskContext.TaskId);
+            }
 
             // 释放锁
             if (hasLock)
@@ -119,9 +132,9 @@ public class TaskRunner
         Task.Run(() => RunCurrentAsync(action));
     }
 
-    public async Task RunThreadAsync(Func<Task> action)
+    public async Task RunThreadAsync(Func<Task> action, TaskExecutionContext? recoveryContext = null)
     {
-        await Task.Run(() => RunCurrentAsync(action));
+        await Task.Run(() => RunCurrentAsync(action, recoveryContext: recoveryContext));
     }
 
     public async Task RunSoloTaskAsync(ISoloTask soloTask)
@@ -154,42 +167,40 @@ public class TaskRunner
             throw new NormalEndException("请先在启动页，启动截图器再使用本功能");
         }
 
-        // 清空实时任务触发器
-        TaskTriggerDispatcher.Instance().ClearTriggers();
-        
-        // 隐藏地图遮罩
-        UIDispatcherHelper.Invoke(() =>
-        {
-            if (MaskWindow.InstanceNullable() != null)
-            {
-                if (MaskWindow.Instance().DataContext is MaskWindowViewModel vm)
-                {
-                    vm.IsInBigMapUi = false;
-                }
-            }
-        });
-        VisionContext.Instance().DrawContent.ClearAll(); 
-        
-        // 激活原神窗口
-        var maskWindow = MaskWindow.Instance();
+        // 进入任务模式：用户开启的实时触发器在下一帧停用，任务期间只运行任务或脚本通过 AddTrigger 启用的触发器
+        TaskTriggerDispatcher.Instance().BeginTask();
+
+        // 地图遮罩触发器停用时也会复位，但要等下一帧；这里同步复位，保证任务第一次点击之前恢复点击穿透
+        // 清空绘制内容（上面已确认截图器在运行，当前运行环境一定存在）
+        var runtime = TaskContext.Instance().Runtime;
+        runtime?.MaskWindowMapState.Reset();
+        runtime?.MaskWindowDrawingBoard.ClearAll();
+
+        // 激活原神窗口；遮罩的显示由下一帧上报给 IMaskWindowHost 后自动恢复
         SystemControl.ActivateWindow();
-        maskWindow.Invoke(maskWindow.Show);
+
+        // 游戏获焦后再释放，避免鼠标抬起事件落到 BGI 界面。
+        // [输入状态安全] 任务启动前释放所有残留按键。
+        // 助手触发命令时，游戏角色可能正在赶路/鼓舞（W/Shift/空格等长按），按键可能残留按下状态。
+        // 若不在新任务开始前释放，残留按键会导致新任务角色持续移动或行为异常。
+        // 与 End() 结尾的 ReleaseAllKey() 对称，保证任务以干净的输入状态进入。
+        InputHub.ReleaseAll();
     }
 
     public void End()
     {
+        // 退出任务模式，下一帧按用户配置恢复实时触发器。
+        // 放在最前面：即使截图器已在任务中停止，也要保证下次启动后不再停留在任务模式
+        TaskTriggerDispatcher.InstanceNullable()?.EndTask();
+
         if (!TaskContext.Instance().IsInitialized)
         {
             return;
         }
 
-        Simulation.ReleaseAllKey();
+        InputHub.ReleaseAll();
 
-        // 还原实时任务触发器
-        TaskTriggerDispatcher.Instance().ClearTriggers();
-        TaskTriggerDispatcher.Instance().SetTriggers(GameTaskManager.LoadInitialTriggers());
-
-        VisionContext.Instance().DrawContent.ClearAll();
+        TaskContext.Instance().Runtime?.MaskWindowDrawingBoard.ClearAll();
         HtmlMaskWindow.CloseAll();
     }
 
