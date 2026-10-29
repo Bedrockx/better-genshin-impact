@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using BetterGenshinImpact.GameTask.AutoFight;
 using BetterGenshinImpact.GameTask.AutoFight.Script;
 using BetterGenshinImpact.GameTask.AutoLeyLineOutcrop;
+using BetterGenshinImpact.GameTask.AutoPick;
 using BetterGenshinImpact.GameTask.AutoStygianOnslaught;
 using BetterGenshinImpact.GameTask.Common;
 
@@ -66,7 +67,7 @@ public class Dispatcher
     }
 
     /// <summary>
-    /// 清理所有实时任务
+    /// 清理所有实时任务（清空任务期间的启用名单，不销毁触发器实例）
     /// </summary>
     public void ClearAllTriggers()
     {
@@ -92,7 +93,8 @@ public class Dispatcher
             throw new ArgumentNullException(nameof(realtimeTimer.Name), "实时任务名称不能为空");
         }
 
-        if (!TaskTriggerDispatcher.Instance().AddTrigger(realtimeTimer.Name, realtimeTimer.Config))
+        // 加入任务期间的启用名单。脚本不需要中途撤销，名单在下一次 clearAllTriggers、项目切换或任务结束时整体清空
+        if (TaskTriggerDispatcher.Instance().AddTrigger(realtimeTimer.Name, realtimeTimer.Config) is null)
         {
             throw new ArgumentException($"添加实时任务失败: {realtimeTimer.Name}", nameof(realtimeTimer.Name));
         }
@@ -280,31 +282,24 @@ public class Dispatcher
                     {
                         throw new NullReferenceException($"{nameof(soloTask.Config)}为空");
                     }
-                    GridScreenName gridScreenName = ScriptObjectConverter.GetValue((ScriptObject)soloTask.Config, "gridScreenName", (GridScreenName?)null) ?? throw new Exception("gridScreenName为空或错误");
-                    string? itemName = ScriptObjectConverter.GetValue((ScriptObject)soloTask.Config, "itemName", (string?)null);
+                    GridScreenName? gridScreenName = ScriptObjectConverter.GetValue((ScriptObject)soloTask.Config, "gridScreenName", (GridScreenName?)null);
+                    bool stopByItemSort = ScriptObjectConverter.GetValue((ScriptObject)soloTask.Config, "stopByItemSort", false);
                     IEnumerable<string>? itemNames = ScriptObjectConverter.GetValue<string>((ScriptObject)soloTask.Config, "itemNames");
                     CountInventoryItemParam param = new()
                     {
                         GridScreenName = gridScreenName,
-                        ItemName = itemName,
+                        StopByItemSort = stopByItemSort,
                         ItemNames = itemNames?.ToList() ?? []
                     };
 
                     var result = await new CountInventoryItem(param).Start(cancellationToken);
-                    if (param.ItemName != null)
+                    dynamic expando = new ExpandoObject();
+                    var expandoDict = (IDictionary<string, object>)expando;
+                    foreach (var kvp in (Dictionary<string, int>)result)
                     {
-                        return result;
+                        expandoDict[kvp.Key] = kvp.Value;
                     }
-                    else
-                    {
-                        dynamic expando = new ExpandoObject();
-                        var expandoDict = (IDictionary<string, object>)expando;
-                        foreach (var kvp in (Dictionary<string, int>)result)
-                        {
-                            expandoDict[kvp.Key] = kvp.Value;
-                        }
-                        return expandoDict;
-                    }
+                    return expandoDict;
                 }
             default:
                 throw new ArgumentException($"未知的任务名称: {soloTask.Name}", nameof(soloTask.Name));
@@ -323,6 +318,32 @@ public class Dispatcher
         return GetLinkedCancellationTokenSource().Token;
     }
     
+    /// <summary>
+    /// 获取自动拾取记录（仅莫版拾取路径产生：拾取交互时的物品名 + 时间戳）并清空记录。
+    /// JS 侧用法（兼容旧版 C#，旧版无此方法时返回空数组不报错）：
+    /// <code>
+    /// const records = dispatcher.getPickRecords?.() ?? [];
+    /// for (const r of records) {
+    ///     log.info(`拾取: ${r.Name} @ ${r.Time}`);
+    /// }
+    /// </code>
+    /// </summary>
+    public object[] GetPickRecords()
+    {
+        var records = AutoPickRecordStore.Drain();
+        var result = new object[records.Length];
+        for (var i = 0; i < records.Length; i++)
+        {
+            dynamic expando = new ExpandoObject();
+            var dict = (IDictionary<string, object>)expando;
+            dict["Time"] = records[i].Time.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            dict["Name"] = records[i].Name;
+            result[i] = expando;
+        }
+
+        return result;
+    }
+
     /// <summary>  
     /// 运行自动秘境任务
     /// </summary>  
@@ -441,7 +462,7 @@ public class Dispatcher
     /// </summary>
     /// <param name="param">背包物品计数参数。</param>
     /// <param name="customCt">自定义取消令牌。</param>
-    /// <returns>单物品返回数量；多物品返回名称到数量的脚本对象。</returns>
+    /// <returns>返回名称到数量的脚本对象。</returns>
     public async Task<object?> RunCountInventoryItemTask(CountInventoryItemParam param, CancellationToken? customCt = null)
     {
         if (param == null)
@@ -452,20 +473,13 @@ public class Dispatcher
         CancellationToken cancellationToken = customCt ?? CancellationContext.Instance.Cts.Token;
         object result = await new CountInventoryItem(param).Start(cancellationToken);
 
-        if (param.ItemName != null)
+        dynamic expando = new ExpandoObject();
+        var expandoDict = (IDictionary<string, object>)expando;
+        foreach (var kvp in (Dictionary<string, int>)result)
         {
-            return result;
+            expandoDict[kvp.Key] = kvp.Value;
         }
-        else
-        {
-            dynamic expando = new ExpandoObject();
-            var expandoDict = (IDictionary<string, object>)expando;
-            foreach (var kvp in (Dictionary<string, int>)result)
-            {
-                expandoDict[kvp.Key] = kvp.Value;
-            }
 
-            return expandoDict;
-        }
+        return expandoDict;
     }
 }
