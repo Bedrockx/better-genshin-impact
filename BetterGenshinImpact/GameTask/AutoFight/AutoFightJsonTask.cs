@@ -1,5 +1,4 @@
-using BetterGenshinImpact.Core.Recognition.ONNX;
-using BetterGenshinImpact.Core.Simulator;
+using BetterGenshinImpact.Core.Input;
 using BetterGenshinImpact.Core.Simulator.Extensions;
 using BetterGenshinImpact.GameTask.AutoFight.Assets;
 using BetterGenshinImpact.GameTask.AutoFight.Model;
@@ -7,7 +6,6 @@ using BetterGenshinImpact.GameTask.AutoFight.Script;
 using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception;
 using BetterGenshinImpact.GameTask.Model.Area;
 using BetterGenshinImpact.Helpers;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -36,12 +34,6 @@ public class AutoFightJsonTask : ISoloTask
     private readonly JsonCombatStrategy _strategy;
     private CancellationToken _ct;
 
-    /// <summary>
-    /// YOLO目标检测器（BgiWorld模型），用于战斗结束检测
-    /// 当前未使用（战斗结束检测已委托到 AutoFightEndDetection），保留声明以与 TXT 策略保持一致
-    /// 初始化条件：_taskParam.FightFinishDetectEnabled == true
-    /// </summary>
-    private readonly BgiYoloPredictor? _predictor;
     private DateTime _lastFightFlagTime = DateTime.Now;
     private int _skipCheckCounter;
 
@@ -86,12 +78,7 @@ public class AutoFightJsonTask : ISoloTask
         _taskParam = taskParam;
         _strategy = JsonCombatStrategyParser.ParseFile(_taskParam.CombatStrategyPath);
 
-        if (_taskParam.FightFinishDetectEnabled)
-        {
-            _predictor = App.ServiceProvider.GetRequiredService<BgiOnnxFactory>().CreateYoloPredictor(BgiOnnxModel.BgiWorld);
-        }
-
-        _finishDetectConfig = new AutoFightTask.TaskFightFinishDetectConfig(_taskParam.FinishDetectConfig);
+        _finishDetectConfig = new AutoFightTask.TaskFightFinishDetectConfig(_taskParam);
     }
 
     /// <summary>
@@ -353,9 +340,9 @@ public class AutoFightJsonTask : ISoloTask
                                             {
                                                 Logger.LogWarning("{Name} 未检测到技能冷却，重新执行", action.Name);
                                                 // 防止在纳塔飞天或爬墙
-                                                Simulation.ReleaseAllKey();
-                                                Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
-                                                Simulation.SendInput.SimulateAction(GIActions.Drop);
+                                                InputHub.ReleaseAll();
+                                                InputHub.Foreground.SimulateAction(GIActions.NormalAttack);
+                                                InputHub.Foreground.SimulateAction(GIActions.Drop);
                                                 await Delay(200, _ct);
                                                 // 重新执行整个动作
                                                 await ExecuteAction(combatScenes, action);
@@ -400,7 +387,7 @@ public class AutoFightJsonTask : ISoloTask
                 }
                 finally
                 {
-                    Simulation.ReleaseAllKey();
+                    InputHub.ReleaseAll();
                     AutoFightTask.FightStatusFlag = false;
                 }
             }, cts2.Token);
@@ -465,9 +452,11 @@ public class AutoFightJsonTask : ISoloTask
     
                     if (!shouldPickup)
                     {
-                        if (_taskParam is { PickDropsAfterFightEnabled: true })
+                        // 经验值检测未通过，跳过拾取（仅在队伍无万叶/琴或开关关闭时才执行扫描拾取逻辑）
+                        var hasKazuhaOrQin = combatScenes.SelectAvatar("枫原万叶") != null || combatScenes.SelectAvatar("琴") != null;
+                        if (_taskParam is { PickDropsAfterFightEnabled: true } && (!_taskParam.KazuhaPickupEnabled || !hasKazuhaOrQin))
                         {
-                            await new ScanPickTask().Start(_ct);
+                            await new ScanPickTask().Start(_ct, _taskParam.PickDropsAfterFightSeconds);
                         }
                         return;
                     }
@@ -563,7 +552,7 @@ public class AutoFightJsonTask : ISoloTask
         }
         finally
         {
-            Simulation.ReleaseAllKey();
+            InputHub.ReleaseAll();
         }
     }
 
@@ -622,6 +611,9 @@ public class AutoFightJsonTask : ISoloTask
     /// <summary>战后拾取</summary>
     private async Task PostFightPickup(CombatScenes combatScenes, bool timeOutFlag, string lastFightName)
     {
+        // 是否选中了万叶/琴（用于控制光柱扫描：仅当队伍无万叶/琴或开关关闭时才扫描）
+        bool kazuhaOrQinSelected = false;
+
         if (_taskParam.KazuhaPickupEnabled)
         {
             var picker = combatScenes.SelectAvatar("枫原万叶") ?? combatScenes.SelectAvatar("琴");
@@ -639,7 +631,7 @@ public class AutoFightJsonTask : ISoloTask
 
                 for (int attempt = 0; attempt < 6; attempt++)
                 {
-                    Simulation.SendInput.SimulateAction(GIActions.OpenPartySetupScreen);
+                    InputHub.Foreground.SimulateAction(GIActions.OpenPartySetupScreen);
                     var enterGameAppear = await NewRetry.WaitForElementAppear(
                         ElementRecognition.Get("PartyBtnChooseView"),
                         () => { },
@@ -728,7 +720,8 @@ public class AutoFightJsonTask : ISoloTask
 
             if (picker != null)
             {
-                Simulation.ReleaseAllKey();
+                kazuhaOrQinSelected = true;
+                InputHub.ReleaseAll();
 
                 if (picker.Name == "枫原万叶")
                 {
@@ -819,7 +812,7 @@ public class AutoFightJsonTask : ISoloTask
                                 }
                             }
 
-                            Simulation.ReleaseAllKey();
+                            InputHub.ReleaseAll();
                         }
                     }
                 }
@@ -847,9 +840,9 @@ public class AutoFightJsonTask : ISoloTask
             }
         }
 
-        if (_taskParam is { PickDropsAfterFightEnabled: true })
+        if (_taskParam is { PickDropsAfterFightEnabled: true } && !kazuhaOrQinSelected)
         {
-            await new ScanPickTask().Start(_ct);
+            await new ScanPickTask().Start(_ct, _taskParam.PickDropsAfterFightSeconds);
         }
     }
 
