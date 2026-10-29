@@ -55,6 +55,8 @@ public partial class AutoPickTrigger : ITaskTrigger
 
     private RecognitionObject _pickRo = null!;
 
+    private readonly MojangPickLoop _mojangPickLoop = new();
+
     /// <summary>
     /// 脚本传入的外部配置，只在本次启用期间有效
     /// </summary>
@@ -139,6 +141,9 @@ public partial class AutoPickTrigger : ITaskTrigger
         _fuzzyBlackList = fuzzyBlackList;
         _whiteList = whiteList;
         _whitelistModeFinalPickList = whitelistModeFinalPickList;
+
+        // 莫版拾取黑名单独立加载
+        _mojangPickLoop.InitFilter();
     }
 
     /// <summary>
@@ -228,6 +233,12 @@ public partial class AutoPickTrigger : ITaskTrigger
 
         var speedTimer = new SpeedTimer();
 
+        if (TaskContext.Instance().Config.AutoPickConfig.MojangMatchEnabled)
+        {
+            // 满背包检测独立于 F 键，内部节流执行
+            _mojangPickLoop.CheckBagFull(content);
+        }
+
         using var foundRectArea = content.CaptureRectArea.Find(_pickRo);
 
         if (foundRectArea.IsEmpty())
@@ -247,14 +258,27 @@ public partial class AutoPickTrigger : ITaskTrigger
 
         if (_externalConfig is { ForceInteraction: true })
         {
-            LogPick(content, "直接拾取");
-            InputHub.Foreground.Keyboard.KeyPress(_autoPickAssets.PickVk);
+            PressPickKeyOrLog(content, "直接拾取", speedTimer);
             return;
         }
 
         var scale = TaskContext.Instance().SystemInfo.AssetScale;
         var config = TaskContext.Instance().Config.AutoPickConfig;
         EnsureLists(config);
+
+        if (config.MojangMatchEnabled)
+        {
+            try
+            {
+                _mojangPickLoop.Tick(content, foundRectArea, _autoPickAssets, scale);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "莫版匹配异常");
+            }
+
+            return;
+        }
 
         // 存在 L 键位是千星奇遇，无需拾取
         using var lKeyRa = content.CaptureRectArea.Find(RecognitionAssets.Get("AutoPick", "L", content.CaptureRectArea));
@@ -400,8 +424,7 @@ public partial class AutoPickTrigger : ITaskTrigger
             {
                 if (_whitelistModeFinalPickList.Contains(text))
                 {
-                    LogPick(content, text);
-                    InputHub.Foreground.Keyboard.KeyPress(_autoPickAssets.PickVk);
+                    PressPickKeyOrLog(content, text, speedTimer);
                 }
 
                 return;
@@ -409,8 +432,7 @@ public partial class AutoPickTrigger : ITaskTrigger
 
             if (config.BlacklistModePickEnabled && _whiteList.Contains(text))
             {
-                LogPick(content, text);
-                InputHub.Foreground.Keyboard.KeyPress(_autoPickAssets.PickVk);
+                PressPickKeyOrLog(content, text, speedTimer);
                 return;
             }
 
@@ -437,11 +459,22 @@ public partial class AutoPickTrigger : ITaskTrigger
 
             speedTimer.Record("黑名单判断");
 
-            LogPick(content, text);
-            InputHub.Foreground.Keyboard.KeyPress(_autoPickAssets.PickVk);
+            PressPickKeyOrLog(content, text, speedTimer);
         }
 
         speedTimer.DebugPrint();
+    }
+
+    private void PressPickKeyOrLog(CaptureContent content, string text, SpeedTimer speedTimer)
+    {
+        if (TaskContext.Instance().Config.AutoPickConfig.TestModeEnabled)
+        {
+            _logger.LogInformation("测试自动拾取：{Text}，各环节耗时 {Summary}", text, speedTimer.ToSummary());
+            return;
+        }
+
+        LogPick(content, text);
+        InputHub.Foreground.Keyboard.KeyPress(_autoPickAssets.PickVk);
     }
 
     private bool DoNotPick(string text)
