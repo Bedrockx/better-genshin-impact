@@ -1,8 +1,9 @@
+using BetterGenshinImpact.Core.Input;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Recognition.OCR;
 using BetterGenshinImpact.Core.Recognition.ONNX;
-using BetterGenshinImpact.Core.Simulator;
 using BetterGenshinImpact.Core.Simulator.Extensions;
+using BetterGenshinImpact.GameTask.AutoDomain.TrainingGuide;
 using BetterGenshinImpact.GameTask.AutoFight.Assets;
 using BetterGenshinImpact.GameTask.AutoFight.Model;
 using BetterGenshinImpact.GameTask.AutoFight.Script;
@@ -12,7 +13,7 @@ using BetterGenshinImpact.GameTask.Common.Map;
 using BetterGenshinImpact.GameTask.Model.Area;
 using BetterGenshinImpact.Helpers;
 using BetterGenshinImpact.Service.Notification;
-using BetterGenshinImpact.View.Drawable;
+using BetterGenshinImpact.Core.Mask;
 using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 using System;
@@ -54,7 +55,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
     private readonly AutoDomainParam _taskParam;
 
-    private readonly BgiYoloPredictor _predictor;
+    private BgiYoloPredictor _predictor = null!;
 
     private readonly AutoDomainConfig _config;
 
@@ -64,7 +65,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
     /// <summary>策略为自动连招（LLM 行为树）时为 true：进本前调用 LLM 建树，循环战斗中 Tick 该树</summary>
     private readonly bool _useComboStrategy;
 
-    /// <summary>后台建树任务：队伍识别后启动，与传送进本并行，战斗启动前等待其完成</summary>
+    /// <summary>建树任务：未配置 PartyName 时进本前启动、与传送进本并行；配置了 PartyName 时为 null，进本后切队再启动</summary>
     private Task<ComboTreeSession>? _comboBuildTask;
 
     /// <summary>后台建树的取消源：链接主令牌，秘境流程结束时取消，避免宿主异常退出后建树白跑</summary>
@@ -97,8 +98,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
     public AutoDomainTask(AutoDomainParam taskParam)
     {
         _taskParam = taskParam;
-        _predictor = App.ServiceProvider.GetRequiredService<BgiOnnxFactory>().CreateYoloPredictor(BgiOnnxModel.BgiTree);
-
+        _guideCustomTargets = TrainingGuide.TrainingGuideCustomTargets.Parse(taskParam.TrainingTargetsJson);
         _config = TaskContext.Instance().Config.AutoDomainConfig;
 
         if (AutoFightParam.ComboStrategyName.Equals(_taskParam.CombatStrategyPath))
@@ -179,10 +179,27 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
     public async Task<Dictionary<string, int>> Start(CancellationToken ct)
     {
+        using var predictor = App.ServiceProvider.GetRequiredService<BgiOnnxFactory>().CreateYoloPredictor(BgiOnnxModel.BgiTree);
+        _predictor = predictor;
         _ct = ct;
         _rewardSummary.Clear();
 
+        _guidePlanning = _guideCustomTargets != null ||
+            (_taskParam.DomainName == TrainingGuideOption && _taskParam.TrainingGuideCalculateRunsEnabled);
+        using var diagnostics = TrainingGuideDiagnostics.Begin(_guidePlanning && _taskParam.TrainingGuideDiagnosticsEnabled, Logger);
+        if (TrainingGuideDiagnostics.Enabled)
+        {
+            Logger.LogInformation("培养计划详细判断保存至 {Path}，按日期统一记录", TrainingGuideDiagnostics.DirectoryPath);
+            TrainingGuideDiagnostics.Detail("培养任务开始：{StartedAt:O}", DateTime.Now);
+        }
+        ResetTrainingGuideState();
+
         Init();
+        CheckGuideRewardResolution();
+
+        // 自动吃药只在本次秘境期间启用，返回（含异常）时撤销
+        using var autoEatLease = _config.AutoEat ? TaskTriggerDispatcher.Instance().AddTrigger("AutoEat") : null;
+
         Notify.Event(NotificationEvent.DomainStart).Success("自动秘境启动");
 
         // 自动连招：秘境外识别队伍后启动 LLM 后台建树，
@@ -190,12 +207,15 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
         // 建树令牌链接主令牌，秘境流程结束（含异常退出）时在 finally 中取消
         if (_useComboStrategy)
         {
-            var avatarNames = await AutoComboBuildTask.EnsureMainUiAndRecognizeTeamAsync(Logger, ct);
-            Logger.LogInformation("自动秘境：后台启动 LLM 建树");
+            if (string.IsNullOrEmpty(_taskParam.PartyName))
+            {
+                var avatars = await AutoComboBuildTask.EnsureMainUiAndRecognizeTeamAsync(Logger, ct);
+                Logger.LogInformation("自动秘境：识别队伍：{Avatars}，后台启动 LLM 建树", string.Join("、", avatars.Select(a => a.Name)));
 
-            var config = TaskContext.Instance().Config.AutoComboBuildConfig;
-            _comboBuildCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            _comboBuildTask = AutoComboBuildTask.BuildComboTreeAsync(avatarNames, config, Logger, _comboBuildCts.Token);
+                var config = TaskContext.Instance().Config.AutoComboBuildConfig;
+                _comboBuildCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                _comboBuildTask = AutoComboBuildTask.BuildComboTreeAsync(avatars, config, Logger, _comboBuildCts.Token);
+            }
         }
 
         try
@@ -205,7 +225,8 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             {
                 try
                 {
-                    await DoDomain();
+                    if (_guidePlanning) await RunTrainingGuidePlan();
+                    else await DoDomain();
                     // 其他场景不重试
                     break;
                 }
@@ -229,8 +250,6 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                     throw;
                 }
             }
-
-
             await Delay(2000, ct);
             await Bv.WaitForMainUi(_ct, 30);
             await Delay(2000, ct);
@@ -273,11 +292,23 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 ESkillCdTracker.Clear();
                 // 自动连招策略：战斗引擎内部初始化队伍，无需TXTSpecific步骤
 
-                if (!_comboBuildTask!.IsCompleted)
+                // PartyName 非空：切队发生在 EnterDomain 的秘境挑战页，
+                // 此时再根据切换后的实际战斗队伍进行构建
+                if (_comboBuildTask == null)
                 {
-                    Logger.LogInformation("自动秘境：{Text}", "0. 等待后台 LLM 建树完成");
+                    var avatars = await AutoComboBuildTask.EnsureMainUiAndRecognizeTeamAsync(Logger, _ct);
+                    Logger.LogInformation("自动秘境：识别队伍：{Avatars}，启动 LLM 建树", string.Join("、", avatars.Select(a => a.Name)));
+
+                    var config = TaskContext.Instance().Config.AutoComboBuildConfig;
+                    _comboBuildCts = CancellationTokenSource.CreateLinkedTokenSource(_ct);
+                    _comboBuildTask = AutoComboBuildTask.BuildComboTreeAsync(avatars, config, Logger, _comboBuildCts!.Token);
                 }
-                await _comboBuildTask!; // 建树失败在此抛出快速结束任务，结果由 StartComboFight 内再次 await 获取
+
+                if (!_comboBuildTask.IsCompleted)
+                {
+                    Logger.LogInformation("自动秘境：{Text}", "0. 等待 LLM 建树完成");
+                }
+                await _comboBuildTask; // 建树失败在此抛出快速结束任务，结果由 StartComboFight 内再次 await 获取
 
                 // 1. 走到钥匙处启动
                 Logger.LogInformation("自动秘境：{Text}", "1. 走到钥匙处启动");
@@ -335,7 +366,10 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             Logger.LogInformation("自动秘境：{Text}", "5. 领取奖励");
             if (!await GettingTreasure())
             {
-                Logger.LogInformation("体力耗尽或者设置轮次已达标，结束自动秘境");
+                if (_guidePlanning && _guideNextAction == GuideNextAction.AdvancePlan)
+                    Logger.LogInformation("培养计划：当前入口执行结束，退出后按缓存计划选择下一步");
+                else
+                    Logger.LogInformation("体力耗尽或者设置轮次已达标，结束自动秘境");
                 break;
             }
         }
@@ -344,12 +378,8 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
     private void Init()
     {
         LogScreenResolution();
-        if (_config.AutoEat)
-        {
-            TaskTriggerDispatcher.Instance().AddTrigger("AutoEat", null);
-        }
 
-        if (_config.SpecifyResinUse)
+        if (_taskParam.SpecifyResinUse)
         {
             Logger.LogInformation("→ {Text} 指定使用树脂", "自动秘境，");
         }
@@ -390,78 +420,27 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
     private async Task TpDomain()
     {
-        if (_taskParam.DomainName == DevelopmentGuideOption)
+        // 初次进入及切换目标共用传送路径，不复用上一轮画面坐标。
+        _guideEntryPositions.Clear();
+        if (_taskParam.DomainName == TrainingGuideOption && !_guidePlanning)
         {
-            await SelectDevelopmentGuideDestination();
+            _guideDomainName = null;
+            _guideDomainName = (await ScanGuideDomains(firstOnly: true)).FirstOrDefault()
+                ?? throw new InvalidOperationException("提升指南：没有可用的材料秘境，停止任务");
         }
         // 传送到秘境
-        if (!string.IsNullOrEmpty(_taskParam.DomainName))
+        if (!string.IsNullOrEmpty(_guideDomainName ?? _taskParam.DomainName))
         {
             if (MapLazyAssets.Get().DomainPositionMap.TryGetValue(_guideDomainName ?? _taskParam.DomainName, out var domainPosition))
             {
-                Logger.LogInformation("自动秘境：传送到秘境{Text}", _taskParam.DomainName);
+                Logger.LogInformation("自动秘境：传送到秘境{Text}", _guideDomainName ?? _taskParam.DomainName);
                 await new TpTask(_ct).Tp(domainPosition.X, domainPosition.Y);
                 await Delay(1000, _ct);
-                await Bv.WaitForMainUi(_ct);
+                if (!await Bv.WaitForMainUi(_ct) && _guidePlanning)
+                    throw new InvalidOperationException("传送后未确认回到主界面，停止接近秘境入口");
 
-                var menuFound = false;
-                AutoPickAssets pickAssets;
-                using (var gameCaptureRegion = CaptureToRectArea())
-                {
-                    pickAssets = AutoPickAssets.Get(gameCaptureRegion, TaskContext.Instance().Config.AutoPickConfig.PickKey);
-                }
-                if ("芬德尼尔之顶".Equals(_taskParam.DomainName))
-                {
-                    menuFound = await NewRetry.WaitForElementAppear(
-                        pickAssets.PickRo,
-                        () => Simulation.SendInput.SimulateAction(GIActions.MoveBackward, KeyType.KeyDown),
-                        _ct,
-                        20,
-                        500
-                    );
-                    Simulation.SendInput.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
-                }
-                else if ("无妄引咎密宫".Equals(_taskParam.DomainName))
-                {
-                    Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-                    Thread.Sleep(500);
-                    Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-
-                    menuFound = await NewRetry.WaitForElementAppear(
-                        pickAssets.PickRo,
-                        () => Simulation.SendInput.SimulateAction(GIActions.MoveLeft, KeyType.KeyDown),
-                        _ct,
-                        20,
-                        500
-                    );
-                    Simulation.SendInput.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
-                }
-                else if ("太山府".Equals(_taskParam.DomainName))
-                {
-                    menuFound = await NewRetry.WaitForElementAppear(
-                        pickAssets.PickRo,
-                        () => { },
-                        _ct,
-                        20,
-                        500
-                    );
-                }
-                else
-                {
-                    menuFound = await NewRetry.WaitForElementAppear(
-                        pickAssets.PickRo,
-                        () => Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown),
-                        _ct,
-                        20,
-                        500
-                    );
-                    Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-                }
-
-                if (!menuFound)
-                {
-                    throw new Exception("请检查是否在秘境门前");
-                }
+                await ApproachDomainEntrance(_guideDomainName ?? _taskParam.DomainName);
+                await Delay(300, _ct);
 
             }
             else
@@ -469,6 +448,83 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 Logger.LogError("自动秘境：未找到对应的秘境{Text}的传送点", _taskParam.DomainName);
                 throw new Exception($"未找到对应的秘境{_taskParam.DomainName}的传送点");
             }
+        }
+    }
+
+    /// <summary>
+    /// 接近秘境入口；已有交互提示时无需移动，普通任务和培养计划共用此逻辑。
+    /// </summary>
+    private async Task ApproachDomainEntrance(string domainName)
+    {
+        var menuFound = false;
+        AutoPickAssets pickAssets;
+        using (var gameCaptureRegion = CaptureToRectArea())
+        {
+            pickAssets = AutoPickAssets.Get(gameCaptureRegion, TaskContext.Instance().Config.AutoPickConfig.PickKey);
+            using var interaction = gameCaptureRegion.Find(pickAssets.PickRo);
+            if (interaction.IsExist()) return;
+        }
+        try
+        {
+            if ("芬德尼尔之顶".Equals(domainName))
+            {
+                menuFound = await NewRetry.WaitForElementAppear(
+                    pickAssets.PickRo,
+                    () => InputHub.Foreground.SimulateAction(GIActions.MoveBackward, KeyType.KeyDown),
+                    _ct,
+                    20,
+                    500
+                );
+                InputHub.Foreground.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
+            }
+            else if ("无妄引咎密宫".Equals(domainName))
+            {
+                InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+                await Delay(500, _ct);
+                InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+
+                menuFound = await NewRetry.WaitForElementAppear(
+                    pickAssets.PickRo,
+                    () => InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyDown),
+                    _ct,
+                    20,
+                    500
+                );
+                InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
+            }
+            else if ("太山府".Equals(domainName))
+            {
+                menuFound = await NewRetry.WaitForElementAppear(
+                    pickAssets.PickRo,
+                    () => { },
+                    _ct,
+                    20,
+                    500
+                );
+            }
+            else
+            {
+                menuFound = await NewRetry.WaitForElementAppear(
+                    pickAssets.PickRo,
+                    () => InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown),
+                    _ct,
+                    20,
+                    500
+                );
+                InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            }
+
+        }
+        finally
+        {
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            InputHub.Foreground.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
+            InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
+        }
+
+        if (!menuFound)
+        {
+            throw new Exception("请检查是否在秘境门前");
         }
     }
 
@@ -511,7 +567,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 Logger.LogWarning("未能通过文本OCR选择秘境，直接F");
                 await NewRetry.WaitForElementDisappear(
                     pickAssets.PickRo,
-                    () => Simulation.SendInput.Keyboard.KeyPress(pickAssets.PickVk),
+                    () => InputHub.Foreground.Keyboard.KeyPress(pickAssets.PickVk),
                     _ct,
                     20,
                     500
@@ -531,14 +587,18 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
         {
             await NewRetry.WaitForElementDisappear(
                 pickAssets.PickRo,
-                () => Simulation.SendInput.Keyboard.KeyPress(pickAssets.PickVk),
+                () => InputHub.Foreground.Keyboard.KeyPress(pickAssets.PickVk),
                 _ct,
                 20,
                 500
             );
         }
+        // 培养指南只等待入口菜单，不在选择前检查挑战按钮或解锁状态。
+        using var menuScreen = CaptureToRectArea();
         var menuFound = await NewRetry.WaitForElementAppear(
-            GetConfirmRa(singlePlayerChallengeString),
+            (_guidePlanning || _taskParam.DomainName == TrainingGuideOption)
+                ? RecognitionObject.OcrMatch(0, 0, menuScreen.Width * .47, menuScreen.Height * .12, "秘境入口")
+                : GetConfirmRa(singlePlayerChallengeString),
             null,//只等待,不执行操作
             _ct,
             20,
@@ -546,6 +606,8 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
         );
         if (!menuFound)
         {
+            if (_guidePlanning || _taskParam.DomainName == TrainingGuideOption)
+                throw new InvalidOperationException("未确认秘境入口菜单，停止培养任务");
             Logger.LogWarning("单人挑战 按键未出现，请检查是否已进入秘境页面");
         }
 
@@ -560,11 +622,15 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
         {
             Logger.LogInformation("自动秘境：{Text}", "检测到秘境限时全开");
         }
+        foreach (var region in limitedFullyStringRaocrList) region.Dispose();
 
         var serverTime = ServerTimeHelper.GetServerTimeNow();
-        if (_taskParam.DomainName == DevelopmentGuideOption)
+        if (_guidePlanning || _taskParam.DomainName == TrainingGuideOption)
         {
-            await SelectDevelopmentGuideLevel();
+            var allOpen = serverTime is { DayOfWeek: DayOfWeek.Sunday, Hour: >= 4 }
+                || serverTime is { DayOfWeek: DayOfWeek.Monday, Hour: < 4 }
+                || limitedFullyStringRaocrListdone != null;
+            await SelectTrainingGuideLevel(allOpen);
         }
         else if (serverTime is { DayOfWeek: DayOfWeek.Sunday, Hour: >= 4 } || serverTime is { DayOfWeek: DayOfWeek.Monday, Hour: < 4 } || limitedFullyStringRaocrListdone != null)
         {
@@ -581,7 +647,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                         GlobalMethod.MoveMouseTo(abnormalscreenRa.Width / 4, abnormalscreenRa.Height / 2); //移到左侧
                         for (var i = 0; i < 100; i++)
                         {
-                            Simulation.SendInput.Mouse.VerticalScroll(-1);
+                            InputHub.Foreground.Mouse.VerticalScroll(-1);
                             await Delay(10, _ct);
                         }
 
@@ -767,12 +833,12 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
         await Task.Run((Action)(() =>
         {
-            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
             Sleep(30, _ct);
             // 组合键好像不能直接用 postmessage
             if (!_config.WalkToF)
             {
-                Simulation.SendInput.SimulateAction(GIActions.SprintKeyboard, KeyType.KeyDown);
+                InputHub.Foreground.SimulateAction(GIActions.SprintKeyboard, KeyType.KeyDown);
             }
 
             try
@@ -790,7 +856,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                     else
                     {
                         Logger.LogInformation("检测到交互键");
-                        Simulation.SendInput.Keyboard.KeyPress(pickAssets.PickVk);
+                        InputHub.Foreground.Keyboard.KeyPress(pickAssets.PickVk);
                         break;
                     }
 
@@ -804,11 +870,11 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             }
             finally
             {
-                Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+                InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
                 Sleep(50);
                 if (!_config.WalkToF)
                 {
-                    Simulation.SendInput.SimulateAction(GIActions.SprintKeyboard, KeyType.KeyUp);
+                    InputHub.Foreground.SimulateAction(GIActions.SprintKeyboard, KeyType.KeyUp);
                 }
             }
         }), _ct);
@@ -846,7 +912,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             finally
             {
                 Logger.LogInformation("自动战斗线程结束");
-                Simulation.ReleaseAllKey();
+                InputHub.ReleaseAll();
                 AutoFightTask.FightStatusFlag = false;
             }
         }, cts.Token);
@@ -1041,7 +1107,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                     if (Bv.CurrentAvatarIsLowHp(capture))
                     {
                         // 模拟按键 "Z"
-                        Simulation.SendInput.SimulateAction(GIActions.QuickUseGadget);
+                        InputHub.Foreground.SimulateAction(GIActions.QuickUseGadget);
                         Logger.LogInformation("检测到红血，按Z吃药");
                         // TODO 吃饱了会一直吃
                     }
@@ -1075,7 +1141,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
         CancellationTokenSource treeCts = new();
         _ct.Register(treeCts.Cancel);
         // 中键回正视角
-        Simulation.SendInput.Mouse.MiddleButtonClick();
+        InputHub.Foreground.Mouse.MiddleButtonClick();
         Sleep(900, _ct);
 
         // 左右移动直到石化古树位于屏幕中心任务
@@ -1117,13 +1183,13 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                         if (rightKeyDown)
                         {
                             // 先松开D键
-                            Simulation.SendInput.Keyboard.KeyUp(moveRightKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveRightKey);
                             rightKeyDown = false;
                         }
 
                         if (!leftKeyDown)
                         {
-                            Simulation.SendInput.Keyboard.KeyDown(moveLeftKey);
+                            InputHub.Foreground.Keyboard.KeyDown(moveLeftKey);
                             leftKeyDown = true;
                         }
                     }
@@ -1135,13 +1201,13 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                         if (leftKeyDown)
                         {
                             // 先松开A键
-                            Simulation.SendInput.Keyboard.KeyUp(moveLeftKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveLeftKey);
                             leftKeyDown = false;
                         }
 
                         if (!rightKeyDown)
                         {
-                            Simulation.SendInput.Keyboard.KeyDown(moveRightKey);
+                            InputHub.Foreground.Keyboard.KeyDown(moveRightKey);
                             rightKeyDown = true;
                         }
                     }
@@ -1150,14 +1216,14 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                         // 树在中间 松开所有键
                         if (rightKeyDown)
                         {
-                            Simulation.SendInput.Keyboard.KeyUp(moveRightKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveRightKey);
                             prevKey = moveRightKey;
                             rightKeyDown = false;
                         }
 
                         if (leftKeyDown)
                         {
-                            Simulation.SendInput.Keyboard.KeyUp(moveLeftKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveLeftKey);
                             prevKey = moveLeftKey;
                             leftKeyDown = false;
                         }
@@ -1170,9 +1236,9 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                                 backwardsAndForwardsCount++;
                             }
 
-                            Simulation.SendInput.Keyboard.KeyDown(moveLeftKey);
+                            InputHub.Foreground.Keyboard.KeyDown(moveLeftKey);
                             Sleep(60);
-                            Simulation.SendInput.Keyboard.KeyUp(moveLeftKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveLeftKey);
                             prevKey = moveLeftKey;
                         }
                         else if (treeMiddleX > middleX)
@@ -1182,16 +1248,16 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                                 backwardsAndForwardsCount++;
                             }
 
-                            Simulation.SendInput.Keyboard.KeyDown(moveRightKey);
+                            InputHub.Foreground.Keyboard.KeyDown(moveRightKey);
                             Sleep(60);
-                            Simulation.SendInput.Keyboard.KeyUp(moveRightKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveRightKey);
                             prevKey = moveRightKey;
                         }
                         else
                         {
-                            Simulation.SendInput.Keyboard.KeyDown(moveForwardKey);
+                            InputHub.Foreground.Keyboard.KeyDown(moveForwardKey);
                             Sleep(60);
-                            Simulation.SendInput.Keyboard.KeyUp(moveForwardKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveForwardKey);
                             Sleep(500, _ct);
                             treeCts.Cancel();
                             break;
@@ -1207,13 +1273,13 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                     {
                         if (leftKeyDown)
                         {
-                            Simulation.SendInput.Keyboard.KeyUp(moveLeftKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveLeftKey);
                             leftKeyDown = false;
                         }
 
                         if (!rightKeyDown)
                         {
-                            Simulation.SendInput.Keyboard.KeyDown(moveRightKey);
+                            InputHub.Foreground.Keyboard.KeyDown(moveRightKey);
                             rightKeyDown = true;
                         }
                     }
@@ -1221,13 +1287,13 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                     {
                         if (rightKeyDown)
                         {
-                            Simulation.SendInput.Keyboard.KeyUp(moveRightKey);
+                            InputHub.Foreground.Keyboard.KeyUp(moveRightKey);
                             rightKeyDown = false;
                         }
 
                         if (!leftKeyDown)
                         {
-                            Simulation.SendInput.Keyboard.KeyDown(moveLeftKey);
+                            InputHub.Foreground.Keyboard.KeyDown(moveLeftKey);
                             leftKeyDown = true;
                         }
                     }
@@ -1236,9 +1302,9 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 if (backwardsAndForwardsCount >= _config.LeftRightMoveTimes)
                 {
                     // 左右移动5次说明已经在树中心了
-                    Simulation.SendInput.Keyboard.KeyDown(moveForwardKey);
+                    InputHub.Foreground.Keyboard.KeyDown(moveForwardKey);
                     Sleep(60);
-                    Simulation.SendInput.Keyboard.KeyUp(moveForwardKey);
+                    InputHub.Foreground.Keyboard.KeyUp(moveForwardKey);
                     Sleep(500, _ct);
                     treeCts.Cancel();
                     break;
@@ -1247,21 +1313,21 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 Sleep(60, _ct);
             }
 
-            VisionContext.Instance().DrawContent.ClearAll();
+            TaskContext.Instance().Runtime?.MaskWindowDrawingBoard.ClearAll();
         });
     }
 
     private Rect DetectTree(ImageRegion region)
     {
         var result = _predictor.Predictor.Detect(region.CacheImage);
-        var list = new List<RectDrawable>();
+        var list = new List<MaskWindowDrawingShape>();
         foreach (var box in result)
         {
             var rect = new Rect(box.Bounds.X, box.Bounds.Y, box.Bounds.Width, box.Bounds.Height);
-            list.Add(region.ToRectDrawable(rect, "tree"));
+            list.Add(region.ToMaskWindowDrawingRect(rect));
         }
 
-        VisionContext.Instance().DrawContent.PutOrRemoveRectList("TreeBox", list);
+        region.DrawingBoard.Set("TreeBox", list);
 
         if (list.Count > 0)
         {
@@ -1311,7 +1377,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                         moveAngle *= 2;
                     }
 
-                    Simulation.SendInput.Mouse.MoveMouseBy(-moveAngle, 0);
+                    InputHub.Foreground.Mouse.MoveMouseBy(-moveAngle, 0);
                 }
                 else if (angle is > 180 and < 360)
                 {
@@ -1322,14 +1388,14 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                         moveAngle *= 2;
                     }
 
-                    Simulation.SendInput.Mouse.MoveMouseBy(moveAngle, 0);
+                    InputHub.Foreground.Mouse.MoveMouseBy(moveAngle, 0);
                 }
 
                 Sleep(100, _ct);
             }
 
             Logger.LogInformation("锁定东方向视角线程结束");
-            VisionContext.Instance().DrawContent.ClearAll();
+            TaskContext.Instance().Runtime?.MaskWindowDrawingBoard.ClearAll();
         });
     }
 
@@ -1338,6 +1404,8 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
     /// </summary>
     private async Task<bool> GettingTreasure()
     {
+        _guideRoundResin = 0;
+        _guideRoundRewards = null;
         bool isLastTurn = false;
         // 等待窗口弹出
         await Delay(300, _ct);
@@ -1390,14 +1458,20 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 }
 
                 bool resinUsed = false;
-                if (resinStatus.CondensedResinCount > 0)
+                if (_guidePlanning && _guideActivePlan != null)
+                {
+                    resinUsed = await UseTrainingGuideResin(resinStatus);
+                }
+                else if (resinStatus.CondensedResinCount > 0)
                 {
                     (resinUsed, _) = PressUseResin(ra3, "浓缩树脂");
+                    if (resinUsed && _guidePlanning) _guideRoundResin = 60;
                     resinStatus.CondensedResinCount -= 1;
                 }
                 else if (resinStatus.OriginalResinCount >= 20)
                 {
                     (resinUsed, var num) = PressUseResin(ra3, "原粹树脂");
+                    if (resinUsed && _guidePlanning) _guideRoundResin = num;
                     resinStatus.OriginalResinCount -= num;
                 }
 
@@ -1417,7 +1491,6 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
             else
             {
                 // 指定使用树脂
-                var textListInPrompt2 = ra3.FindMulti(RecognitionObject.Ocr(ra3.Width * 0.25, ra3.Height * 0.2, ra3.Width * 0.5, ra3.Height * 0.6));
                 // 按优先级使用
                 int successCount = 0;
                 foreach (var record in _resinPriorityListWhenSpecifyUse)
@@ -1444,9 +1517,29 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                             }
                         }
 
-                        var (success, _) = PressUseResin(textListInPrompt2, record.Name);
+                        await Delay(400, _ct);
+                        using var claimCapture = CaptureToRectArea();
+                        var claimTexts = claimCapture.FindMulti(RecognitionObject.Ocr(claimCapture.Width * .25,
+                            claimCapture.Height * .2, claimCapture.Width * .5, claimCapture.Height * .6));
+                        bool success;
+                        int usedAmount;
+                        try
+                        {
+                            if (_guidePlanning && record.Name.StartsWith("原粹树脂", StringComparison.Ordinal))
+                            {
+                                var resinRow = claimTexts.FirstOrDefault(t => Regex.IsMatch(t.Text, ResolveResinNamePattern("原粹树脂")));
+                                var amounts = resinRow == null ? Array.Empty<int>() : Regex.Matches(resinRow.Text, @"(?<!\d)(20|40)(?!\d)")
+                                    .Select(m => int.Parse(m.Value)).Distinct().ToArray();
+                                var expected = record.Name == "原粹树脂20" ? 20 : record.Name == "原粹树脂40" ? 40 : 0;
+                                if (amounts.Length != 1 || (expected != 0 && amounts[0] != expected))
+                                    throw new InvalidOperationException("未确认原粹树脂消耗档位，停止领取");
+                            }
+                            (success, usedAmount) = PressUseResin(claimTexts, record.Name);
+                        }
+                        finally { foreach (var text in claimTexts) text.Dispose(); }
                         if (success)
                         {
+                            if (_guidePlanning) _guideRoundResin = record.Name.StartsWith("原粹树脂", StringComparison.Ordinal) ? usedAmount : 60;
                             record.RemainCount -= 1;
                             Logger.LogInformation("自动秘境：{Name} 刷取 {Re}/{Max}", record.Name, record.MaxCount - record.RemainCount, record.MaxCount);
                             successCount++;
@@ -1481,10 +1574,20 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
         Sleep(1000, _ct);
         await TryRecognizeRewardResult();
+        if (_guidePlanning && UpdateGuideAfterReward(isLastTurn)) isLastTurn = true;
 
         for (var i = 0; i < 30; i++)
         {
             using var ra = CaptureToRectArea();
+            if (_guidePlanning && isLastTurn)
+            {
+                using var plannedExit = ra.Find(RecognitionAssets.Get("AutoFight", "Exit", ra));
+                if (plannedExit.IsExist())
+                {
+                    plannedExit.Click();
+                    return false;
+                }
+            }
             // 优先点击继续
             using var confirmRectArea = ra.Find(RecognitionAssets.Get("AutoFight", "Confirm", ra));
             if (!confirmRectArea.IsEmpty())
@@ -1492,7 +1595,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
                 if (isLastTurn)
                 {
                     // 最后一回合 退出
-                    var exitRectArea = ra.Find(RecognitionAssets.Get("AutoFight", "Exit", ra));
+                    using var exitRectArea = ra.Find(RecognitionAssets.Get("AutoFight", "Exit", ra));
                     if (!exitRectArea.IsEmpty())
                     {
                         exitRectArea.Click();
@@ -1540,7 +1643,7 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
     private async Task TryRecognizeRewardResult()
     {
-        if (!_taskParam.RewardRecognitionEnabled)
+        if (!_taskParam.ShouldRecognizeRewards() || (_guideRewardResolutionUnsupported && !_taskParam.RewardRecognitionEnabled))
         {
             return;
         }
@@ -1555,7 +1658,12 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
             // 使用多页识别（自动检测是否需要翻页）
             Logger.LogInformation("自动秘境：开始奖励识别");
-            var rewards = RewardResultRecognizer.Instance.RecognizeMultiPage();
+            var useRewardsForPlanning = _guidePlanning && GuideRewardRecognitionEnabled;
+            var rewards = RewardResultRecognizer.Instance.RecognizeMultiPage(
+                requireReliableCounts: useRewardsForPlanning,
+                allowUnreliableCount: useRewardsForPlanning ? TrainingGuideRewardPolicy.IsCommonReward : null);
+            if (useRewardsForPlanning)
+                _guideRoundRewards = new Dictionary<string, int>(rewards);
 
             RewardResultRecognizer.MergeIntoSummary(_rewardSummary, rewards);
 
@@ -1592,9 +1700,9 @@ public partial class AutoDomainTask : ISoloTask<Dictionary<string, int>>
 
     private async Task ExitDomain()
     {
-        Simulation.SendInput.Keyboard.KeyPress(VK.VK_ESCAPE);
+        InputHub.Foreground.Keyboard.KeyPress(VK.VK_ESCAPE);
         await Delay(500, _ct);
-        Simulation.SendInput.Keyboard.KeyPress(VK.VK_ESCAPE);
+        InputHub.Foreground.Keyboard.KeyPress(VK.VK_ESCAPE);
         await Delay(800, _ct);
         using var capture = CaptureToRectArea();
         Bv.ClickBlackConfirmButton(capture);
