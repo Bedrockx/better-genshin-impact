@@ -1,6 +1,7 @@
 using System;
 using BetterGenshinImpact.Core.Recognition;
 using BetterGenshinImpact.Model;
+using BetterGenshinImpact.GameTask.Common.Job;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BetterGenshinImpact.Core.Config;
@@ -21,6 +22,9 @@ public partial class OtherConfig : ObservableObject
     //服务器时区偏移量
     [ObservableProperty]
     private TimeSpan _serverTimeZoneOffset = TimeSpan.FromHours(8);
+    //物品图标识别模型
+    [ObservableProperty]
+    private ItemIconRecognitionMode _itemIconRecognitionMode = ItemIconRecognitionMode.Item;
     [ObservableProperty]
     private AutoRestart _autoRestartConfig = new();
     //锄地规划
@@ -33,6 +37,13 @@ public partial class OtherConfig : ObservableObject
     [ObservableProperty]
     private Ocr _ocrConfig = new();
     
+    //切换队伍时，单次滑动的距离（单位：栏）
+    [ObservableProperty]
+    private double _switchPartyScrollDistance = 3;
+
+    //切换队伍时，所有硬编码延迟的放大系数，数值越大等待越久（默认1）
+    [ObservableProperty]
+    private double _switchPartyHardcodeDelayFactor = 1;
 
     public partial class AutoRestart : ObservableObject
     {
