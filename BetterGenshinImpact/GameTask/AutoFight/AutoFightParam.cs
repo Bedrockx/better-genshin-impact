@@ -33,46 +33,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     public AutoFightParam(string path, AutoFightConfig autoFightConfig) : base(null, null)
     {
         CombatStrategyPath = path;
-        Timeout = autoFightConfig.Timeout;
-        FightFinishDetectEnabled = autoFightConfig.FightFinishDetectEnabled;
-        PickDropsAfterFightEnabled = autoFightConfig.PickDropsAfterFightEnabled;
-        PickDropsAfterFightSeconds = autoFightConfig.PickDropsAfterFightSeconds;
-        KazuhaPickupEnabled = autoFightConfig.KazuhaPickupEnabled;
-        ActionSchedulerByCd = autoFightConfig.ActionSchedulerByCd;
-
-        FinishDetectConfig.FastCheckEnabled = autoFightConfig.FinishDetectConfig.FastCheckEnabled;
-        FinishDetectConfig.FastCheckParams = autoFightConfig.FinishDetectConfig.FastCheckParams;
-        FinishDetectConfig.CheckAfterSwitchAvatar = autoFightConfig.FinishDetectConfig.CheckAfterSwitchAvatar;
-        FinishDetectConfig.CheckEndDelay = autoFightConfig.FinishDetectConfig.CheckEndDelay;
-        FinishDetectConfig.BeforeDetectDelay = autoFightConfig.FinishDetectConfig.BeforeDetectDelay;
-        FinishDetectConfig.RotateFindEnemyEnabled = autoFightConfig.FinishDetectConfig.RotateFindEnemyEnabled;
-        FinishDetectConfig.SkipFightEndCheckWhenEnemyVisible = autoFightConfig.FinishDetectConfig.SkipFightEndCheckWhenEnemyVisible;
-        FinishDetectConfig.BlockCheckBeforeBattleSeconds = autoFightConfig.FinishDetectConfig.BlockCheckBeforeBattleSeconds;
-        FinishDetectConfig.PaimonEndCheckEnabled = autoFightConfig.FinishDetectConfig.PaimonEndCheckEnabled;
-        FinishDetectConfig.PaimonEndCheckDelay = autoFightConfig.FinishDetectConfig.PaimonEndCheckDelay;
-
-
-        KazuhaPartyName = autoFightConfig.KazuhaPartyName;
-        OnlyPickEliteDropsMode = autoFightConfig.OnlyPickEliteDropsMode;
-        BattleThresholdForLoot = autoFightConfig.BattleThresholdForLoot ?? BattleThresholdForLoot;
-
-        GuardianAvatar = autoFightConfig.GuardianAvatar;
-        GuardianCombatSkip = autoFightConfig.GuardianCombatSkip;
-        GuardianAvatarHold = autoFightConfig.GuardianAvatarHold;
-        BurstEnabled = autoFightConfig.BurstEnabled;
-        
-        CheckBeforeBurst = autoFightConfig.FinishDetectConfig.CheckBeforeBurst;
-        IsFirstCheck = autoFightConfig.FinishDetectConfig.IsFirstCheck;
-        RotaryFactor = autoFightConfig.FinishDetectConfig.RotaryFactor;
-        FinishDetectConfig.SkipFightEndCheckWhenEnemyVisible = autoFightConfig.FinishDetectConfig.SkipFightEndCheckWhenEnemyVisible;
-        EnableCombatTargeting = autoFightConfig.EnableCombatTargeting;
-        TargetingDetectionInterval = autoFightConfig.TargetingDetectionInterval;
-        DrawRecognitionResults = autoFightConfig.DrawRecognitionResults;
-        LockLostWaitTime = autoFightConfig.LockLostWaitTime;
-        DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
-        QinDoublePickUp = autoFightConfig.QinDoublePickUp;
-        SwimmingEnabled = autoFightConfig.SwimmingEnabled;
-        ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
+        ApplyConfig(autoFightConfig);
     }
 
     public FightFinishDetectConfig FinishDetectConfig { get; set; } = new();
@@ -100,6 +61,14 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
     
     public bool QinDoublePickUp { get; set; } = false;
     public static bool SwimmingEnabled  { get; set; } = false;
+    /// <summary>
+    /// 战斗中回点触发距离（游戏内距离，默认-1禁用；大于0时战斗中与战斗点距离超过该值则回点），仅 JSON 策略生效
+    /// </summary>
+    public double BackToFightDistance { get; set; } = -1;
+    /// <summary>
+    /// 单次回点超时（毫秒），整段回点动作（转向+移动）的总预算，默认2000，仅 JSON 策略生效
+    /// </summary>
+    public int BackToFightTimeoutMs { get; set; } = 2000;
     public bool EnableCombatTargeting { get; set; } = false;
     public int TargetingDetectionInterval { get; set; } = 50;
     public bool DrawRecognitionResults { get; set; } = true;
@@ -177,7 +146,11 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
 
     public void SetDefault()
     {
-        var autoFightConfig = TaskContext.Instance().Config.AutoFightConfig;
+        ApplyConfig(TaskContext.Instance().Config.AutoFightConfig);
+    }
+
+    private void ApplyConfig(AutoFightConfig autoFightConfig)
+    {
         Timeout = autoFightConfig.Timeout;
         FightFinishDetectEnabled = autoFightConfig.FightFinishDetectEnabled;
         PickDropsAfterFightEnabled = autoFightConfig.PickDropsAfterFightEnabled;
@@ -203,6 +176,10 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         GuardianAvatar = autoFightConfig.GuardianAvatar;
         GuardianCombatSkip = autoFightConfig.GuardianCombatSkip;
         GuardianAvatarHold = autoFightConfig.GuardianAvatarHold;
+        BurstEnabled = autoFightConfig.BurstEnabled;
+        CheckBeforeBurst = autoFightConfig.FinishDetectConfig.CheckBeforeBurst;
+        IsFirstCheck = autoFightConfig.FinishDetectConfig.IsFirstCheck;
+        RotaryFactor = autoFightConfig.FinishDetectConfig.RotaryFactor;
         SwimmingEnabled = autoFightConfig.SwimmingEnabled;
         QinDoublePickUp = autoFightConfig.QinDoublePickUp;
         EnableCombatTargeting = autoFightConfig.EnableCombatTargeting;
@@ -211,5 +188,7 @@ public class AutoFightParam : BaseTaskParam<AutoFightTask>
         LockLostWaitTime = autoFightConfig.LockLostWaitTime;
         DamageNumberRecognitionMode = autoFightConfig.DamageNumberRecognitionMode;
         ExpBasedPickupEnabled = autoFightConfig.ExpBasedPickupEnabled;
+        BackToFightDistance = autoFightConfig.BackToFightDistance;
+        BackToFightTimeoutMs = autoFightConfig.BackToFightTimeoutMs;
     }
 }

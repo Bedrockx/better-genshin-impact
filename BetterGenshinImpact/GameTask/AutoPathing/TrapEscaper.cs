@@ -1,4 +1,4 @@
-using BetterGenshinImpact.Core.Simulator;
+using BetterGenshinImpact.Core.Input;
 using BetterGenshinImpact.GameTask.AutoPathing.Model;
 using BetterGenshinImpact.GameTask.AutoPathing.Model.Enum;
 using BetterGenshinImpact.GameTask.Common.BgiVision;
@@ -43,23 +43,27 @@ public class TrapEscaper(CancellationToken ct)
         var targetOrientation = Navigation.GetTargetOrientation(waypoint, position);
         await _rotateTask.WaitUntilRotatedTo(targetOrientation, 5);
 
-        // 按下w，一直走
-        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-        while (!ct.IsCancellationRequested)
+        var forwardHeld = false;
+        try
         {
-            var now = DateTime.UtcNow;
-            if ((now - LastActionTime).TotalSeconds > 5)
+            // 按下w，一直走
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+            forwardHeld = true;
+            while (!ct.IsCancellationRequested)
             {
-                break;
-            }
-            if ((now - startTime).TotalSeconds > 25)
-            {
-                Logger.LogError("卡死脱困超时！");
-                break;
-            }
+                var now = DateTime.UtcNow;
+                if ((now - LastActionTime).TotalSeconds > 5)
+                {
+                    break;
+                }
+                if ((now - startTime).TotalSeconds > 25)
+                {
+                    Logger.LogError("卡死脱困超时！");
+                    break;
+                }
 
-            using var screen = CaptureToRectArea();
-            position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
+                using var screen = CaptureToRectArea();
+                position = Navigation.GetPosition(screen, waypoint.MapName, waypoint.MapMatchMethod);
 
             // 旋转视角
             /* 这里的角度增加了一个randomAngle角度，用来在原角度不适用的情况下修改角度以适应复杂环境
@@ -74,7 +78,7 @@ public class TrapEscaper(CancellationToken ct)
 
             //执行旋转
             await _rotateTask.WaitUntilRotatedTo(targetOrientation, 5);
-            Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
+            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
             //
             //这里是随机角度的归零逻辑，在脱困执行一秒后将randomAngle设为0以将实际角度重置为正面向点位的角度
             //其实就是在一段时间内进行角度的修改以实现自动避障
@@ -95,12 +99,12 @@ public class TrapEscaper(CancellationToken ct)
                 waypoint.MoveMode != MoveModeEnum.Fly.Code)
                 if (Bv.GetMotionStatus(screen) == MotionStatus.Climb)
                 {
-                    Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-                    Simulation.SendInput.SimulateAction(GIActions.Drop);
+                    InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+                    InputHub.Foreground.SimulateAction(GIActions.Drop);
                     Sleep(75);
-                    Simulation.SendInput.SimulateAction(GIActions.MoveBackward, KeyType.KeyDown);
+                    InputHub.Foreground.SimulateAction(GIActions.MoveBackward, KeyType.KeyDown);
                     Sleep(700);
-                    Simulation.SendInput.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
+                    InputHub.Foreground.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
 
                     LastActionTime = DateTime.UtcNow;
 
@@ -117,21 +121,31 @@ public class TrapEscaper(CancellationToken ct)
                     continue;
                 }
 
-            await Delay(100, ct);
+                await Delay(100, ct);
+            }
         }
+        finally
+        {
+            if (forwardHeld)
+            {
+                InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            }
 
-        // 抬起w键
-        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+            // 取消或异常退出时，确保本类可能操作过的方向键不会遗留按下状态。
+            InputHub.Foreground.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
+            InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
+            InputHub.Foreground.SimulateAction(GIActions.MoveRight, KeyType.KeyUp);
+        }
     }
 
     public async Task RotateAndMove()
     {
         IncreaseRandomAngle();
         // 脱离攀爬状态
-        Simulation.SendInput.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-        Simulation.SendInput.SimulateAction(GIActions.Drop);
+        InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+        InputHub.Foreground.SimulateAction(GIActions.Drop);
         await Delay(75, ct);
-        Simulation.SendInput.SimulateAction(GIActions.NormalAttack);
+        InputHub.Foreground.SimulateAction(GIActions.NormalAttack);
         await Delay(500, ct);
 
         TimeSpan timeSinceLastAction = DateTime.UtcNow - LastActionTime;
@@ -170,30 +184,30 @@ public class TrapEscaper(CancellationToken ct)
 
     private void MoveBackward(int delay)
     {
-        Simulation.SendInput.SimulateAction(GIActions.MoveBackward, KeyType.KeyDown);
+        InputHub.Foreground.SimulateAction(GIActions.MoveBackward, KeyType.KeyDown);
         Sleep(500);
-        Simulation.SendInput.SimulateAction(GIActions.Jump);
+        InputHub.Foreground.SimulateAction(GIActions.Jump);
         Sleep(delay);
-        Simulation.SendInput.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
+        InputHub.Foreground.SimulateAction(GIActions.MoveBackward, KeyType.KeyUp);
     }
 
     private void MoveLeft(int delay)
     {
-        Simulation.SendInput.SimulateAction(GIActions.MoveLeft, KeyType.KeyDown);
+        InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyDown);
         Sleep(300);
-        Simulation.SendInput.SimulateAction(GIActions.Jump);
+        InputHub.Foreground.SimulateAction(GIActions.Jump);
         Sleep(delay);
-        Simulation.SendInput.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
-        Simulation.SendInput.SimulateAction(GIActions.Drop);
+        InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
+        InputHub.Foreground.SimulateAction(GIActions.Drop);
     }
 
     private void MoveRight(int delay)
     {
-        Simulation.SendInput.SimulateAction(GIActions.MoveRight, KeyType.KeyDown);
+        InputHub.Foreground.SimulateAction(GIActions.MoveRight, KeyType.KeyDown);
         Sleep(300);
-        Simulation.SendInput.SimulateAction(GIActions.Jump);
+        InputHub.Foreground.SimulateAction(GIActions.Jump);
         Sleep(delay);
-        Simulation.SendInput.SimulateAction(GIActions.MoveRight, KeyType.KeyUp);
-        Simulation.SendInput.SimulateAction(GIActions.Drop);
+        InputHub.Foreground.SimulateAction(GIActions.MoveRight, KeyType.KeyUp);
+        InputHub.Foreground.SimulateAction(GIActions.Drop);
     }
 }
