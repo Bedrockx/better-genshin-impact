@@ -186,7 +186,13 @@ public class CombatCommand
         else if (Method == Method.A)
         {
             var s = double.Parse(Args![0]);
-            avatar.Walk("a", (int)TimeSpan.FromSeconds(s).TotalMilliseconds);
+            var ms = (int)TimeSpan.FromSeconds(s).TotalMilliseconds;
+            // 阿蕾奇诺普攻特化触发器：a(时间) 先试特化分派，命中（阿蕾奇诺 + A 动作）则执行特化状态机，不再走普通左移走位
+            if (AvatarSpecialAction.ExecuteSpecializedAction(avatar, "A", avatar.Name, new ActionArgs(Ms: ms)))
+            {
+                return;
+            }
+            avatar.Walk("a", ms);
         }
         else if (Method == Method.S)
         {
