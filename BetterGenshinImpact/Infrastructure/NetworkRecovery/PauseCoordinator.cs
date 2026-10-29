@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using BetterGenshinImpact.Core.Script;
-using BetterGenshinImpact.Core.Simulator;
+using BetterGenshinImpact.Core.Input;
 using BetterGenshinImpact.GameTask;
 using BetterGenshinImpact.GameTask.AutoPathing.Suspend;
 using BetterGenshinImpact.GameTask.Common;
@@ -78,7 +78,7 @@ public sealed class PauseCoordinator : IPauseCoordinator
             return;
         }
 
-        Simulation.ReleaseAllKey();
+        InputHub.ReleaseAll();
         RunnerContext.Instance.StopAutoPick();
         foreach (var suspendable in RunnerContext.Instance.SuspendableDictionary.Values.ToArray())
         {
