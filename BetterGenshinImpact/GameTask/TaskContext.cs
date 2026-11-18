@@ -56,6 +56,11 @@ namespace BetterGenshinImpact.GameTask
         public ISystemInfo SystemInfo { get; private set; }
 
         /// <summary>
+        /// 关联启动原神的时间。非联动启动（手动开游戏）时为默认值
+        /// </summary>
+        public DateTime LinkedStartGenshinTime { get; set; } = DateTime.MinValue;
+
+        /// <summary>
         /// 只是转发 ConfigService.Config，与运行环境无关。新代码请注入 IConfigService
         /// </summary>
         public AllConfig Config

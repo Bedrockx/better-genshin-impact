@@ -49,6 +49,10 @@ public sealed class Win32RuntimeProvider(
                     // 启动失败的提示已由 StartFromLocalAsync 给出
                     return null;
                 }
+
+                // 记录关联启动时间：GameLoading 用它区分「联动启动」与「手动启动」，
+                // 手动启动时跳过自动进入游戏流程
+                TaskContext.Instance().LinkedStartGenshinTime = DateTime.Now;
             }
 
             if (hWnd == IntPtr.Zero)
