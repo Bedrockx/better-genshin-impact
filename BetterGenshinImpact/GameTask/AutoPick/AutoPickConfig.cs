@@ -85,13 +85,13 @@ namespace BetterGenshinImpact.GameTask.AutoPick
         /// <summary>
         /// 交互后延迟（毫秒）
         /// </summary>
-        [ObservableProperty] private int _interactionDelay = 64;
+        [ObservableProperty] private int _interactionDelay = 96;
 
         /// <summary>
         /// 连点F间隔（毫秒，0 表示不应用连点）
         /// 非0时，当前物品需要交互时向下扫描，从当前行开始连续 n 个都未需要交互则间隔该值连点 n 次 F
         /// </summary>
-        [ObservableProperty] private int _repeatFInterval = 0;
+        [ObservableProperty] private int _repeatFInterval = 16;
 
         /// <summary>
         /// 二次识别间隔（毫秒，0 表示不启用二次识别）
@@ -102,17 +102,17 @@ namespace BetterGenshinImpact.GameTask.AutoPick
         /// <summary>
         /// 单次滚动距离（滚轮 delta 单位）
         /// </summary>
-        [ObservableProperty] private int _scrollDistance = 360;
+        [ObservableProperty] private int _scrollDistance = 120;
 
         /// <summary>
         /// 滚动间隔（毫秒，0 表示每轮最多滚动一次）
         /// </summary>
-        [ObservableProperty] private int _scrollInterval = 0;
+        [ObservableProperty] private int _scrollInterval = 16;
 
         /// <summary>
         /// 滚轮后间隔（滚轮后额外等待毫秒）
         /// </summary>
-        [ObservableProperty] private int _scrollAfterInterval = 16;
+        [ObservableProperty] private int _scrollAfterInterval = 160;
 
         /// <summary>
         /// 自动拾取名单模式
@@ -135,6 +135,31 @@ namespace BetterGenshinImpact.GameTask.AutoPick
         [JsonPropertyName("whiteListEnabled")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? LegacyWhiteListEnabled { get; set; }
+
+        /// <summary>
+        /// 记录莫版拾取默认参数是否已迁移，随配置保存。
+        /// </summary>
+        [JsonInclude]
+        public bool MojangPickDefaultsMigrated { get; private set; }
+
+        internal bool MigrateMojangPickDefaults()
+        {
+            if (MojangPickDefaultsMigrated)
+            {
+                return false;
+            }
+
+            var defaults = new AutoPickConfig();
+            InteractionDelay = defaults.InteractionDelay;
+            RepeatFInterval = defaults.RepeatFInterval;
+            ConfirmInterval = defaults.ConfirmInterval;
+            ScrollDistance = defaults.ScrollDistance;
+            ScrollInterval = defaults.ScrollInterval;
+            ScrollAfterInterval = defaults.ScrollAfterInterval;
+            MojangMatchThreshold = defaults.MojangMatchThreshold;
+            MojangPickDefaultsMigrated = true;
+            return true;
+        }
 
         public void MigrateLegacyConfig()
         {
