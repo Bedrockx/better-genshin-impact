@@ -525,6 +525,13 @@
     "len": 4
   },
   {
+    "name": "幽光萤石",
+    "color": "白",
+    "file": "白/幽光萤石.png",
+    "itemName": "幽光萤石",
+    "len": 4
+  },
+  {
     "name": "幽灯蕈",
     "color": "白",
     "file": "白/幽灯蕈.png",
