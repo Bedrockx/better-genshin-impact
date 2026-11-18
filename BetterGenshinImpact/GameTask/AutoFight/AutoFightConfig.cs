@@ -146,7 +146,7 @@ public partial class AutoFightConfig : ObservableObject
     /// 战斗结束后光柱扫描掉落物
     /// </summary>
     [ObservableProperty]
-    private bool _pickDropsAfterFightEnabled = true;
+    private bool _pickDropsAfterFightEnabled = false;
 
     /// <summary>
     /// 战斗结束后光柱扫描掉落物的持续秒数
