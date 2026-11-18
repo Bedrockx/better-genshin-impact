@@ -28,6 +28,28 @@ public sealed record VisualRecognitionConfig(
     // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此 record 的 LockLostWaitTime 后插入 ChascaStableTime 等 4 个参数，
     // 若与本参数 EndFightWhenNoTargetSeconds 冲突，保留两侧新增参数即可（本参数 + 恰斯卡 4 参数，顺序无关）
     double EndFightWhenNoTargetSeconds = 0,
+    double ChascaStableTime = 0.5,
+    bool ChascaAutoSaveScreenshot = false,
+    double ChascaNoRotateBeforeSeconds = 1,
+    double ChascaPressStrength = 1,
+    double ChascaInitialRotateX = 1000,
+    double ChascaBulletThreshold = 0.8,
+    int ChascaSequenceSlotCount = 2,
+    bool ChascaSmoothRotateEnabled = false,
+    double ChascaSmoothRotateSpeed = 80,
+    double ChascaRotateStepAngle = 50,
+    double ChascaAimForceX = 0.2625,
+    double ChascaAimForceY = 0.1875,
+    double ChascaSprayPressForce = 100,
+    double ChascaRollbackAngle = 15,
+    int ChascaDownArrowPressThreshold = 20,
+    bool ArlecchinoC2Enabled = true,
+    double ArlecchinoRefreshEBondThreshold = 40,
+    double ArlecchinoRefreshEMinCd = 8,
+    int ArlecchinoBondChargeThreshold = 55,
+    string ArlecchinoNormalAttackLoop = "",
+    bool ArlecchinoDebugLogEnabled = false,
+    int ArlecchinoFightEndCheckRound = 0,
     DamageNumberRecognitionMode DamageNumberRecognitionMode = DamageNumberRecognitionMode.Color);
 
 /// <summary>
@@ -57,6 +79,12 @@ public static class AvatarRecognition
     /// 清除当前战斗参数，后续视觉配置回退到全局配置。
     /// </summary>
     public static void ClearCurrentAutoFightParam() => _currentAutoFightParam.Value = null;
+
+    /// <summary>
+    /// 当前战斗的 AutoFightParam（可能为 null，表示无逐队伍配置）。
+    /// 供特化逻辑访问战斗内保留的可变状态（如阿蕾奇诺的最近放 E 时刻）。
+    /// </summary>
+    public static AutoFightParam? CurrentAutoFightParam => _currentAutoFightParam.Value;
 
     /// <summary>
     /// 清除传奇血条追踪状态。每次新战斗开始时应调用，避免上一场战斗
@@ -237,6 +265,28 @@ public static class AvatarRecognition
                 // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 参数后）插入 4 个 Chasca 参数，
                 // 若与本参数 EndFightWhenNoTargetSeconds 冲突，保留两侧新增参数即可
                 param.EndFightWhenNoTargetSeconds,
+                param.ChascaStableTime,
+                param.ChascaAutoSaveScreenshot,
+                param.ChascaNoRotateBeforeSeconds,
+                param.ChascaPressStrength,
+                param.ChascaInitialRotateX,
+                param.ChascaBulletThreshold,
+                param.ChascaSequenceSlotCount,
+                param.ChascaSmoothRotateEnabled,
+                param.ChascaSmoothRotateSpeed,
+                param.ChascaRotateStepAngle,
+                param.ChascaAimForceX,
+                param.ChascaAimForceY,
+                param.ChascaSprayPressForce,
+                param.ChascaRollbackAngle,
+                param.ChascaDownArrowPressThreshold,
+                param.ArlecchinoC2Enabled,
+                param.ArlecchinoRefreshEBondThreshold,
+                param.ArlecchinoRefreshEMinCd,
+                param.ArlecchinoBondChargeThreshold,
+                param.ArlecchinoNormalAttackLoop,
+                param.ArlecchinoDebugLogEnabled,
+                param.ArlecchinoFightEndCheckRound,
                 param.DamageNumberRecognitionMode);
         }
 
@@ -248,6 +298,28 @@ public static class AvatarRecognition
             // 合并冲突提示：恰斯卡特化 PR (#11) 同样在此处（LockLostWaitTime 参数后）插入 4 个 Chasca 参数，
             // 若与本参数 EndFightWhenNoTargetSeconds 冲突，保留两侧新增参数即可
             config.EndFightWhenNoTargetSeconds,
+            config.ChascaStableTime,
+            config.ChascaAutoSaveScreenshot,
+            config.ChascaNoRotateBeforeSeconds,
+            config.ChascaPressStrength,
+            config.ChascaInitialRotateX,
+            config.ChascaBulletThreshold,
+            config.ChascaSequenceSlotCount,
+            config.ChascaSmoothRotateEnabled,
+            config.ChascaSmoothRotateSpeed,
+            config.ChascaRotateStepAngle,
+            config.ChascaAimForceX,
+            config.ChascaAimForceY,
+            config.ChascaSprayPressForce,
+            config.ChascaRollbackAngle,
+            config.ChascaDownArrowPressThreshold,
+            config.ArlecchinoC2Enabled,
+            config.ArlecchinoRefreshEBondThreshold,
+            config.ArlecchinoRefreshEMinCd,
+            config.ArlecchinoBondChargeThreshold,
+            config.ArlecchinoNormalAttackLoop,
+            config.ArlecchinoDebugLogEnabled,
+            config.ArlecchinoFightEndCheckRound,
             config.DamageNumberRecognitionMode);
     }
 
@@ -258,7 +330,10 @@ public static class AvatarRecognition
     ///   - Color：使用颜色分析识别
     /// 配置来源：<see cref="GetVisualRecognitionConfig"/>
     /// </summary>
-    public static (int centerX, int centerY, string text, int x, int y, int width, int height)? FindDamageNumber(ImageRegion? existingCapture = null)
+    /// <param name="existingCapture">已有截图（避免二次截图）</param>
+    /// <param name="excludeRects">可选：需要排除的区域（1080p 基准，如恰斯卡子弹槽位），内部按 AssetScale 缩放</param>
+    public static (int centerX, int centerY, string text, int x, int y, int width, int height)? FindDamageNumber(
+        ImageRegion? existingCapture = null, IReadOnlyList<Rect>? excludeRects = null)
     {
         var mode = GetVisualRecognitionConfig().DamageNumberRecognitionMode;
         switch (mode)
@@ -266,11 +341,42 @@ public static class AvatarRecognition
             case DamageNumberRecognitionMode.Disabled:
                 return null;
             case DamageNumberRecognitionMode.Color:
-                return FindDamageNumberByColor(existingCapture);
+                return FindDamageNumberByColor(existingCapture, excludeRects);
             case DamageNumberRecognitionMode.Ocr:
             default:
-                return FindDamageNumberByOcr(existingCapture);
+                return FindDamageNumberByOcr(existingCapture, excludeRects);
         }
+    }
+
+    /// <summary>
+    /// 将 1080p 基准的排除区域按 AssetScale 缩放到截图坐标系
+    /// </summary>
+    private static Rect[]? ScaleExcludeRects(IReadOnlyList<Rect>? excludeRects)
+    {
+        if (excludeRects == null || excludeRects.Count == 0) return null;
+        var scaled = new Rect[excludeRects.Count];
+        for (int i = 0; i < excludeRects.Count; i++)
+        {
+            var r = excludeRects[i];
+            scaled[i] = new Rect(
+                (int)(r.X * AssetScale), (int)(r.Y * AssetScale),
+                (int)(r.Width * AssetScale), (int)(r.Height * AssetScale));
+        }
+        return scaled;
+    }
+
+    /// <summary>
+    /// 判断矩形是否与任一排除区域相交
+    /// </summary>
+    private static bool IsExcluded(Rect rect, Rect[]? excludeRects)
+    {
+        if (excludeRects == null) return false;
+        foreach (var r in excludeRects)
+        {
+            var inter = Rect.Intersect(rect, r);
+            if (inter.Width > 0 && inter.Height > 0) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -280,12 +386,14 @@ public static class AvatarRecognition
     ///   - 有效项2：文本包含反应关键词（免疫/蒸发/感电/结晶/扩散/绽放/冻结/超载/融化/燃烧/超导/激化），跳过数字过滤
     /// 按 h²×文本字数 加权得到中心坐标，返回离加权中心最近的有效项。
     /// </summary>
-    private static (int centerX, int centerY, string text, int x, int y, int width, int height)? FindDamageNumberByOcr(ImageRegion? existingCapture = null)
+    private static (int centerX, int centerY, string text, int x, int y, int width, int height)? FindDamageNumberByOcr(
+        ImageRegion? existingCapture = null, IReadOnlyList<Rect>? excludeRects = null)
     {
         var selfCapture = existingCapture == null ? CaptureToRectArea() : null;
         using (selfCapture)
         {
             var ra = existingCapture ?? selfCapture!;
+            var scaled = ScaleExcludeRects(excludeRects);
             var ocrResults = ra.FindMulti(RecognitionObject.Ocr((int)(450 * AssetScale), (int)(240 * AssetScale), (int)(1150 * AssetScale), (int)(660 * AssetScale)));
 
             string[] reactionKeywords = ["免疫", "蒸发", "感电", "结晶", "扩散", "绽放", "冻结", "超载", "融化", "燃烧", "超导", "激化"];
@@ -293,6 +401,9 @@ public static class AvatarRecognition
 
             foreach (var r in ocrResults)
             {
+                // 排除指定区域（如恰斯卡子弹槽位）内的 OCR 结果
+                if (IsExcluded(new Rect(r.X, r.Y, r.Width, r.Height), scaled)) continue;
+
                 var text = r.Text?.Trim();
                 if (string.IsNullOrEmpty(text)) continue;
 
@@ -332,12 +443,14 @@ public static class AvatarRecognition
     /// 颜色分析模式：在 450,240-1600,900 区域内查找固定颜色的像素，
     /// 经连通域分析后舍弃高度小于20的区域，返回加权中心。
     /// </summary>
-    private static (int centerX, int centerY, string text, int x, int y, int width, int height)? FindDamageNumberByColor(ImageRegion? existingCapture = null)
+    private static (int centerX, int centerY, string text, int x, int y, int width, int height)? FindDamageNumberByColor(
+        ImageRegion? existingCapture = null, IReadOnlyList<Rect>? excludeRects = null)
     {
         var selfCapture = existingCapture == null ? CaptureToRectArea() : null;
         using (selfCapture)
         {
             var ra = existingCapture ?? selfCapture!;
+            var scaled = ScaleExcludeRects(excludeRects);
 
             // 目标颜色 (RGB)
             Scalar[] targetColors =
@@ -386,6 +499,9 @@ public static class AvatarRecognition
                 int height = stats.At<int>(i, (int)ConnectedComponentsTypes.Height);
 
                 if (height < (int)(20 * AssetScale)) continue;
+
+                // 排除指定区域（如恰斯卡子弹槽位）内的连通域（全局坐标判定）
+                if (IsExcluded(new Rect(x + roiX, y + roiY, width, height), scaled)) continue;
 
                 int area = stats.At<int>(i, (int)ConnectedComponentsTypes.Area);
                 validItems.Add((x + width / 2 + roiX, y + height / 2 + roiY, area, x + roiX, y + roiY, width, height));
