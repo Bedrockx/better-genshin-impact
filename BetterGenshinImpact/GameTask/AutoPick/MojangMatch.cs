@@ -132,7 +132,8 @@ public sealed class MojangMatch
     /// </summary>
     public IReadOnlyList<MojangTemplateInfo> GetTemplateInfos()
     {
-        return _templatesByName.Values
+        return _templatesByColorAndLen.Values.SelectMany(list => list)
+            .DistinctBy(t => (t.Name, t.Color))
             .OrderBy(t => Array.IndexOf(ColorOrder, t.Color))
             .ThenBy(t => t.Name, StringComparer.Ordinal)
             .Select(t => new MojangTemplateInfo(t.Name, t.Color, t.Len))
