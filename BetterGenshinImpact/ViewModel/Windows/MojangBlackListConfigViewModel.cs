@@ -16,7 +16,14 @@ using System.Windows.Data;
 
 namespace BetterGenshinImpact.ViewModel.Windows;
 
-public partial class MojangItemViewModel : ObservableObject
+/// <summary>同一名单中，同名交互的所有颜色共用一个勾选状态。</summary>
+public partial class MojangNameSelection : ObservableObject
+{
+    [ObservableProperty]
+    private bool _isChecked;
+}
+
+public class MojangItemViewModel
 {
     public required string Name { get; init; }
 
@@ -24,9 +31,7 @@ public partial class MojangItemViewModel : ObservableObject
 
     public int ColorIndex { get; init; }
 
-    /// <summary>是否命中当前编辑的名单（勾选语义由所在列表上下文决定：黑名单/白名单）。</summary>
-    [ObservableProperty]
-    private bool _isChecked;
+    public required MojangNameSelection Selection { get; init; }
 }
 
 /// <summary>
@@ -59,17 +64,20 @@ public partial class MojangListViewModel : ObservableObject
 
     public MojangListViewModel(IEnumerable<MojangTemplateInfo> templates, Func<string, bool> isInTarget)
     {
-        foreach (var info in templates)
+        foreach (var group in templates.GroupBy(t => t.Name, StringComparer.Ordinal))
         {
-            var item = new MojangItemViewModel
+            var selection = new MojangNameSelection { IsChecked = isInTarget(group.Key) };
+            selection.PropertyChanged += OnSelectionChanged;
+            foreach (var info in group)
             {
-                Name = info.Name,
-                Color = info.Color,
-                ColorIndex = System.Array.IndexOf(ColorOrder, info.Color),
-                IsChecked = isInTarget(info.Name),
-            };
-            item.PropertyChanged += OnItemPropertyChanged;
-            Items.Add(item);
+                Items.Add(new MojangItemViewModel
+                {
+                    Name = info.Name,
+                    Color = info.Color,
+                    ColorIndex = System.Array.IndexOf(ColorOrder, info.Color),
+                    Selection = selection,
+                });
+            }
         }
 
         ItemsView = new ListCollectionView(Items)
@@ -83,12 +91,12 @@ public partial class MojangListViewModel : ObservableObject
     /// <summary>当前勾选的交互名集合（用于保存）。</summary>
     public HashSet<string> GetCheckedNames()
     {
-        return new HashSet<string>(Items.Where(i => i.IsChecked).Select(i => i.Name));
+        return new HashSet<string>(Items.Where(i => i.Selection.IsChecked).Select(i => i.Name));
     }
 
-    private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnSelectionChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!_suppressRefresh && e.PropertyName == nameof(MojangItemViewModel.IsChecked))
+        if (!_suppressRefresh && e.PropertyName == nameof(MojangNameSelection.IsChecked))
         {
             ItemsView.Refresh();
         }
@@ -122,12 +130,12 @@ public partial class MojangListViewModel : ObservableObject
             return false;
         }
 
-        if (StatusFilter == "已勾选" && !m.IsChecked)
+        if (StatusFilter == "已勾选" && !m.Selection.IsChecked)
         {
             return false;
         }
 
-        if (StatusFilter == "未勾选" && m.IsChecked)
+        if (StatusFilter == "未勾选" && m.Selection.IsChecked)
         {
             return false;
         }
@@ -148,7 +156,7 @@ public partial class MojangListViewModel : ObservableObject
         {
             foreach (var item in ItemsView.Cast<MojangItemViewModel>().ToList())
             {
-                item.IsChecked = true;
+                item.Selection.IsChecked = true;
             }
         }
         finally
@@ -167,7 +175,7 @@ public partial class MojangListViewModel : ObservableObject
         {
             foreach (var item in ItemsView.Cast<MojangItemViewModel>().ToList())
             {
-                item.IsChecked = false;
+                item.Selection.IsChecked = false;
             }
         }
         finally

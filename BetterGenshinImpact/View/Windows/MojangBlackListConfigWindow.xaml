@@ -101,7 +101,7 @@
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <CheckBox Content="{Binding Name}"
-                                              IsChecked="{Binding IsChecked, Mode=TwoWay}" />
+                                              IsChecked="{Binding Selection.IsChecked, Mode=TwoWay}" />
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
