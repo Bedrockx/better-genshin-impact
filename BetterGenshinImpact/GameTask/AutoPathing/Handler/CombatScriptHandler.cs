@@ -23,7 +23,7 @@ public class CombatScriptHandler : IActionHandler
                 return;
             }
 
-            combatScenes.BeforeTask(ct);
+            combatScenes.PathingToken.Value = ct;
             await CombatScriptExecutor.ExecuteAsync(combatScript, ct, Logger, combatScenes);
         }
         else

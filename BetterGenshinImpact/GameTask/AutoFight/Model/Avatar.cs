@@ -90,10 +90,16 @@ public class Avatar
     /// </summary>
     public Rect IndexRect { get; set; }
 
+    private CancellationToken _ct;
+
     /// <summary>
     /// 任务取消令牌
     /// </summary>
-    public CancellationToken Ct { get; set; }
+    public CancellationToken Ct
+    {
+        get => CombatScenes.PathingToken.Value ?? _ct;
+        set => _ct = value;
+    }
 
     /// <summary>
     /// 战斗场景

@@ -3,6 +3,7 @@ using BetterGenshinImpact.Core.Config;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using OpenCvSharp;
 using System.Linq;
@@ -171,9 +172,7 @@ public class LimitedFile(string rootPath)
     {
         try
         {
-            path = NormalizePath(path);
-            var ret = await File.ReadAllTextAsync(path);
-            return ret;
+            return await ReadTextAsync(path, CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -182,6 +181,9 @@ public class LimitedFile(string rootPath)
             return string.Empty;
         }
     }
+
+    internal Task<string> ReadTextAsync(string path, CancellationToken ct) =>
+        File.ReadAllTextAsync(NormalizePath(path), ct);
 
     /// <summary>
     /// Read all text from a file.

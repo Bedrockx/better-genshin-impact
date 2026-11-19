@@ -568,10 +568,7 @@ public partial class PathExecutor
                         {
                             var nextIdx = GetSwitchToWalkIndex();
                             Logger.LogInformation("自动赶路：希诺宁接近节点，切人步行 {t}", nextIdx);
-                            Task.Run(async () =>
-                            {
-                                await SwitchAvatar(nextIdx);
-                            }, ct);
+                            await SwitchAvatar(nextIdx);
                         }
                         else if (SpaceAtSecondPlaceExist(state))
                         {
@@ -731,7 +728,7 @@ public partial class PathExecutor
                         return false;
                     }
                 }
-                catch (Exception e)
+                catch (Exception e) when (!ct.IsCancellationRequested)
                 {
                     Logger.LogError(e, $"[{avatar.Name}] 赶路逻辑异常");
                     return false;
@@ -760,16 +757,22 @@ public partial class PathExecutor
                                 {
                                     Logger.LogInformation($"自动赶路：{avatar.Name}接近节点，关闭飞行状态");
                                     InputHub.Foreground.SimulateAction(GIActions.ElementalSkill, KeyType.KeyDown);
-                                    for (var retries = 0; retries < 20; retries++)
+                                    try
                                     {
-                                        await Delay(100, ct);
-                                        var cd = await ReadEskillCdAsync(avatar.Name);
-                                        if (cd > 0)
+                                        for (var retries = 0; retries < 20; retries++)
                                         {
-                                            break;
+                                            await Delay(100, ct);
+                                            var cd = await ReadEskillCdAsync(avatar.Name);
+                                            if (cd > 0)
+                                            {
+                                                break;
+                                            }
                                         }
                                     }
-                                    InputHub.Foreground.SimulateAction(GIActions.ElementalSkill, KeyType.KeyUp);
+                                    finally
+                                    {
+                                        InputHub.Foreground.SimulateAction(GIActions.ElementalSkill, KeyType.KeyUp);
+                                    }
                                 }
                                 state.FlyingState = false;
                             }
@@ -829,7 +832,7 @@ public partial class PathExecutor
                         return false;
                     }
                 }
-                catch (Exception e)
+                catch (Exception e) when (!ct.IsCancellationRequested)
                 {
                     Logger.LogError(e, $"[{avatar.Name}] 赶路逻辑异常");
                     state.FlyingState = false;
@@ -1080,7 +1083,7 @@ public partial class PathExecutor
                         return false;
                     }
                 }
-                catch (Exception e)
+                catch (Exception e) when (!ct.IsCancellationRequested)
                 {
                     Logger.LogError(e, $"[{avatar.Name}] 赶路逻辑异常");
                     state.FlyingState = false;
@@ -1653,7 +1656,7 @@ public partial class PathExecutor
             // Logger.LogInformation("[赶路调试] TryHurryOnAsync  exit: result={r}", result);
             return result;
         }
-        catch (Exception e)
+        catch (Exception e) when (!ct.IsCancellationRequested)
         {
             Logger.LogError(e, "赶路逻辑执行异常");
             return false;

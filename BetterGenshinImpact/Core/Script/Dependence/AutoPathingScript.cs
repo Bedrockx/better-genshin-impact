@@ -1,9 +1,11 @@
 using System;
+using System.Threading;
 using BetterGenshinImpact.GameTask.AutoPathing;
 using BetterGenshinImpact.GameTask.AutoPathing.Model;
 using System.Threading.Tasks;
 using BetterGenshinImpact.Core.Config;
 using BetterGenshinImpact.Core.Script.Dependence.Model;
+using BetterGenshinImpact.GameTask.AutoGeniusInvokation.Exception;
 using BetterGenshinImpact.GameTask.Common;
 using Microsoft.Extensions.Logging;
 
@@ -43,13 +45,7 @@ public class AutoPathingScript
 
         try
         {
-            var pathExecutor = new PathExecutor(CancellationContext.Instance.Cts.Token);
-            if (_config != null && _config is PathingPartyConfig patyConfig)
-            {
-                pathExecutor.PartyConfig = patyConfig;
-            }
-
-            await pathExecutor.Pathing(task);
+            var pathExecutor = await ExecutePathing(task, CancellationContext.Instance.Cts.Token);
 
             // 只有真正正常完整走完所有路径才算成功
             if (pathExecutor.SuccessEnd && !pathExecutor.EndByHandledException)
@@ -85,6 +81,18 @@ public class AutoPathingScript
         }
     }
 
+    private async Task<PathExecutor> ExecutePathing(PathingTask task, CancellationToken ct)
+    {
+        var pathExecutor = new PathExecutor(ct);
+        if (_config is PathingPartyConfig partyConfig)
+        {
+            pathExecutor.PartyConfig = partyConfig;
+        }
+
+        await pathExecutor.Pathing(task);
+        return pathExecutor;
+    }
+
     /// <summary>
     /// 通过脚本目录下的路径文件执行地图追踪，返回执行结果
     /// </summary>
@@ -109,6 +117,33 @@ public class AutoPathingScript
 
         return await Run(json);
     }
+
+    /// <summary>
+    /// 执行脚本目录中的路线。局部取消返回 "canceled"，执行器返回时为 "finished"，全局停止继续向外传递。
+    /// </summary>
+    public async Task<string> RunFile(string path, CancellationToken ct)
+    {
+        var globalToken = CancellationContext.Instance.Cts.Token;
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(globalToken, ct);
+        var token = linkedCts.Token;
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            var json = await new LimitedFile(_rootPath).ReadTextAsync(path, token);
+            var task = PathingTask.BuildFromJson(json);
+            token.ThrowIfCancellationRequested();
+            await ExecutePathing(task, token);
+        }
+        catch (Exception e) when (linkedCts.IsCancellationRequested && e is OperationCanceledException or NormalEndException)
+        {
+            // 执行器也可能直接返回，统一在下方判断取消来源。
+        }
+
+        globalToken.ThrowIfCancellationRequested();
+        return ct.IsCancellationRequested ? "canceled" : "finished";
+    }
+
+    public Task<string> RunFile(string path, CancellationTokenSource cts) => RunFile(path, cts.Token);
 
     /// <summary>
     /// 从已订阅的内容中获取文件并执行地图追踪，返回执行结果

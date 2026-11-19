@@ -37,6 +37,9 @@ public class CombatScenes : IDisposable
     /// </summary>
     private Avatar[] Avatars { set; get; } = [];
 
+    // 地图追踪会复用缓存的队伍，同一队伍上的不同路线各自传递取消信号。
+    internal AsyncLocal<CancellationToken?> PathingToken { get; } = new();
+
     public int AvatarCount => Avatars.Length;
 
     /// <summary>
