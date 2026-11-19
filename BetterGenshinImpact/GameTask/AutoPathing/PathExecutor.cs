@@ -161,6 +161,7 @@ public partial class PathExecutor
             return;
         }
 
+        _combatScenes!.PathingToken.Value = ct;
         InitializePathing(task);
         // 转换、按传送点分割路径
         var waypointsList = ConvertWaypointsForTrack(task.Positions, task);
@@ -175,6 +176,7 @@ public partial class PathExecutor
             {
                 try
                 {
+                    ct.ThrowIfCancellationRequested();
                     await ResolveAnomalies(); // 异常场景处理
 
                     // 如果首个点是非TP点位，强制设置在这个点位附近优先做局部匹配
@@ -185,6 +187,7 @@ public partial class PathExecutor
 
                     foreach (var waypoint in waypoints) // 一条路径
                     {
+                        ct.ThrowIfCancellationRequested();
                         CurWaypoint = (waypoints.FindIndex(wps => wps == waypoint), waypoint);
                         TryCloseSkipOtherOperations();
                         await RecoverWhenLowHp(waypoint); // 低血量恢复
@@ -224,6 +227,7 @@ public partial class PathExecutor
                                 await MoveTo(waypoint);
                             }
 
+                            ct.ThrowIfCancellationRequested();
                             await BeforeMoveCloseToTarget(waypoint);
 
                             if (IsTargetPoint(waypoint))
@@ -297,12 +301,16 @@ public partial class PathExecutor
                 finally
                 {
                     // 不管咋样，松开所有按键
-                    InputHub.Foreground.Keyboard.KeyUp(User32.VK.VK_W);
-                    InputHub.Foreground.Mouse.RightButtonUp();
+                    InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
+                    InputHub.Foreground.SimulateAction(GIActions.SprintMouse, KeyType.KeyUp);
                     InputHub.Foreground.SimulateAction(GIActions.NormalAttack, KeyType.KeyUp);
                 }
             }
 
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
         }
     }
 

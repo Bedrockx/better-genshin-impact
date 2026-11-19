@@ -18,11 +18,8 @@ namespace BetterGenshinImpact.GameTask.AutoPathing.Handler;
 /// </summary>
 public class PickAroundHandler() : IActionHandler
 {
-    private CancellationToken _ct;
-
     public async Task RunAsync(CancellationToken ct, WaypointForTrack? waypointForTrack = null, object? config = null)
     {
-        this._ct = ct;
         Logger.LogInformation("执行 {Text}", "小范围内自动拾取");
 
         double speed = 1.1;
@@ -39,50 +36,54 @@ public class PickAroundHandler() : IActionHandler
         for (int i = 0; i < turns; i++)
         {
             (double edgeT, double radiusT, double endAngle) = calculator.GetCircleInfo(i);
-            await MoveToNextStartPoint(oldRadiusT, radiusT, angle);
-            await MoveCircle(edgeT, 6);
+            await MoveToNextStartPoint(oldRadiusT, radiusT, angle, ct);
+            await MoveCircle(edgeT, 6, ct);
             oldRadiusT = radiusT;
             angle = endAngle;
         }
     }
 
-    public async Task MoveCircle(double edgeT, int n)
+    public async Task MoveCircle(double edgeT, int n, CancellationToken ct = default)
     {
-        InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyDown);
-        await Delay(30, _ct);
-        while (n-- > 0)
+        try
         {
-            InputHub.Foreground.Mouse.MiddleButtonClick();
-            await Delay((int)Math.Round(edgeT), _ct);
+            InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyDown);
+            await Delay(30, ct);
+            while (n-- > 0)
+            {
+                InputHub.Foreground.Mouse.MiddleButtonClick();
+                await Delay((int)Math.Round(edgeT), ct);
+            }
+        }
+        finally
+        {
+            InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
         }
 
-        InputHub.Foreground.SimulateAction(GIActions.MoveLeft, KeyType.KeyUp);
-        await Delay(200, _ct);
+        await Delay(200, ct);
     }
 
-    public async Task MoveAfterTurn(User32.VK vk, int ms = 0)
+    public async Task MoveAfterTurn(User32.VK vk, int ms = 0, CancellationToken ct = default)
     {
         InputHub.Foreground.Keyboard.KeyPress(vk);
-        await Delay(200, _ct);
+        await Delay(200, ct);
         InputHub.Foreground.Mouse.MiddleButtonClick();
-        await Delay(500, _ct);
+        await Delay(500, ct);
         if (ms > 0)
         {
-            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyDown);
-            await Delay(ms, _ct);
-            InputHub.Foreground.SimulateAction(GIActions.MoveForward, KeyType.KeyUp);
-            await Delay(200, _ct);
+            await SimulateHoldActionAsync(GIActions.MoveForward, ms, ct);
+            await Delay(200, ct);
         }
     }
 
-    public async Task MoveToNextStartPoint(double oldRadius, double newRadius, double angle)
+    public async Task MoveToNextStartPoint(double oldRadius, double newRadius, double angle, CancellationToken ct = default)
     {
         double x = newRadius - oldRadius * Math.Cos(angle);
         double y = oldRadius * Math.Sin(angle);
         InputHub.Foreground.Mouse.MiddleButtonClick();
-        await Delay(500, _ct);
-        await MoveAfterTurn(GIActions.MoveBackward.ToActionKey().ToVK(), (int)Math.Round(y) + 200);
-        await MoveAfterTurn(GIActions.MoveLeft.ToActionKey().ToVK(), (int)Math.Round(x));
+        await Delay(500, ct);
+        await MoveAfterTurn(GIActions.MoveBackward.ToActionKey().ToVK(), (int)Math.Round(y) + 200, ct);
+        await MoveAfterTurn(GIActions.MoveLeft.ToActionKey().ToVK(), (int)Math.Round(x), ct);
     }
 }
 
