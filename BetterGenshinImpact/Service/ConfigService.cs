@@ -178,18 +178,24 @@ public class ConfigService : IConfigService
         {
             if (!File.Exists(filePath))
             {
-                return new AllConfig();
+                return CreateDefaultConfig();
             }
 
             var json = File.ReadAllText(filePath);
             var config = JsonSerializer.Deserialize<AllConfig>(json, JsonOptions);
             if (config == null)
             {
-                return new AllConfig();
+                return CreateDefaultConfig();
             }
 
             config.AutoPickConfig.MigrateLegacyConfig();
+            var migrated = config.AutoPickConfig.MigrateMojangPickDefaults();
             Config = config;
+            if (migrated)
+            {
+                Save();
+            }
+
             return config;
         }
         catch (Exception e)
@@ -198,8 +204,15 @@ public class ConfigService : IConfigService
             Console.WriteLine(e.StackTrace);
             BackupConfigFile(filePath);
             ShowConfigExceptionDialog("读取", e);
-            return new AllConfig();
+            return CreateDefaultConfig();
         }
+    }
+
+    private static AllConfig CreateDefaultConfig()
+    {
+        var config = new AllConfig();
+        config.AutoPickConfig.MigrateMojangPickDefaults();
+        return config;
     }
 
     public void Write(AllConfig config)
